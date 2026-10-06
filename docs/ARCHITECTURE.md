@@ -86,14 +86,14 @@ Program → Class/Section**.
 - An **organization** is the SaaS tenant root: an education group (ABBS, BCC), a society, or
   an independent institution (JP College). Institutions have a nullable `group_id`.
 - Isolation boundary = `organization_id`. Finer-grained scopes (group / institution /
-  department assignments) are enforced by the authorization engine (Layer 2).
+  department assignments) are enforced by the authorization engine (§5).
 
 Components:
 
 | Piece                               | Responsibility                                                                                                                                                                                                                                                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `TenantContext` (AsyncLocalStorage) | `runWithTenant()`, `getTenantContext()`, `currentOrganizationId()`. Frozen; nested tenant switching throws.                                                                                                                                                                                      |
-| `TenantResolver`                    | Resolves the tenant **server-side** per request. Layer 1: `dev-header` stub (`X-Dev-Organization`, dev/test only, rejected in production) or `none` (deny all). Layer 2 replaces it with a principal (JWT)-based resolver.                                                                       |
+| `TenantResolver`                    | Resolves the tenant **server-side** per request. `jwt` (default): the organization bound to the authenticated session. `dev-header` (dev/test only, rejected in production): jwt, else `X-Dev-Organization`. `none`: deny all.                                                                   |
 | `tenantContext()` middleware        | Runs resolver, verifies org exists & is `ACTIVE`, runs the request inside the context. 401 `TENANT_UNRESOLVED` / 403 `TENANT_INACTIVE`.                                                                                                                                                          |
 | `rejectClientTenantIdentifiers`     | 400 if body/query contain `organizationId`/`tenantId` (defense in depth).                                                                                                                                                                                                                        |
 | `tenantDb()` (Prisma extension)     | Tenant-scoped client: filters all reads/updates/deletes by `organization_id` (+ soft delete), stamps creates, throws `TenantIsolationError` on cross-tenant filters/writes, nested relation writes, raw SQL, or unregistered models. `Organization` is read-only and limited to the current org. |
@@ -112,26 +112,147 @@ Rules for all modules:
 4. Register every new model in `tenant-models.ts` (tenant-scoped or global).
 5. Background jobs carry `organizationId` in their payload and run inside
    `runWithTenant({ organizationId, source: 'system' }, …)`.
-6. Platform-level (cross-tenant) operations live in core/platform code using the base client
-   with explicit authorization and audit logging.
+6. Platform-level (cross-tenant) operations live in `core/platform` using the base client
+   with explicit authorization and audit logging (`runAsPlatform`, §5.4).
 
-## 5. Queues & cache
+## 5. Authentication, authorization & audit
+
+### 5.1 Identity & authentication (`src/core/auth`, `src/modules/auth`)
+
+- **Users are platform-level identities** (`users`, global model, unique email). Tenant access
+  comes from `organization_memberships` (INVITED / ACTIVE / DISABLED). Platform roles
+  (`platform_super_admin`, `platform_support_admin`) are `platform_role_assignments`, defined
+  in code (`core/authz/default-roles.ts`), never per tenant.
+- Passwords: **argon2id** (`core/auth/password.ts`); policy shared with the web in
+  `@erp/shared` (`passwordPolicyViolations`: 12+ chars, 3 character classes, no email name).
+- Login → short-lived **JWT access token** (HS256 via `jose`, `ACCESS_TOKEN_TTL_SECONDS`,
+  claims: `sub`, `sid`, `org`) + opaque **refresh token** stored only as a SHA-256 hash.
+  Each login creates an `auth_sessions` row (device/IP/user agent). Refresh **rotates** the
+  token; presenting a rotated token again is treated as theft → the whole session is revoked
+  (`REFRESH_TOKEN_REUSED`, audited). Every request re-checks the session is not revoked, so
+  logout / revoke / deactivation / password change take effect immediately.
+- The browser uses `tokenDelivery: 'cookie'`: the refresh token is an httpOnly,
+  `SameSite=Strict` cookie scoped to `/api/v1/auth`; the access token lives in memory only.
+- `login_events` records every attempt (ip, user agent, success, failure reason). After
+  `AUTH_MAX_FAILED_LOGINS` failures the account is locked for `AUTH_LOCKOUT_MINUTES` (423).
+  Public auth endpoints are rate limited per IP (429, `RateLimitStore` — in-memory by
+  default; swap for Redis when running several API instances).
+- **MFA (TOTP, RFC 6238)**: enroll → activate with a code → 10 single-use recovery codes
+  (hashed). Login then returns `{ mfaRequired, mfaToken }` to exchange at `/auth/mfa/verify`.
+  TOTP secrets are AES-256-GCM encrypted (`DATA_ENCRYPTION_KEY`); codes cannot be replayed.
+- Invite / password-reset tokens are single-use and hashed (`user_tokens`). **Until the
+  notification engine (Layer 5) exists the API returns them in the response**; Layer 5 must
+  deliver them by email and stop returning them.
+- A session is bound to one organization. Users in several organizations pick one at login
+  (`organization` slug; 409 `ORGANIZATION_SELECTION_REQUIRED` lists the choices).
+
+### 5.2 Authorization: permissions + scopes (`src/core/authz`)
+
+- **Permissions** are declared in `@erp/shared` → `PERMISSIONS` (`<resource>.<action>`, e.g.
+  `payroll.approve`; `platform.*` are platform-only). The catalog is synced into the
+  `permissions` table at startup (`syncPermissionCatalog`). Default tenant roles (spec §3)
+  live in `core/authz/default-roles.ts` and are provisioned per organization by
+  `provisionOrganizationRoles(orgId)` (call it when creating an organization).
+  **Adding a permission in a later layer** = add it to `PERMISSIONS` + to the relevant
+  default roles; existing organizations pick it up on the next provisioning run.
+- **Roles** (`roles`, `role_permissions`) are per tenant; system roles are read-only, custom
+  roles may only contain permissions their editor holds organization-wide.
+- **Assignments**: `user_roles` + `user_scopes`. Each role assignment has ≥1 scope:
+  `ORGANIZATION`, `GROUP`, `INSTITUTION`, `CAMPUS`, `DEPARTMENT` (FKs to the hierarchy;
+  `PLATFORM` is a platform role assignment). A permission applies only within the scopes
+  of the role that grants it. Group scopes cover every institution in the group; campus
+  scopes cover their departments; department scopes do **not** grant their institution.
+- A `Principal` (user, roles, grants, platform permissions, session) is built per request by
+  `principalContext()` and available through `currentPrincipal()`.
+- Assigning roles is checked for **privilege escalation**: the assigner needs
+  `user.role.assign` and every permission of the role, covering each target scope.
+
+**How modules use it** (the hierarchy modules are the reference implementation):
+
+```ts
+// routes: coarse check (permission held in at least one scope)
+router.get('/', requirePermission('department.view'), handler);
+// optional: requirePermission('x.update', (req) => resourceScopeOf(req)) for fixed resources
+
+// service — lists: filter by the caller's scopes
+const scope = await scopeWhere(currentPrincipal(), 'department.view', 'department');
+repo.list({ ...filters, scope }); // repository: where = andScope(where, scope)
+
+// service — reads: out-of-scope looks like not found (no existence leak)
+if (!(await can(principal, 'department.view', hierarchyResource.department(row))))
+  throw new NotFoundError('Department');
+
+// service — writes: authorize against the existing row AND the destination parent
+await authorize(principal, 'department.update', hierarchyResource.department(before));
+```
+
+- Every tenant-owned record of a later layer that belongs to the hierarchy must carry the
+  relevant hierarchy FKs (`institution_id`, `department_id`, …) so it can be scoped. Add the
+  model to `ScopedModel`/`COLUMNS` in `engine.ts` (or build the `where` from
+  `accessFor()`), and a `hierarchyResource` helper.
+- Organization-wide resources (roles, audit logs, settings) use `authorize(p, perm, {})`,
+  which only an `ORGANIZATION`-scoped grant satisfies.
+- The web menu and route guards use `GET /api/v1/me` (`permissions`, `roles[].scopes`);
+  they are convenience only — the API is always authoritative.
+
+### 5.3 Audit engine (`src/core/audit`)
+
+- `audit_logs` is **append-only**: no update/delete API, and DB triggers reject UPDATE and
+  DELETE. Rows hold organization, actor (user + actor type), action, entity type/id,
+  before/after **diff** (changed keys only), reason, metadata, ip, user agent, request id.
+- Sensitive keys (password, hash, secret, token, otp, api key, bank account, …) are
+  redacted automatically (`redact.ts`) — still never pass raw secrets.
+- Call `audit.record({ action: '<entity>.<verb>', entityType, entityId, before, after })` for
+  **every mutation** of business data and every security event. Actor, organization, IP,
+  user agent and request id come from the request context. Audit writes run after the
+  mutation (not in the same transaction) and failures propagate as errors.
+- Already audited automatically: login success and lockout (every attempt, incl. failures,
+  is in `login_events`), MFA changes, refresh-token
+  reuse, password change/reset, user create/update/(de)activate, role & scope changes, role
+  edits, hierarchy create/update/delete, platform tenant access.
+- Read via `GET /api/v1/audit-logs` (organization-wide `audit.view`) and
+  `GET /api/v1/platform/audit-logs` (`platform.audit.view`).
+
+### 5.4 Platform (cross-tenant) access (`src/core/platform`)
+
+- Platform admins have **no tenant access** by default (tenant routes return 401).
+- `POST /api/v1/platform/organizations/:id/access { reason }` opens a short-lived
+  (`PLATFORM_ACCESS_TTL_MINUTES`), non-refreshable tenant session; it is audited in the
+  target organization, and every action in it carries the reason in audit metadata.
+- Background/system code that must act inside a tenant with platform authority uses
+  `runAsPlatform({ organizationId, reason }, fn)` — always audited (`platform.run_as`).
+
+### 5.5 Rules for later layers
+
+1. Declare permissions in `@erp/shared` and add them to default roles; guard every route with
+   `requirePermission` and enforce scope in the service (`scopeWhere` / `can` / `authorize`).
+2. Never trust client-supplied scope or tenant ids; resolve parents through `tenantDb()` and
+   authorize against the resolved resource.
+3. `audit.record()` every mutation; never log secrets.
+4. Tests: use `signIn(app, email, password)` (test/helpers) with the seeded demo users for
+   RBAC/scope tests; `asTenant()` (dev header, all permissions) only for tenant-isolation
+   tests. Call `syncPermissionCatalog()` + `provisionOrganizationRoles()` for new orgs.
+
+## 6. Queues & cache
 
 Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires configuration
 (`REDIS_URL`, `QUEUE_PREFIX`, `createQueue()`); connections are lazy.
 
-## 6. Frontend (apps/web)
+## 7. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
   (Student/Parent/Teacher layouts come later). Sidebar menus are data-driven
-  (`src/navigation/menus.ts`) and filtered by permission codes.
-- API calls go through `src/api/client.ts`. In dev the selected demo organization is sent as
-  `X-Dev-Organization`; this is replaced by auth tokens in Layer 2. The server is always the
-  authority on tenant and permissions.
+  (`src/navigation/menus.ts`) and filtered by the permission codes from `GET /api/v1/me`.
+- Auth: `useAuthStore` (`src/stores/auth.ts`) keeps the access token in memory and refreshes
+  via the httpOnly cookie (single-flight; the client retries once on `TOKEN_EXPIRED`).
+  Routes declare `meta.permission`; the global guard (`navigation/guard.ts`) redirects to
+  `/login` or `/forbidden`. Login page handles organization selection and the MFA step.
+- API calls go through `src/api/client.ts` (`apiFetch`). The client never sends tenant ids;
+  the server is always the authority on tenant, permissions and scopes.
 - Shared DTO types/schemas come from `@erp/shared`.
 
-## 7. Testing & quality
+## 8. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -142,7 +263,7 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 8. Foundation stack
+## 9. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit

@@ -1,8 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import type { PageWindow } from '../../core/http/pagination';
+import { andScope } from '../../core/authz';
 import { tenantDb, withTenant } from '../../core/tenancy';
 
 export interface InstitutionListFilter extends PageWindow {
+  /** Authorization scope fragment from `scopeWhere` (core/authz). */
+  scope?: Record<string, unknown> | undefined;
   search?: string | undefined;
   groupId?: string | undefined;
   independent?: boolean | undefined;
@@ -11,7 +14,7 @@ export interface InstitutionListFilter extends PageWindow {
 export const institutionRepository = {
   async list(filter: InstitutionListFilter) {
     const db = tenantDb();
-    const where: Prisma.InstitutionWhereInput = {
+    const base: Prisma.InstitutionWhereInput = {
       ...(filter.search
         ? { OR: [{ name: { contains: filter.search } }, { code: { contains: filter.search } }] }
         : {}),
@@ -19,6 +22,7 @@ export const institutionRepository = {
       ...(filter.independent === true ? { groupId: null } : {}),
       ...(filter.independent === false ? { groupId: { not: null } } : {}),
     };
+    const where = andScope(base, filter.scope);
     const [items, total] = await Promise.all([
       db.institution.findMany({
         where,

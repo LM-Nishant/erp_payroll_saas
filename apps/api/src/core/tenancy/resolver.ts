@@ -9,9 +9,9 @@ export interface TenantResolution {
 /**
  * Resolves the tenant for a request from SERVER-SIDE trusted state only.
  *
- * Layer 1 ships a development stub. Layer 2 (auth) replaces it with a resolver that derives
- * the organization from the authenticated principal (JWT/session). Resolvers must never read
- * tenant identifiers from the request body or query string.
+ * Production uses `jwtTenantResolver`: the organization comes from the authenticated session
+ * (`req.auth`, set by core/auth `authenticate` after verifying the access token and the live
+ * session). Resolvers must never read tenant identifiers from the request body or query string.
  */
 export interface TenantResolver {
   readonly name: string;
@@ -27,14 +27,25 @@ export const denyAllTenantResolver: TenantResolver = {
 export const DEV_TENANT_HEADER = 'x-dev-organization';
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+/** The tenant is the organization bound to the authenticated session (JWT `org` claim). */
+export const jwtTenantResolver: TenantResolver = {
+  name: 'jwt',
+  resolve: async (req) =>
+    req.auth?.organizationId
+      ? { organizationId: req.auth.organizationId, actorId: req.auth.userId }
+      : null,
+};
+
 /**
- * DEVELOPMENT/TEST STUB ONLY. Trusts an `X-Dev-Organization` header (org id or slug).
- * Refused in production by env validation. Stands in for the authenticated principal.
+ * DEVELOPMENT/TEST ONLY. Uses the JWT when present; otherwise trusts an `X-Dev-Organization`
+ * header (org id or slug) and the request runs as an all-permissions `dev` principal.
+ * Refused in production by env validation.
  */
 export function devHeaderTenantResolver(lookup: OrganizationLookup): TenantResolver {
   return {
     name: 'dev-header',
     async resolve(req) {
+      if (req.auth) return jwtTenantResolver.resolve(req);
       const value = req.get(DEV_TENANT_HEADER)?.trim();
       if (!value) return null;
       const org = UUID.test(value) ? await lookup.findById(value) : await lookup.findBySlug(value);
@@ -44,8 +55,9 @@ export function devHeaderTenantResolver(lookup: OrganizationLookup): TenantResol
 }
 
 export function createTenantResolver(
-  strategy: 'dev-header' | 'none',
+  strategy: 'jwt' | 'dev-header' | 'none',
   lookup: OrganizationLookup,
 ): TenantResolver {
+  if (strategy === 'jwt') return jwtTenantResolver;
   return strategy === 'dev-header' ? devHeaderTenantResolver(lookup) : denyAllTenantResolver;
 }

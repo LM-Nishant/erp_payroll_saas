@@ -59,12 +59,21 @@ model Organization {
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
 
-  groups         Group[]
-  institutions   Institution[]
-  campuses       Campus[]
-  departments    Department[]
-  programs       Program[]
-  classSections  ClassSection[]
+  groups          Group[]
+  institutions    Institution[]
+  campuses        Campus[]
+  departments     Department[]
+  programs        Program[]
+  classSections   ClassSection[]
+  memberships     OrganizationMembership[]
+  roles           Role[]
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+  userScopes      UserScope[]
+  authSessions    AuthSession[]
+  loginEvents     LoginEvent[]
+  userTokens      UserToken[]
+  auditLogs       AuditLog[]
 
   @@map("organizations")
 }
@@ -83,6 +92,7 @@ model Group {
 
   organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   institutions Institution[]
+  userScopes   UserScope[]
 
   @@unique([organizationId, code])
   @@index([organizationId, deletedAt])
@@ -111,6 +121,7 @@ model Institution {
   departments   Department[]
   programs      Program[]
   classSections ClassSection[]
+  userScopes    UserScope[]
 
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
@@ -136,6 +147,7 @@ model Campus {
   institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
   departments   Department[]
   classSections ClassSection[]
+  userScopes    UserScope[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -161,6 +173,7 @@ model Department {
   campus        Campus?        @relation(fields: [campusId], references: [id], onDelete: Restrict)
   programs      Program[]
   classSections ClassSection[]
+  userScopes    UserScope[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -226,4 +239,345 @@ model ClassSection {
   @@index([organizationId, campusId])
   @@index([organizationId, deletedAt])
   @@map("class_sections")
+}
+
+// ---------------------------------------------------------------------------
+// Layer 2 — Identity, authentication, authorization (RBAC + scopes) and audit
+// ---------------------------------------------------------------------------
+
+enum UserStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum MembershipStatus {
+  INVITED
+  ACTIVE
+  DISABLED
+}
+
+/// Breadth of a role assignment. PLATFORM roles are not stored here (see PlatformRoleAssignment).
+enum ScopeType {
+  ORGANIZATION
+  GROUP
+  INSTITUTION
+  CAMPUS
+  DEPARTMENT
+}
+
+enum RefreshTokenStatus {
+  ACTIVE
+  ROTATED
+  REVOKED
+}
+
+enum UserTokenType {
+  INVITE
+  PASSWORD_RESET
+}
+
+/// Platform-level identity (GLOBAL). A user joins tenants through OrganizationMembership.
+/// Only core/auth touches this table; modules use the identity service.
+model User {
+  id                  String     @id @default(uuid()) @db.Char(36)
+  email               String     @unique @db.VarChar(254)
+  name                String     @db.VarChar(200)
+  passwordHash        String?    @map("password_hash") @db.VarChar(255)
+  status              UserStatus @default(ACTIVE)
+  mfaEnabled          Boolean    @default(false) @map("mfa_enabled")
+  /// TOTP secret, AES-256-GCM encrypted (core/crypto). Never returned by the API.
+  mfaSecretEnc        String?    @map("mfa_secret_enc") @db.VarChar(512)
+  mfaPendingSecretEnc String?    @map("mfa_pending_secret_enc") @db.VarChar(512)
+  /// Last accepted TOTP time-step (replay protection).
+  mfaLastUsedStep     Int?       @map("mfa_last_used_step")
+  failedLoginCount    Int        @default(0) @map("failed_login_count")
+  lockedUntil         DateTime?  @map("locked_until") @db.DateTime(3)
+  passwordChangedAt   DateTime?  @map("password_changed_at") @db.DateTime(3)
+  lastLoginAt         DateTime?  @map("last_login_at") @db.DateTime(3)
+  createdAt           DateTime   @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt           DateTime?  @map("deleted_at") @db.DateTime(3)
+
+  memberships   OrganizationMembership[]
+  platformRoles PlatformRoleAssignment[]
+  userRoles     UserRole[]
+  userScopes    UserScope[]
+  sessions      AuthSession[]
+  loginEvents   LoginEvent[]
+  recoveryCodes MfaRecoveryCode[]
+  tokens        UserToken[]
+  auditLogs     AuditLog[]
+
+  @@map("users")
+}
+
+/// Platform roles (platform_super_admin, platform_support_admin). Permissions come from the
+/// code catalog (core/authz/default-roles.ts). GLOBAL; managed by core only.
+model PlatformRoleAssignment {
+  id        String   @id @default(uuid()) @db.Char(36)
+  userId    String   @map("user_id") @db.Char(36)
+  roleKey   String   @map("role_key") @db.VarChar(64)
+  createdAt DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([userId, roleKey])
+  @@map("platform_role_assignments")
+}
+
+/// A user's membership of a tenant.
+model OrganizationMembership {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String           @map("organization_id") @db.Char(36)
+  userId         String           @map("user_id") @db.Char(36)
+  status         MembershipStatus @default(INVITED)
+  joinedAt       DateTime?        @map("joined_at") @db.DateTime(3)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?        @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, status])
+  @@index([userId])
+  @@map("organization_memberships")
+}
+
+/// Permission catalog (GLOBAL), synced from @erp/shared PERMISSIONS.
+model Permission {
+  id          String   @id @default(uuid()) @db.Char(36)
+  code        String   @unique @db.VarChar(100)
+  module      String   @db.VarChar(64)
+  description String   @db.VarChar(255)
+  createdAt   DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  rolePermissions RolePermission[]
+
+  @@map("permissions")
+}
+
+/// Tenant role. System roles (isSystem) are provisioned per organization from the defaults.
+model Role {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  key            String    @db.VarChar(64)
+  name           String    @db.VarChar(200)
+  description    String?   @db.VarChar(1000)
+  isSystem       Boolean   @default(false) @map("is_system")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization    Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  rolePermissions RolePermission[]
+  userRoles       UserRole[]
+
+  @@unique([organizationId, key])
+  @@index([organizationId, deletedAt])
+  @@map("roles")
+}
+
+model RolePermission {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  roleId         String   @map("role_id") @db.Char(36)
+  permissionId   String   @map("permission_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  permission   Permission   @relation(fields: [permissionId], references: [id], onDelete: Restrict)
+
+  @@unique([roleId, permissionId])
+  @@index([organizationId, roleId])
+  @@index([permissionId])
+  @@map("role_permissions")
+}
+
+/// Assignment of a role to a user. Effective only within the assignment's UserScopes.
+model UserRole {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  userId         String   @map("user_id") @db.Char(36)
+  roleId         String   @map("role_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  role         Role         @relation(fields: [roleId], references: [id], onDelete: Restrict)
+  scopes       UserScope[]
+
+  @@unique([organizationId, userId, roleId])
+  @@index([organizationId, userId])
+  @@index([roleId])
+  @@map("user_roles")
+}
+
+/// Where a role assignment applies. `scopeType` decides which FK is the scope target; the other
+/// hierarchy FKs are denormalized ancestors (e.g. a DEPARTMENT scope also stores its institution
+/// and group) so "users within my scope" filters stay simple.
+model UserScope {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  userId         String    @map("user_id") @db.Char(36)
+  userRoleId     String    @map("user_role_id") @db.Char(36)
+  scopeType      ScopeType @map("scope_type")
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String?   @map("institution_id") @db.Char(36)
+  campusId       String?   @map("campus_id") @db.Char(36)
+  departmentId   String?   @map("department_id") @db.Char(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User         @relation(fields: [userId], references: [id], onDelete: Restrict)
+  userRole     UserRole     @relation(fields: [userRoleId], references: [id], onDelete: Restrict)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution  Institution? @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus       Campus?      @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department   Department?  @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, userId])
+  @@index([organizationId, userRoleId])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, groupId])
+  @@map("user_scopes")
+}
+
+/// Device/login session (CORE-MANAGED). organizationId is the tenant the session is bound to;
+/// null for platform-only sessions.
+model AuthSession {
+  id                   String    @id @default(uuid()) @db.Char(36)
+  userId               String    @map("user_id") @db.Char(36)
+  organizationId       String?   @map("organization_id") @db.Char(36)
+  ip                   String?   @db.VarChar(64)
+  userAgent            String?   @map("user_agent") @db.VarChar(512)
+  deviceName           String?   @map("device_name") @db.VarChar(100)
+  mfaVerified          Boolean   @default(false) @map("mfa_verified")
+  /// Set for audited platform cross-tenant access sessions.
+  platformAccessReason String?   @map("platform_access_reason") @db.VarChar(500)
+  expiresAt            DateTime  @map("expires_at") @db.DateTime(3)
+  lastUsedAt           DateTime  @default(now()) @map("last_used_at") @db.DateTime(3)
+  revokedAt            DateTime? @map("revoked_at") @db.DateTime(3)
+  revokedReason        String?   @map("revoked_reason") @db.VarChar(64)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user          User           @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization  Organization?  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  refreshTokens RefreshToken[]
+
+  @@index([organizationId, userId])
+  @@index([userId, revokedAt])
+  @@map("auth_sessions")
+}
+
+/// Rotating refresh tokens; only a SHA-256 hash is stored. GLOBAL (child of AuthSession).
+model RefreshToken {
+  id        String             @id @default(uuid()) @db.Char(36)
+  sessionId String             @map("session_id") @db.Char(36)
+  tokenHash String             @unique @map("token_hash") @db.Char(64)
+  status    RefreshTokenStatus @default(ACTIVE)
+  expiresAt DateTime           @map("expires_at") @db.DateTime(3)
+  usedAt    DateTime?          @map("used_at") @db.DateTime(3)
+  createdAt DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  session AuthSession @relation(fields: [sessionId], references: [id], onDelete: Restrict)
+
+  @@index([sessionId, status])
+  @@map("refresh_tokens")
+}
+
+/// Login history (CORE-MANAGED). Append-only.
+model LoginEvent {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String?  @map("organization_id") @db.Char(36)
+  userId         String?  @map("user_id") @db.Char(36)
+  email          String   @db.VarChar(254)
+  success        Boolean
+  failureReason  String?  @map("failure_reason") @db.VarChar(64)
+  mfaUsed        Boolean  @default(false) @map("mfa_used")
+  ip             String?  @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(512)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?         @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([userId, createdAt])
+  @@map("login_events")
+}
+
+model MfaRecoveryCode {
+  id        String    @id @default(uuid()) @db.Char(36)
+  userId    String    @map("user_id") @db.Char(36)
+  codeHash  String    @map("code_hash") @db.Char(64)
+  usedAt    DateTime? @map("used_at") @db.DateTime(3)
+  createdAt DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user User @relation(fields: [userId], references: [id], onDelete: Restrict)
+
+  @@index([userId])
+  @@map("mfa_recovery_codes")
+}
+
+/// One-time invite / password-reset tokens (CORE-MANAGED); only a SHA-256 hash is stored.
+model UserToken {
+  id             String        @id @default(uuid()) @db.Char(36)
+  userId         String        @map("user_id") @db.Char(36)
+  organizationId String?       @map("organization_id") @db.Char(36)
+  type           UserTokenType
+  tokenHash      String        @unique @map("token_hash") @db.Char(64)
+  expiresAt      DateTime      @map("expires_at") @db.DateTime(3)
+  usedAt         DateTime?     @map("used_at") @db.DateTime(3)
+  createdAt      DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+
+  user         User          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([userId, type])
+  @@index([organizationId, type])
+  @@map("user_tokens")
+}
+
+/// Audit trail (CORE-MANAGED, APPEND-ONLY: database triggers reject UPDATE and DELETE).
+/// organizationId is null only for platform-level events.
+model AuditLog {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String?  @map("organization_id") @db.Char(36)
+  actorUserId    String?  @map("actor_user_id") @db.Char(36)
+  /// user | platform | system | dev
+  actorType      String   @map("actor_type") @db.VarChar(16)
+  action         String   @db.VarChar(100)
+  entityType     String   @map("entity_type") @db.VarChar(64)
+  entityId       String?  @map("entity_id") @db.VarChar(64)
+  before         Json?
+  after          Json?
+  reason         String?  @db.VarChar(500)
+  metadata       Json?
+  ip             String?  @db.VarChar(64)
+  userAgent      String?  @map("user_agent") @db.VarChar(512)
+  requestId      String?  @map("request_id") @db.VarChar(128)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @default(now()) @map("updated_at") @db.DateTime(3)
+
+  organization Organization? @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  actor        User?         @relation(fields: [actorUserId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, actorUserId, createdAt])
+  @@index([organizationId, action])
+  @@map("audit_logs")
 }
