@@ -1,4 +1,9 @@
 import type { PrismaClient } from '@prisma/client';
+import {
+  provisionOrganizationSubscription,
+  reconcileUsage,
+  syncPlanCatalog,
+} from '../src/core/features';
 import { currentOrganizationId, runWithTenant, tenantDb } from '../src/core/tenancy';
 
 /*
@@ -6,6 +11,8 @@ import { currentOrganizationId, runWithTenant, tenantDb } from '../src/core/tena
  *   ABBS Education (org) → ABBS Group → 4 colleges
  *   BCC Education  (org) → BCC Group  → 2 colleges
  *   JP College     (org) → independent institution (no group)
+ * Subscriptions: ABBS → enterprise, BCC → professional, JP College → starter (at its
+ * 1-institution limit).
  * Idempotent: safe to run repeatedly.
  */
 
@@ -139,8 +146,15 @@ async function seedOrganizationHierarchy(spec: OrgSeed): Promise<void> {
   }
 }
 
+const DEMO_PLANS: Record<string, string> = {
+  abbs: 'enterprise',
+  bcc: 'professional',
+  'jp-college': 'starter',
+};
+
 export async function seedDemoData(prisma: PrismaClient): Promise<Record<string, string>> {
   const organizationIds: Record<string, string> = {};
+  await syncPlanCatalog();
   for (const spec of DEMO_ORGANIZATIONS) {
     // Organizations are platform-level records, created with the base client.
     const org = await prisma.organization.upsert({
@@ -153,6 +167,8 @@ export async function seedDemoData(prisma: PrismaClient): Promise<Record<string,
     await runWithTenant({ organizationId: org.id, source: 'system' }, () =>
       seedOrganizationHierarchy(spec),
     );
+    await provisionOrganizationSubscription(org.id, DEMO_PLANS[spec.slug] ?? 'starter');
+    await reconcileUsage(org.id);
   }
   return organizationIds;
 }

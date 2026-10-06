@@ -10,6 +10,7 @@ import { errorHandler, notFoundHandler } from './core/http/error-handler';
 import { memoryRateLimitStore, rateLimit, type RateLimitStore } from './core/http/rate-limit';
 import { requestContext } from './core/http/request-context';
 import { REQUEST_ID_HEADER, requestId } from './core/http/request-id';
+import { requireFeature } from './core/features';
 import { logger } from './core/logger';
 import {
   createTenantResolver,
@@ -21,9 +22,11 @@ import {
 } from './core/tenancy';
 import { auditLogsRouter } from './modules/audit-logs/audit-logs.routes';
 import { authRouter } from './modules/auth/auth.routes';
+import { brandingRouter } from './modules/branding/branding.routes';
 import { campusesRouter } from './modules/campuses/campuses.routes';
 import { classSectionsRouter } from './modules/class-sections/class-sections.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
+import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
 import { healthRouter, type ReadinessCheck } from './modules/health/health.routes';
 import { institutionsRouter } from './modules/institutions/institutions.routes';
@@ -32,6 +35,8 @@ import { organizationRouter } from './modules/organization/organization.routes';
 import { platformRouter } from './modules/platform/platform.routes';
 import { programsRouter } from './modules/programs/programs.routes';
 import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
+import { secretsRouter } from './modules/secrets/secrets.routes';
+import { subscriptionRouter } from './modules/subscription/subscription.routes';
 import { usersRouter } from './modules/users/users.routes';
 
 export interface AppDependencies {
@@ -103,12 +108,17 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/institutions', institutionsRouter);
   api.use('/campuses', campusesRouter);
   api.use('/departments', departmentsRouter);
-  api.use('/programs', programsRouter);
-  api.use('/class-sections', classSectionsRouter);
+  // Module-gated routes: 403 FEATURE_DISABLED when the module is not licensed / enabled.
+  api.use('/programs', requireFeature('education'), programsRouter);
+  api.use('/class-sections', requireFeature('education'), classSectionsRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
   api.use('/permissions', permissionsRouter);
   api.use('/audit-logs', auditLogsRouter);
+  api.use('/subscription', subscriptionRouter);
+  api.use('/features', featuresRouter);
+  api.use('/branding', brandingRouter);
+  api.use('/secrets', secretsRouter);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

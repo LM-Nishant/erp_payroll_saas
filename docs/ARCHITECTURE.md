@@ -233,12 +233,116 @@ await authorize(principal, 'department.update', hierarchyResource.department(bef
    RBAC/scope tests; `asTenant()` (dev header, all permissions) only for tenant-isolation
    tests. Call `syncPermissionCatalog()` + `provisionOrganizationRoles()` for new orgs.
 
-## 6. Queues & cache
+## 6. Licensing, branding & secrets (Layer 3)
+
+### 6.1 Plans, subscriptions & billing (`src/core/features`)
+
+- `SubscriptionPlan` (global, platform-managed) holds `features` (module keys) and `limits`
+  (`institutions`, `students`, `employees`, `storage_bytes`, `ai_tokens`,
+  `communication_messages` — `LIMITS` in `@erp/shared`; **missing = 0, `null` = unlimited**). `syncPlanCatalog()` upserts the
+  Starter / Professional / Enterprise defaults (`DEFAULT_PLANS`).
+- `OrganizationSubscription` (one per org): status `TRIAL | ACTIVE | PAST_DUE | CANCELLED`,
+  trial end, period dates, add-on features and limit overrides. A subscription **licenses
+  modules** when ACTIVE, PAST_DUE, or TRIAL with `trialEndsAt` in the future. No subscription ⇒
+  no modules and every limit is 0.
+- `Invoice` models billing minimally (amount, period, status `DRAFT|OPEN|PAID|OVERDUE|
+VOID`, paid-at); no payment gateway.
+- Platform admins manage plans / subscriptions / invoices under `/api/v1/platform/{plans,
+organizations/:id/subscription, organizations/:id/invoices}` (`platform.plan.manage`,
+  `platform.subscription.manage`). Tenant-scoped writes go through `runAsPlatform` and are
+  audited in the tenant. Tenants read `GET /api/v1/subscription` (+ `/invoices`, `billing.view`).
+- **New orgs (incl. test orgs) must call `provisionOrganizationSubscription(orgId, planKey)`**
+  after `provisionOrganizationRoles()`, otherwise all feature-gated routes return 403.
+
+### 6.2 Module licensing (`src/core/features`)
+
+- Feature keys live in `FEATURES` / `FEATURE_KEYS` (`@erp/shared`), with
+  `FEATURE_DEPENDENCIES` (e.g. `payroll` → `hr`, `whatsapp` → `communication`).
+- `FeatureOverride` rows (org / group / institution) can only **disable** or re-enable within
+  the license; enabling an unlicensed module is rejected (422 `FEATURE_NOT_LICENSED`).
+  Effective = licensed ∧ most-specific override (institution ?? group ?? org ?? on) ∧ all
+  dependencies effective. An institution can never exceed its org plan.
+- Gate routes with `requireFeature('payroll')` (mount after tenant context; 403
+  `FEATURE_DISABLED` with `{ feature }` details). Without a resolver it checks "enabled
+  anywhere in the org"; services then call `assertFeatureEnabled(key, { institutionId })`
+  for the concrete resource. `isFeatureEnabled(ctx, key, { institutionId?, groupId? })` is the
+  boolean variant (`currentFeatureContext()` gives `ctx`).
+- `GET /api/v1/me` returns `features` (effective anywhere for the user) and `branding`. Web
+  menus declare `feature` on `MenuItem` and routes declare `meta.feature`; the guard redirects
+  to `module-disabled`.
+- APIs: `/api/v1/features` (`feature.view`), `GET /features/effective`, `PUT /api/v1/features/overrides`,
+  `DELETE /features/overrides/:id`
+  (`feature.manage`, audited `feature_override.*`).
+
+### 6.3 Usage limits (`src/core/features/limits.ts`)
+
+- `UsageCounter(organizationId, limitKey, period)`; gauges use period `total`, monthly limits
+  use `YYYY-MM` (UTC).
+- `assertWithinLimit(key, delta)` checks only; `consumeLimit(key, delta)` atomically reserves;
+  `releaseLimit(key, delta)` frees (e.g. on delete). Prefer
+  `withLimit('employees', 1, () => create())` — reserves first, releases if `fn` throws.
+  Over limit ⇒ 403 `LIMIT_EXCEEDED` with `{ limitKey, limit, used, requested }`.
+- Modules owning a gauge register a recount with `registerUsageSource('employees', orgId =>
+count)`; `reconcileUsage(orgId)` recounts (seed / repair jobs).
+
+### 6.4 Branding (`src/core/branding`, `/api/v1/branding`)
+
+- `BrandingProfile` per org / group / institution: display name, `logoStorageKey` +
+  `logoFileId` (Layer 4 sets `logoFileId` to a document/file id; changing the storage key
+  clears it), primary/secondary/accent colors, letterhead/footer text, address, contact info,
+  custom domain / subdomain placeholders (never inherited).
+- `resolveBranding(orgId, { institutionId? , groupId? })` merges institution → group → org →
+  platform defaults per field and returns `sources`. **PDFs / emails must use it**; it is
+  cached per request and invalidated on writes. `GET /branding/resolved?institutionId=` exposes
+  it; `GET/PUT/DELETE /branding/{organization,groups/:id,institutions/:id}`
+  (`branding.view` / `branding.manage`, audited).
+- Web: `plugins/branding.ts` `applyBranding()` applies `me.branding` colors to the Vuetify theme.
+
+### 6.5 Secret management (`src/core/secrets`, `/api/v1/secrets`)
+
+- Envelope encryption: each secret gets a random AES-256-GCM data key; the value is
+  encrypted with AAD bound to `org:secretId`; the data key is wrapped by the master key via a
+  `KeyProvider` (`LocalKeyProvider` from `SECRETS_MASTER_KEYS="1:<b64 32B>,2:…"` +
+  `SECRETS_ACTIVE_KEY_VERSION`; `SECRETS_KEY_PROVIDER` selects the provider — implement the
+  interface for a cloud KMS and register it in `keyProvider()`).
+- `TenantSecret`: org + optional group/institution scope, `kind` (`smtp`, `sms`,
+  `ai.openai`, `storage`…), `name`, ciphertext, wrapped key, `keyVersion`, `last4`,
+  `fingerprint`, `createdById`, `rotatedAt`.
+- The HTTP API is **write-only**: responses carry only masked metadata (`masked`, `last4`,
+  `fingerprint`). Create / rotate / delete are audited (`secret.create|rotate|delete`).
+- **Engines read secrets only through `getSecret({ kind, name?, institutionId?, groupId?,
+purpose })`** — falls back institution → group → org, audits `secret.access` (or
+  `secret.access_failed`) with the purpose, and returns a `SecretValue` whose `toString/toJSON`
+  are redacted; call `.reveal()` only at the point of use. Never log or return the value.
+- Master-key rotation: add a new version to `SECRETS_MASTER_KEYS`, set it active, then
+  `POST /api/v1/platform/secrets/rewrap` (`platform.secret.rotate_keys`, audited
+  `secret.rewrap`). Old versions must stay configured until rewrap completes.
+- pino redaction (`LOG_REDACT_PATHS`) covers `value`, `secret`, `password`, tokens, etc.
+
+### 6.6 Permissions & default roles
+
+`subscription.view`, `billing.view`, `feature.view`, `feature.manage`, `branding.view`,
+`branding.manage`, `secret.view`, `secret.manage` (+ platform `platform.plan.manage`,
+`platform.subscription.manage`, `platform.secret.rotate_keys`). Group owner: all; group
+admin: features manage + secrets view + branding; institution admin: feature view + branding;
+finance: subscription + billing view.
+
+### 6.7 Rules for later layers
+
+1. Mount module routers with `requireFeature('<module>')` and check per-institution access in
+   services with `assertFeatureEnabled`.
+2. Count-limited creates use `withLimit(key, 1, …)`, deletes `releaseLimit`, and register a
+   `registerUsageSource`. Metered usage (AI tokens, messages) uses `consumeLimit(key, n)`.
+3. Credentials for SMTP/SMS/AI/storage come only from `getSecret()` with a `purpose`.
+4. Rendered documents and notifications use `resolveBranding()`.
+5. Test fixtures provision a subscription (`provisionOrganizationSubscription`) for new orgs.
+
+## 7. Queues & cache
 
 Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires configuration
 (`REDIS_URL`, `QUEUE_PREFIX`, `createQueue()`); connections are lazy.
 
-## 7. Frontend (apps/web)
+## 8. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
@@ -252,7 +356,7 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
   the server is always the authority on tenant, permissions and scopes.
 - Shared DTO types/schemas come from `@erp/shared`.
 
-## 8. Testing & quality
+## 9. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -263,7 +367,7 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 9. Foundation stack
+## 10. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit

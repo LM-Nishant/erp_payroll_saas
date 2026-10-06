@@ -21,6 +21,11 @@ export const routes: RouteRecordRaw[] = [
     ...placeholder('You do not have access to this page'),
   },
   {
+    path: '/module-disabled',
+    name: 'module-disabled',
+    ...placeholder('This module is not enabled for your organization'),
+  },
+  {
     path: '/platform',
     component: () => import('@/layouts/PlatformLayout.vue'),
     meta: { permission: 'platform.organization.view' },
@@ -44,6 +49,30 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'user.view' },
         component: () => import('@/pages/UsersPage.vue'),
       },
+      {
+        path: 'subscription',
+        name: 'group-subscription',
+        meta: { permission: 'subscription.view' },
+        component: () => import('@/pages/settings/SubscriptionPage.vue'),
+      },
+      {
+        path: 'modules',
+        name: 'group-modules',
+        meta: { permission: 'feature.view' },
+        component: () => import('@/pages/settings/FeaturesPage.vue'),
+      },
+      {
+        path: 'branding',
+        name: 'group-branding',
+        meta: { permission: 'branding.view' },
+        component: () => import('@/pages/settings/BrandingPage.vue'),
+      },
+      {
+        path: 'secrets',
+        name: 'group-secrets',
+        meta: { permission: 'secret.view' },
+        component: () => import('@/pages/settings/SecretsPage.vue'),
+      },
     ],
   },
   {
@@ -64,6 +93,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'user.view' },
         component: () => import('@/pages/UsersPage.vue'),
       },
+      {
+        path: 'branding',
+        name: 'institution-branding',
+        meta: { permission: 'branding.view' },
+        component: () => import('@/pages/settings/BrandingPage.vue'),
+      },
     ],
   },
   {
@@ -80,6 +115,10 @@ export function installGuards(r: Router) {
   r.beforeEach(async (to) => {
     const auth = useAuthStore();
     await auth.init();
-    return guardDecision(to, { isAuthenticated: auth.isAuthenticated, can: auth.can });
+    return guardDecision(to, {
+      isAuthenticated: auth.isAuthenticated,
+      can: auth.can,
+      hasFeature: auth.hasFeature,
+    });
   });
 }

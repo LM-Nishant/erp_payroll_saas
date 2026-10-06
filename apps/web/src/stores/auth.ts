@@ -1,4 +1,4 @@
-import type { LoginResult, MeResponse } from '@erp/shared';
+import type { FeatureKey, LoginResult, MeResponse } from '@erp/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { ApiError, installAuthHooks, rawFetch } from '@/api/client';
@@ -27,6 +27,11 @@ export const useAuthStore = defineStore('auth', () => {
   const permissions = computed(() => new Set(me.value?.permissions ?? []));
   const can = computed(
     () => (permission?: string) => !permission || permissions.value.has(permission),
+  );
+  const features = computed(() => new Set<FeatureKey>(me.value?.features ?? []));
+  /** Module enabled for the organization (licensed + not switched off everywhere). */
+  const hasFeature = computed(
+    () => (feature?: FeatureKey) => !feature || features.value.has(feature),
   );
   const isPlatformUser = computed(() => (me.value?.platformRoles.length ?? 0) > 0);
 
@@ -127,6 +132,7 @@ export const useAuthStore = defineStore('auth', () => {
     isAuthenticated,
     isPlatformUser,
     can,
+    hasFeature,
     login,
     verifyMfa,
     refresh,

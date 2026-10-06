@@ -40,6 +40,9 @@ const INSTITUTION_ADMIN = [
   'payroll.view',
   'salary.view',
   'ai.use',
+  'feature.view',
+  'branding.view',
+  'branding.manage',
 ] as PermissionCode[];
 
 const GROUP_ADMIN = [
@@ -47,6 +50,8 @@ const GROUP_ADMIN = [
   'institution.create',
   'institution.delete',
   'group.update',
+  'feature.manage',
+  'secret.view',
 ] as PermissionCode[];
 
 const HR = [
@@ -70,6 +75,8 @@ const FINANCE = [
   'asset.view',
   'audit.view',
   'ai.use',
+  'billing.view',
+  'subscription.view',
 ] as PermissionCode[];
 
 const ACADEMIC_LEAD = [
@@ -223,7 +230,13 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Accountant',
       description: 'Accounting staff',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, 'payroll.view', 'salary.view', 'document.view'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        'payroll.view',
+        'salary.view',
+        'document.view',
+        'billing.view',
+      ],
     },
     {
       key: 'it_admin',
@@ -236,6 +249,9 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'role.view',
         'audit.view',
         'ai.configure',
+        'feature.view',
+        'branding.view',
+        ...pick('secret'),
       ],
     },
     {

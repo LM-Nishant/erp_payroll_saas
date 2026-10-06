@@ -1,16 +1,21 @@
+import type { FeatureKey } from '@erp/shared';
+
 export interface MenuItem {
   title: string;
   icon: string;
   to: string;
   /** Permission code required to see the item (enforced by the backend as well). */
   permission?: string;
+  /** Licensed module required to see the item (`/me.features`; backend: requireFeature). */
+  feature?: FeatureKey;
 }
 
 export type LayoutKey = 'platform' | 'group' | 'institution' | 'employee';
 
 /**
- * Menus are data-driven and filtered by the permissions returned from GET /api/v1/me.
- * Later layers append items with the permission code that guards their API.
+ * Menus are data-driven and filtered by the permissions AND enabled modules (features) returned
+ * from GET /api/v1/me. Later layers append items with the permission code that guards their API
+ * and, for licensed modules, the feature key (e.g. `feature: 'payroll'`).
  */
 export const MENUS: Record<LayoutKey, MenuItem[]> = {
   platform: [
@@ -31,6 +36,25 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'institution.view',
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
+    {
+      title: 'Subscription',
+      icon: 'mdi-card-account-details-star',
+      to: '/group/subscription',
+      permission: 'subscription.view',
+    },
+    {
+      title: 'Modules',
+      icon: 'mdi-puzzle',
+      to: '/group/modules',
+      permission: 'feature.view',
+    },
+    {
+      title: 'Branding',
+      icon: 'mdi-palette',
+      to: '/group/branding',
+      permission: 'branding.view',
+    },
+    { title: 'Secrets', icon: 'mdi-key-chain', to: '/group/secrets', permission: 'secret.view' },
   ],
   institution: [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/institution' },
@@ -45,6 +69,12 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       icon: 'mdi-account-group',
       to: '/institution/users',
       permission: 'user.view',
+    },
+    {
+      title: 'Branding',
+      icon: 'mdi-palette',
+      to: '/institution/branding',
+      permission: 'branding.view',
     },
   ],
   employee: [{ title: 'Home', icon: 'mdi-account', to: '/employee' }],
@@ -73,6 +103,7 @@ export const WORKSPACES: Array<MenuItem & { layout: LayoutKey }> = [
 export function visibleMenu<T extends MenuItem>(
   items: T[],
   can: (permission?: string) => boolean,
+  hasFeature: (feature?: FeatureKey) => boolean = () => true,
 ): T[] {
-  return items.filter((item) => can(item.permission));
+  return items.filter((item) => can(item.permission) && hasFeature(item.feature));
 }

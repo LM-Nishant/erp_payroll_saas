@@ -13,6 +13,9 @@ export const PERMISSIONS = {
   'platform.organization.manage': 'Create / suspend organizations',
   'platform.tenant.access': 'Open an audited support session inside a tenant',
   'platform.audit.view': 'View platform-wide audit logs',
+  'platform.plan.manage': 'Create and edit subscription plans',
+  'platform.subscription.manage': 'Manage organization subscriptions and invoices',
+  'platform.secret.rotate_keys': 'Re-wrap tenant secrets to the active master key',
 
   // Organization & hierarchy
   'organization.view': 'View the organization profile',
@@ -52,6 +55,16 @@ export const PERMISSIONS = {
   'role.view': 'View roles and permissions',
   'role.manage': 'Create and edit custom roles',
   'audit.view': 'View audit logs',
+
+  // Subscription, module licensing, branding, secrets
+  'subscription.view': 'View the subscription plan, limits and usage',
+  'billing.view': 'View subscription invoices and payment status',
+  'feature.view': 'View enabled modules / features',
+  'feature.manage': 'Enable or disable licensed modules per group / institution',
+  'branding.view': 'View branding settings',
+  'branding.manage': 'Edit branding settings',
+  'secret.view': 'View configured secrets (masked)',
+  'secret.manage': 'Create, rotate and delete secrets',
 
   // Domain permissions used by later layers (spec §3)
   'student.view': 'View students',

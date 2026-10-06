@@ -59,21 +59,27 @@ model Organization {
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
 
-  groups          Group[]
-  institutions    Institution[]
-  campuses        Campus[]
-  departments     Department[]
-  programs        Program[]
-  classSections   ClassSection[]
-  memberships     OrganizationMembership[]
-  roles           Role[]
-  rolePermissions RolePermission[]
-  userRoles       UserRole[]
-  userScopes      UserScope[]
-  authSessions    AuthSession[]
-  loginEvents     LoginEvent[]
-  userTokens      UserToken[]
-  auditLogs       AuditLog[]
+  groups           Group[]
+  institutions     Institution[]
+  campuses         Campus[]
+  departments      Department[]
+  programs         Program[]
+  classSections    ClassSection[]
+  memberships      OrganizationMembership[]
+  roles            Role[]
+  rolePermissions  RolePermission[]
+  userRoles        UserRole[]
+  userScopes       UserScope[]
+  authSessions     AuthSession[]
+  loginEvents      LoginEvent[]
+  userTokens       UserToken[]
+  auditLogs        AuditLog[]
+  subscription     OrganizationSubscription?
+  invoices         Invoice[]
+  featureOverrides FeatureOverride[]
+  usageCounters    UsageCounter[]
+  brandingProfiles BrandingProfile[]
+  secrets          TenantSecret[]
 
   @@map("organizations")
 }
@@ -90,9 +96,12 @@ model Group {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  institutions Institution[]
-  userScopes   UserScope[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institutions     Institution[]
+  userScopes       UserScope[]
+  featureOverrides FeatureOverride[]
+  brandingProfiles BrandingProfile[]
+  secrets          TenantSecret[]
 
   @@unique([organizationId, code])
   @@index([organizationId, deletedAt])
@@ -115,13 +124,16 @@ model Institution {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?       @map("deleted_at") @db.DateTime(3)
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  group         Group?         @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  campuses      Campus[]
-  departments   Department[]
-  programs      Program[]
-  classSections ClassSection[]
-  userScopes    UserScope[]
+  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group            Group?            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  campuses         Campus[]
+  departments      Department[]
+  programs         Program[]
+  classSections    ClassSection[]
+  userScopes       UserScope[]
+  featureOverrides FeatureOverride[]
+  brandingProfiles BrandingProfile[]
+  secrets          TenantSecret[]
 
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
@@ -580,4 +592,235 @@ model AuditLog {
   @@index([organizationId, actorUserId, createdAt])
   @@index([organizationId, action])
   @@map("audit_logs")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Subscription / module licensing (spec §63, §64), branding (§65.5), secrets (§44, §62)
+// ---------------------------------------------------------------------------------------------
+
+/// Hierarchy level a setting (feature override, branding, secret) is attached to.
+enum SettingScopeType {
+  ORGANIZATION
+  GROUP
+  INSTITUTION
+}
+
+enum PlanStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum BillingInterval {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIAL
+  ACTIVE
+  PAST_DUE
+  CANCELLED
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  OVERDUE
+  VOID
+}
+
+/// Platform-managed plan catalog (GLOBAL — not tenant data).
+model SubscriptionPlan {
+  id              String          @id @default(uuid()) @db.Char(36)
+  key             String          @unique @db.VarChar(64)
+  name            String          @db.VarChar(200)
+  description     String?         @db.VarChar(1000)
+  status          PlanStatus      @default(ACTIVE)
+  priceCents      Int             @default(0) @map("price_cents")
+  currency        String          @default("INR") @db.Char(3)
+  billingInterval BillingInterval @default(MONTHLY) @map("billing_interval")
+  trialDays       Int             @default(14) @map("trial_days")
+  /// FeatureKey[]
+  features        Json
+  /// PlanLimits — `null` value = unlimited, missing key = 0.
+  limits          Json
+  createdAt       DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+
+  subscriptions OrganizationSubscription[]
+
+  @@map("subscription_plans")
+}
+
+/// One subscription per organization.
+model OrganizationSubscription {
+  id                 String             @id @default(uuid()) @db.Char(36)
+  organizationId     String             @unique @map("organization_id") @db.Char(36)
+  planId             String             @map("plan_id") @db.Char(36)
+  status             SubscriptionStatus @default(TRIAL)
+  trialEndsAt        DateTime?          @map("trial_ends_at") @db.DateTime(3)
+  currentPeriodStart DateTime           @default(now()) @map("current_period_start") @db.DateTime(3)
+  currentPeriodEnd   DateTime?          @map("current_period_end") @db.DateTime(3)
+  cancelledAt        DateTime?          @map("cancelled_at") @db.DateTime(3)
+  /// FeatureKey[] licensed on top of the plan.
+  addOnFeatures      Json               @map("add_on_features")
+  /// PlanLimits merged over the plan limits.
+  limitOverrides     Json               @map("limit_overrides")
+  createdAt          DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  plan         SubscriptionPlan @relation(fields: [planId], references: [id], onDelete: Restrict)
+  invoices     Invoice[]
+
+  @@index([planId])
+  @@map("organization_subscriptions")
+}
+
+/// Subscription invoice. No payment gateway yet — `status` doubles as the payment status.
+model Invoice {
+  id               String        @id @default(uuid()) @db.Char(36)
+  organizationId   String        @map("organization_id") @db.Char(36)
+  subscriptionId   String        @map("subscription_id") @db.Char(36)
+  number           String        @unique @db.VarChar(40)
+  periodStart      DateTime      @map("period_start") @db.DateTime(3)
+  periodEnd        DateTime      @map("period_end") @db.DateTime(3)
+  amountCents      Int           @map("amount_cents")
+  currency         String        @db.Char(3)
+  status           InvoiceStatus @default(OPEN)
+  issuedAt         DateTime?     @map("issued_at") @db.DateTime(3)
+  dueAt            DateTime      @map("due_at") @db.DateTime(3)
+  paidAt           DateTime?     @map("paid_at") @db.DateTime(3)
+  paymentMethod    String?       @map("payment_method") @db.VarChar(64)
+  paymentReference String?       @map("payment_reference") @db.VarChar(128)
+  notes            String?       @db.VarChar(1000)
+  createdAt        DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  subscription OrganizationSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@index([subscriptionId])
+  @@map("invoices")
+}
+
+/// Enable/disable a licensed module at org / group / institution level. Can never exceed the
+/// license (enforced in core/features).
+model FeatureOverride {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String           @map("organization_id") @db.Char(36)
+  scopeType      SettingScopeType @map("scope_type")
+  /// organizationId / groupId / institutionId according to scopeType.
+  targetId       String           @map("target_id") @db.Char(36)
+  groupId        String?          @map("group_id") @db.Char(36)
+  institutionId  String?          @map("institution_id") @db.Char(36)
+  featureKey     String           @map("feature_key") @db.VarChar(64)
+  enabled        Boolean
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  institution  Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, scopeType, targetId, featureKey])
+  @@index([groupId])
+  @@index([institutionId])
+  @@map("feature_overrides")
+}
+
+/// Usage counter for plan limits. periodKey = 'total' (gauges) or 'YYYY-MM' UTC (monthly).
+model UsageCounter {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  limitKey       String   @map("limit_key") @db.VarChar(64)
+  periodKey      String   @map("period_key") @db.VarChar(16)
+  used           BigInt   @default(0)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, limitKey, periodKey])
+  @@map("usage_counters")
+}
+
+/// Branding per org / group / institution; null fields inherit from the parent level.
+model BrandingProfile {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String           @map("organization_id") @db.Char(36)
+  scopeType      SettingScopeType @map("scope_type")
+  targetId       String           @map("target_id") @db.Char(36)
+  groupId        String?          @map("group_id") @db.Char(36)
+  institutionId  String?          @map("institution_id") @db.Char(36)
+  displayName    String?          @map("display_name") @db.VarChar(200)
+  shortName      String?          @map("short_name") @db.VarChar(50)
+  /// Placeholder until the storage engine (Layer 4); see logoFileId.
+  logoStorageKey String?          @map("logo_storage_key") @db.VarChar(512)
+  /// Future FK to the file/document table (Layer 4).
+  logoFileId     String?          @map("logo_file_id") @db.Char(36)
+  primaryColor   String?          @map("primary_color") @db.Char(7)
+  secondaryColor String?          @map("secondary_color") @db.Char(7)
+  accentColor    String?          @map("accent_color") @db.Char(7)
+  letterheadText String?          @map("letterhead_text") @db.Text
+  footerText     String?          @map("footer_text") @db.VarChar(1000)
+  address        String?          @db.VarChar(500)
+  contactEmail   String?          @map("contact_email") @db.VarChar(200)
+  contactPhone   String?          @map("contact_phone") @db.VarChar(32)
+  website        String?          @db.VarChar(300)
+  customDomain   String?          @unique @map("custom_domain") @db.VarChar(253)
+  subdomain      String?          @unique @db.VarChar(63)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  institution  Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, scopeType, targetId])
+  @@index([groupId])
+  @@index([institutionId])
+  @@map("branding_profiles")
+}
+
+/// Envelope-encrypted tenant secret. Hard-deleted (crypto-shredded) — never soft-deleted.
+model TenantSecret {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String           @map("organization_id") @db.Char(36)
+  scopeType      SettingScopeType @map("scope_type")
+  targetId       String           @map("target_id") @db.Char(36)
+  groupId        String?          @map("group_id") @db.Char(36)
+  institutionId  String?          @map("institution_id") @db.Char(36)
+  kind           String           @db.VarChar(64)
+  name           String           @db.VarChar(100)
+  description    String?          @db.VarChar(500)
+  /// Non-secret configuration (host, sender id, model…).
+  metadata       Json?
+  /// AES-256-GCM ciphertext of the value under a per-secret data key.
+  ciphertext     String           @db.Text
+  /// Data key wrapped by the master key (KeyProvider).
+  wrappedKey     String           @map("wrapped_key") @db.VarChar(512)
+  keyProvider    String           @map("key_provider") @db.VarChar(32)
+  keyVersion     Int              @map("key_version")
+  last4          String?          @db.VarChar(4)
+  fingerprint    String           @db.VarChar(64)
+  version        Int              @default(1)
+  createdById    String?          @map("created_by_id") @db.Char(36)
+  updatedById    String?          @map("updated_by_id") @db.Char(36)
+  rotatedAt      DateTime?        @map("rotated_at") @db.DateTime(3)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  institution  Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+
+  @@unique([organizationId, scopeType, targetId, kind, name])
+  @@index([organizationId, kind])
+  @@index([groupId])
+  @@index([institutionId])
+  @@index([keyVersion])
+  @@map("tenant_secrets")
 }
