@@ -131,6 +131,40 @@ export const envSchema = z
     STORAGE_MAX_UPLOAD_BYTES: intFrom(1024, 25 * 1024 * 1024),
     /** Days a soft-deleted document's objects are kept before `purgeExpiredDocuments`. */
     DOCUMENT_RETENTION_DAYS: intFrom(0, 30),
+
+    // --- Queue, communication & integrations (Layer 5) ----------------------------------
+    /** `bullmq` (Redis; run `pnpm worker`) or `inline` (in-process; tests / Redis-less dev). */
+    QUEUE_DRIVER: z.enum(['bullmq', 'inline']).optional(),
+    QUEUE_CONCURRENCY: intFrom(1, 5),
+    /** Store for auth/API rate-limit counters (`redis` shares limits across API instances). */
+    RATE_LIMIT_STORE: z.enum(['memory', 'redis']).default('memory'),
+    /** Public origin of the web app (links in emails: invite / reset / notifications). */
+    APP_PUBLIC_URL: z
+      .string()
+      .url()
+      .default('http://localhost:5173')
+      .transform((v) => v.replace(/\/+$/, '')),
+    /** Public origin of this API (delivery-callback URLs shown to admins). */
+    API_PUBLIC_URL: z
+      .string()
+      .url()
+      .default('http://localhost:3000')
+      .transform((v) => v.replace(/\/+$/, '')),
+    /**
+     * Platform fallback mailer for system emails (invites, password resets) when a tenant has
+     * no email provider configured: `log` (outbox only, dev/test) or `smtp` (SMTP_URL).
+     */
+    MAIL_DRIVER: z.enum(['log', 'smtp']).default('log'),
+    SMTP_URL: z.string().url().optional(),
+    MAIL_FROM: z.string().min(3).default('Education ERP <no-reply@erp.local>'),
+    /** Outbound HTTP timeout for webhooks / SMS / WhatsApp provider calls. */
+    OUTBOUND_HTTP_TIMEOUT_MS: intFrom(500, 10_000),
+    /** Allow plain-http / private-network webhook targets (never in production). */
+    WEBHOOK_ALLOW_INSECURE: z
+      .enum(['true', 'false'])
+      .optional()
+      .transform((v) => (v === undefined ? undefined : v === 'true')),
+    API_CLIENT_TOKEN_TTL_SECONDS: intFrom(60, 3600),
   })
   .superRefine((value, ctx) => {
     const masterKeys = value.SECRETS_MASTER_KEYS ?? DEV_SECRETS_MASTER_KEYS;
@@ -182,6 +216,20 @@ export const envSchema = z
         });
       }
     }
+    if (value.MAIL_DRIVER === 'smtp' && !value.SMTP_URL) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SMTP_URL'],
+        message: 'SMTP_URL is required for the smtp mail driver',
+      });
+    }
+    if (value.NODE_ENV === 'production' && value.WEBHOOK_ALLOW_INSECURE) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['WEBHOOK_ALLOW_INSECURE'],
+        message: 'Insecure webhook targets are not allowed in production',
+      });
+    }
     if (value.NODE_ENV === 'production' && value.TENANT_RESOLVER === 'dev-header') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -206,6 +254,8 @@ export type Env = ParsedEnv & {
   SECRETS_MASTER_KEYS: string;
   SECRETS_ACTIVE_KEY_VERSION: number;
   STORAGE_LOCAL_SIGNING_SECRET: string;
+  QUEUE_DRIVER: 'bullmq' | 'inline';
+  WEBHOOK_ALLOW_INSECURE: boolean;
 };
 
 export function parseEnv(source: Record<string, string | undefined>): Env {
@@ -226,6 +276,10 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
       result.data.SECRETS_ACTIVE_KEY_VERSION ?? Math.max(...parseMasterKeys(masterKeys).keys()),
     STORAGE_LOCAL_SIGNING_SECRET:
       result.data.STORAGE_LOCAL_SIGNING_SECRET ?? DEV_STORAGE_SIGNING_SECRET,
+    QUEUE_DRIVER:
+      result.data.QUEUE_DRIVER ?? (result.data.NODE_ENV === 'test' ? 'inline' : 'bullmq'),
+    WEBHOOK_ALLOW_INSECURE:
+      result.data.WEBHOOK_ALLOW_INSECURE ?? result.data.NODE_ENV !== 'production',
   };
 }
 

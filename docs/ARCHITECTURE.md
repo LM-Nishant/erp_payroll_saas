@@ -498,10 +498,175 @@ confidentiality? })` checks `pdf.generate` + `document.upload` in the owner's sc
 4. Generated documents (letters, payslips) are PDF templates registered in the module and
    stored through `generatePdf`; bump `version` instead of changing a template's output.
 
-## 8. Queues & cache
+## 8. Queues, workflow, notifications, communication & integrations (Layer 5)
 
-Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires configuration
-(`REDIS_URL`, `QUEUE_PREFIX`, `createQueue()`); connections are lazy.
+All Layer 5 engines live in `src/core/*` and register themselves via side-effect imports in
+`src/engines.ts`, which is imported by **both** the API (`app.ts`) and the worker
+(`worker.ts`). Later layers add their own registration modules (e.g.
+`modules/leave/leave.workflow.ts`) to `engines.ts`.
+
+### 8.1 Queue (`src/core/queue`)
+
+- Drivers: `bullmq` (Redis via ioredis; default outside tests) and `inline` (in-process,
+  default when `NODE_ENV=test`). Select with `QUEUE_DRIVER`; `QUEUE_CONCURRENCY`, `QUEUE_PREFIX`,
+  `REDIS_URL` configure BullMQ.
+- `defineJob({ name, handler, attempts?, backoffMs? })` registers a handler (exponential
+  backoff, default 5 attempts / 2 s). `enqueue(name, data, { delayMs?, jobId? })` — **`data`
+  must include `organizationId`**; the processor runs inside `runWithTenant` with a system
+  principal (`runAsSystem(orgId, fn)`), so `tenantDb()`/`audit.record` work unchanged.
+- `defineRecurringJob({ name, everyMs | pattern, handler })` runs platform-level and fans out
+  per tenant with `forEachActiveOrganization` + `enqueue`. BullMQ job schedulers are
+  registered by the worker; the inline driver has `startInlineScheduler` (dev) and tests call
+  `runRecurringJobNow(name)` + `drainJobs({ includeDelayed })`.
+- Worker: `apps/api/src/worker.ts` (`pnpm --filter @erp/api worker` in dev,
+  `start:worker` for the built bundle). Built-in recurring jobs: document expiry reminders
+  (`dueExpiryReminders` → `document.expiring` notification → `markReminderSent`),
+  `purgeExpiredDocuments`, `expireStaleUploads`, workflow SLA escalation. Retries (messages,
+  webhooks) are delayed jobs.
+- Auth rate limiting uses a pluggable store: `RATE_LIMIT_STORE=memory|redis` (memory in tests).
+
+### 8.2 Domain event bus (`src/core/events`)
+
+```ts
+registerEventType({ key: 'employee.created', label: 'Employee created', webhook: true });
+await emit('employee.created', { employeeId }, { institutionId });
+onEvent('employee.*', 'payroll.employee-sync', async (event) => {
+  /* subscriber */
+});
+```
+
+`emit` persists a `domain_events` row in the current tenant and enqueues `events.dispatch`;
+subscribers run in the job (each failing subscriber is retried on its own, never breaking the
+emitting request). Events with `webhook !== false` fan out to matching outbound
+webhook subscriptions. **Never put secrets/PII beyond what a subscriber needs in payloads.**
+
+### 8.3 Workflow engine (`src/core/workflow`, `/api/v1/workflows`)
+
+- Tenant-scoped, **versioned** `workflow_definitions` (editing an ACTIVE definition publishes
+  a new version; running instances keep theirs) scoped ORGANIZATION / GROUP / INSTITUTION —
+  the most specific active definition wins. Steps: approvers by `role` key or `permission` (holders
+  whose scope covers the request), `user`, `reporting_manager` (levels); `mode: any|all`; optional
+  `conditions` (`{ field, op, value }` on `context`, e.g. amount > 50000) — unmatched steps are
+  skipped; `slaHours` + `escalateTo` approvers for SLA escalation (`workflow.sla_escalation` job); `allowSelfApproval` (default false).
+- Modules register an entity type and submit:
+
+```ts
+registerWorkflowEntity({
+  entityType: 'leave_request',
+  label: 'Leave request',
+  linkFor: (i) => `/employee/leave/${i.entityId}`,
+  onApproved: async (i) => leaveService.markApproved(i.entityId),
+  onRejected: async (i) => leaveService.markRejected(i.entityId, i.comment),
+});
+const instance = await submitWorkflow({
+  entityType: 'leave_request',
+  entityId: leave.id,
+  title: 'Leave: 3 days',
+  institutionId,
+  departmentId,
+  context: { days: 3 },
+});
+if (!instance) {
+  /* no active definition → auto-approve per module policy */
+}
+```
+
+- Layer 6 (HR) registers `registerReportingManagerResolver(async (userId, levels) => [...])`.
+- Actions: `approve | reject | send_back | delegate | comment` (+ requester `cancel`,
+  `resubmit`). Approver authorization is enforced server-side (must be a PENDING assignee;
+  the requester can never approve unless `allowSelfApproval`). Every action is stored in
+  `workflow_actions`, audited, emitted as `workflow.*` events and notified.
+- APIs: `GET /workflows/inbox` (my pending approvals), `GET /workflows/instances?view=mine|all`,
+  `GET /workflows/instances/:id` (steps, history, `allowedActions`),
+  `POST /workflows/instances/:id/actions`, definitions CRUD (`workflow.view|manage`).
+
+### 8.4 Notification engine (`src/core/notifications`, `/api/v1/notifications`)
+
+```ts
+registerNotificationEvent({
+  key: 'leave.approved',
+  label: 'Leave approved',
+  defaultChannels: ['in_app', 'email'],
+  mandatory: false,
+});
+await publish('leave.approved', { recipients: [userId], title, body, link, data, institutionId });
+```
+
+`publish` creates a `notification_jobs` row and enqueues delivery: organization
+`notification_rules` (event → channels / extra recipients by role / template) override
+defaults, user `notification_preferences` filter non-mandatory channels, then in-app rows,
+email/SMS/WhatsApp (via the communication engine, template key = event key when present) and
+push (`registerPushProvider`; FCM/APNs stubs record to `pushOutbox`) are produced. Users manage
+their own notifications/preferences/devices (always self-scoped, no permission needed).
+
+### 8.5 Communication engine (`src/core/communication`, `/api/v1/communication`)
+
+- Providers (`communication_providers`, ORGANIZATION/GROUP/INSTITUTION scoped, `priority`
+  order = fallback chain): email `smtp` (nodemailer) / `ses` / `sendgrid`, SMS `http` /
+  `twilio` / `msg91`, WhatsApp `whatsapp_cloud`, and `log` for every channel (dev/tests; writes
+  to `messageOutbox`). Credentials are write-only and stored via the secrets engine
+  (`getSecret({ kind, purpose }).reveal()` at send time). With no provider configured, email
+  uses the platform SMTP (`MAIL_DRIVER=smtp`) or `log`; other channels use `log` outside
+  production.
+- Templates (`message_templates` + immutable `message_template_versions`): `{{var}}`
+  (HTML-escaped), `{{{raw}}}`, dotted paths; email wraps in the branded layout
+  (`resolveBranding` + `brandingLogoUrl`). Modules ship defaults with
+  `registerDefaultTemplate({ key, channel, subject, body, htmlBody })`; tenants override by key.
+- Sending: `sendMessages({ channel, recipients, templateKey | body, variables, institutionId,
+eventKey })` → `message_logs` (QUEUED) → queued delivery with per-provider rate limiting,
+  retries/backoff and fallback. `sendSystemEmail({ to, templateKey, variables })` for
+  security mail (invites, password reset) — it bypasses feature flags/limits and never stores
+  the body (`sensitive`). `sendMessages` asserts the `communication` **and** channel features
+  and calls `consumeLimit('communication_messages', n)`. The send API requires
+  `message.send` in the target scope.
+- Delivery callbacks: public `POST /api/v1/communication/webhooks/:providerId`, header
+  `X-Erp-Signature: sha256=<hex HMAC-SHA256(raw body, provider webhook secret)>`; body
+  `{ providerMessageId, status, cost?, error? }` or `{ events: [...] }` → `delivery_events` and
+  the log status (QUEUED → SENT → DELIVERED | FAILED | BOUNCED).
+- Campaigns: `POST /communication/campaigns` (≤ 5000 recipients) are queued in batches.
+- **Invite / password-reset tokens are never returned by the API**; they are emailed. Tests
+  read them from `messageOutbox` (`clearOutbox()` between tests).
+
+### 8.6 Integration framework (`src/core/integrations`, `/api/v1/integrations`)
+
+- **API clients**: org-scoped machine clients (optionally restricted to a group/institution)
+  with hashed secrets (`clientSecret` shown once), `scopes` = permission codes allowed by
+  `isApiClientScopeAllowed` (no `platform.*`, `secret.*`, `integration.*`, …), per-client rate
+  limit, expiry, revoke, `api_usage` log. Token: `POST /api/v1/oauth/token`
+  (`grant_type=client_credentials`, JSON/form or HTTP Basic, optional narrower `scope`) →
+  short-lived bearer whose principal has **only** the granted scopes within the client's
+  hierarchy scope; all existing `requirePermission`/`scopeWhere` checks apply unchanged.
+- **Outbound webhooks**: subscriptions (`events` patterns like `employee.*`, HTTPS URL, signing
+  secret stored via secrets) receive matching domain events. Delivery headers:
+  `x-erp-event`, `x-erp-delivery`, `x-erp-timestamp`,
+  `x-erp-signature: t=<ts>,v1=<hex HMAC-SHA256(secret, "<ts>.<body>")>`. Failures retry with
+  backoff (6 attempts) and every attempt is recorded in `webhook_events`; deliveries can be
+  replayed. Private/loopback URLs are rejected unless `WEBHOOK_ALLOW_INSECURE` (non-prod).
+- **Integration credentials** (`integration_credentials`): third-party config + secret;
+  modules call `getIntegrationCredential({ provider, name?, institutionId?, purpose })` →
+  `{ config, secret }` and `secret.reveal()` only at use.
+
+### 8.7 Permissions, features, env
+
+New permissions: `workflow.view|manage`, `notification.manage`,
+`communication.view|manage`, `integration.view|manage` (sending uses the existing
+`message.send`) (granted to org/group/institution
+admins per their scope). Feature keys: `communication`, `email`, `sms`, `whatsapp`; limit key
+`communication_messages`. Env: `QUEUE_DRIVER`, `QUEUE_CONCURRENCY`, `RATE_LIMIT_STORE`,
+`APP_PUBLIC_URL`, `API_PUBLIC_URL`, `WEBHOOK_ALLOW_INSECURE` (see `.env.example`).
+
+### 8.8 Rules for later layers
+
+1. Approvals go through `registerWorkflowEntity` + `submitWorkflow`; never build ad-hoc
+   approval tables. Side effects belong in `onApproved/onRejected`.
+2. User-facing alerts use `publish(eventKey, …)` with a registered notification event —
+   never send email/SMS directly from a module for notifications.
+3. Outbound messages use `sendMessages`/templates; never instantiate transports or read
+   provider credentials yourself.
+4. Emit a domain event (`registerEventType` + `emit`) for every significant state change;
+   webhooks, notifications and workflows subscribe to it.
+5. Background work uses `defineJob`/`enqueue` with `organizationId` in the payload; register
+   jobs from a module imported by `engines.ts`.
 
 ## 9. Frontend (apps/web)
 
@@ -516,6 +681,10 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
 - API calls go through `src/api/client.ts` (`apiFetch`). The client never sends tenant ids;
   the server is always the authority on tenant, permissions and scopes.
 - Shared DTO types/schemas come from `@erp/shared`.
+- Layer 5 UI: `NotificationBell` in the app bar (unread count polled every 60 s),
+  `/<layout>/notifications` (list + channel preferences), `/<layout>/approvals` (inbox, my
+  requests, instance history + actions), `/group|institution/communication` (providers,
+  templates, message log) and `/group/integrations` (API clients, webhooks, deliveries/replay).
 
 ## 10. Testing & quality
 
@@ -534,7 +703,7 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit
 3. Module licensing / subscriptions + branding + secret management
 4. Cloud file storage + document management
-5. Workflow + notification engines + integration framework
+5. Queue + workflow + notification + communication engines + integration framework
 6. HR employee master
 7. Attendance / leave / holiday / shift
 8. Payroll rule engine

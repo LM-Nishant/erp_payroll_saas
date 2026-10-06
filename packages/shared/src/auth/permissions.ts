@@ -66,6 +66,15 @@ export const PERMISSIONS = {
   'secret.view': 'View configured secrets (masked)',
   'secret.manage': 'Create, rotate and delete secrets',
 
+  // Workflow, notification, communication & integration engines (Layer 5)
+  'workflow.view': 'View approval workflow definitions and all approval requests in scope',
+  'workflow.manage': 'Create, version and activate approval workflow definitions',
+  'notification.manage': 'Configure notification rules (event → channels / recipients)',
+  'communication.view': 'View communication providers, templates, campaigns and message logs',
+  'communication.manage': 'Configure communication providers and message templates',
+  'integration.view': 'View API clients, webhooks and integration credentials',
+  'integration.manage': 'Manage API clients, webhooks and integration credentials',
+
   // Domain permissions used by later layers (spec §3)
   'student.view': 'View students',
   'student.create': 'Create students',
@@ -106,6 +115,29 @@ export const PERMISSION_CODE_PATTERN = /^[a-z][a-z0-9_]*(\.[a-z][a-z0-9_]*)+$/;
 
 export function isPlatformPermission(code: string): boolean {
   return code.startsWith('platform.');
+}
+
+/**
+ * Permissions an API client (machine integration) may NEVER hold: platform, secret,
+ * integration and access-control administration.
+ */
+const API_CLIENT_FORBIDDEN_PREFIXES = ['platform.', 'secret.', 'integration.', 'ai.'];
+const API_CLIENT_FORBIDDEN_CODES = new Set([
+  'user.create',
+  'user.deactivate',
+  'user.reset_password',
+  'role.manage',
+  'user.role.assign',
+  'feature.manage',
+  'subscription.manage',
+]);
+
+export function isApiClientScopeAllowed(code: string): boolean {
+  return (
+    code in PERMISSIONS &&
+    !API_CLIENT_FORBIDDEN_PREFIXES.some((p) => code.startsWith(p)) &&
+    !API_CLIENT_FORBIDDEN_CODES.has(code)
+  );
 }
 
 /** The `<resource>` part of a code, used as the module column of the catalog. */

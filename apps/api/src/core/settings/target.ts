@@ -60,3 +60,34 @@ export function targetResource(target: SettingTarget): ResourceScope {
   if (target.scopeType === 'ORGANIZATION') return {};
   return { groupId: target.groupId, institutionId: target.institutionId };
 }
+
+/**
+ * Prisma `where` fragment for rows carrying settings-target columns (`groupId`,
+ * `institutionId`): organization-level rows need organization-wide access.
+ */
+export function whereForTargetAccess(access: {
+  all: boolean;
+  groupIds: ReadonlySet<string>;
+  institutionIds: ReadonlySet<string>;
+}): { OR: Array<Record<string, unknown>> } | { id: { in: string[] } } | undefined {
+  if (access.all) return undefined;
+  const or: Array<Record<string, unknown>> = [];
+  if (access.groupIds.size > 0) or.push({ groupId: { in: [...access.groupIds] } });
+  if (access.institutionIds.size > 0)
+    or.push({ institutionId: { in: [...access.institutionIds] } });
+  return or.length > 0 ? { OR: or } : { id: { in: [] } };
+}
+
+/** Same for rows that only carry an optional `institutionId` (null = organization level). */
+export function whereForInstitutionAccess(access: {
+  all: boolean;
+  institutionIds: ReadonlySet<string>;
+}): { institutionId: { in: string[] } } | undefined {
+  if (access.all) return undefined;
+  return { institutionId: { in: [...access.institutionIds] } };
+}
+
+/** Resource scope of a row with an optional institution (+ its group). */
+export function rowResource(row: { groupId?: string | null; institutionId?: string | null }) {
+  return { groupId: row.groupId ?? null, institutionId: row.institutionId ?? null };
+}

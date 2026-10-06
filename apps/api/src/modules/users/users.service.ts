@@ -27,6 +27,8 @@ import {
   type Principal,
   type ResolvedScope,
 } from '../../core/authz';
+import { sendSystemEmail } from '../../core/communication';
+import { env } from '../../core/config/env';
 import { AppError, ConflictError, ForbiddenError, NotFoundError } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
 import { userRepository } from './users.repository';
@@ -242,11 +244,25 @@ export const userService = {
         after: { roles: describeAssignments(assignments) },
       });
     }
+    // The one-time token is delivered ONLY by e-mail; it never appears in API responses.
+    const inviteDelivery = invite
+      ? await sendSystemEmail({
+          to: user.email,
+          toName: user.name,
+          userId: user.id,
+          templateKey: 'auth.invite',
+          variables: {
+            link: `${env.APP_PUBLIC_URL}/accept-invite?token=${encodeURIComponent(invite.token)}`,
+            expiresAt: invite.expiresAt,
+          },
+        })
+      : null;
     const [view] = await withAssignments([await loadMembership(user.id)]);
-    // Until the notification engine (Layer 5) delivers invites, the token is returned once here.
     return {
       ...view!,
-      ...(invite ? { inviteToken: invite.token, inviteExpiresAt: invite.expiresAt } : {}),
+      ...(invite && inviteDelivery
+        ? { inviteExpiresAt: invite.expiresAt, inviteDeliveryStatus: inviteDelivery.status }
+        : {}),
     };
   },
 
@@ -302,7 +318,7 @@ export const userService = {
     return userService.get(userId);
   },
 
-  /** Issue a one-time password reset token (returned until notifications exist in Layer 5). */
+  /** Issue a one-time password reset token and e-mail it to the user (never returned). */
   async issuePasswordReset(userId: string) {
     const { membership } = await loadManageable(userId, 'user.reset_password');
     const reset = await issueUserToken({
@@ -310,11 +326,22 @@ export const userService = {
       organizationId: membership.organizationId,
       type: 'PASSWORD_RESET',
     });
+    const delivery = await sendSystemEmail({
+      to: membership.user.email,
+      toName: membership.user.name,
+      userId,
+      templateKey: 'auth.password_reset',
+      variables: {
+        link: `${env.APP_PUBLIC_URL}/reset-password?token=${encodeURIComponent(reset.token)}`,
+        expiresAt: reset.expiresAt,
+      },
+    });
     await audit.record({
       action: 'user.password_reset_issued',
       entityType: 'user',
       entityId: userId,
+      metadata: { messageLogId: delivery.id, deliveryStatus: delivery.status },
     });
-    return { resetToken: reset.token, expiresAt: reset.expiresAt };
+    return { expiresAt: reset.expiresAt, deliveryStatus: delivery.status };
   },
 };

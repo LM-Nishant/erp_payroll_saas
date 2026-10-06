@@ -29,7 +29,14 @@ export const routes: RouteRecordRaw[] = [
     path: '/platform',
     component: () => import('@/layouts/PlatformLayout.vue'),
     meta: { permission: 'platform.organization.view' },
-    children: [{ path: '', name: 'platform-dashboard', ...placeholder('Platform dashboard') }],
+    children: [
+      { path: '', name: 'platform-dashboard', ...placeholder('Platform dashboard') },
+      {
+        path: 'notifications',
+        name: 'platform-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+    ],
   },
   {
     path: '/group',
@@ -74,6 +81,28 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/settings/BrandingPage.vue'),
       },
       {
+        path: 'notifications',
+        name: 'group-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+      {
+        path: 'approvals',
+        name: 'group-approvals',
+        component: () => import('@/pages/ApprovalsPage.vue'),
+      },
+      {
+        path: 'communication',
+        name: 'group-communication',
+        meta: { permission: 'communication.view', feature: 'communication' },
+        component: () => import('@/pages/settings/CommunicationPage.vue'),
+      },
+      {
+        path: 'integrations',
+        name: 'group-integrations',
+        meta: { permission: 'integration.view' },
+        component: () => import('@/pages/settings/IntegrationsPage.vue'),
+      },
+      {
         path: 'secrets',
         name: 'group-secrets',
         meta: { permission: 'secret.view' },
@@ -106,6 +135,22 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/DocumentsPage.vue'),
       },
       {
+        path: 'notifications',
+        name: 'institution-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+      {
+        path: 'approvals',
+        name: 'institution-approvals',
+        component: () => import('@/pages/ApprovalsPage.vue'),
+      },
+      {
+        path: 'communication',
+        name: 'institution-communication',
+        meta: { permission: 'communication.view', feature: 'communication' },
+        component: () => import('@/pages/settings/CommunicationPage.vue'),
+      },
+      {
         path: 'branding',
         name: 'institution-branding',
         meta: { permission: 'branding.view' },
@@ -118,6 +163,16 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/EmployeeLayout.vue'),
     children: [
       { path: '', name: 'employee-home', ...placeholder('Employee home') },
+      {
+        path: 'notifications',
+        name: 'employee-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+      {
+        path: 'approvals',
+        name: 'employee-approvals',
+        component: () => import('@/pages/ApprovalsPage.vue'),
+      },
       {
         path: 'documents',
         name: 'employee-documents',

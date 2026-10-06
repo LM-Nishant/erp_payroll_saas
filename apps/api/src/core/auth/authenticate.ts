@@ -2,7 +2,8 @@ import type { RequestHandler } from 'express';
 import { prisma } from '../db/prisma';
 import { UnauthenticatedError } from '../http/errors';
 import type { AuthContext } from '../authz/loader';
-import { verifyAccessToken } from './tokens';
+import { authenticateApiClientToken, type ApiClientAuth } from './api-client-auth';
+import { peekTokenType, verifyAccessToken } from './tokens';
 
 declare global {
   // eslint-disable-next-line @typescript-eslint/no-namespace
@@ -10,6 +11,8 @@ declare global {
     interface Request {
       /** Set by `authenticate` from a verified access token + live session. */
       auth?: AuthContext;
+      /** Set by `authenticate({ allowApiClient })` for machine clients (core/integrations). */
+      apiClient?: ApiClientAuth;
     }
   }
 }
@@ -67,14 +70,24 @@ export async function authenticateToken(token: string): Promise<AuthContext> {
   };
 }
 
-/** Express middleware: requires (or, with `optional`, accepts) a Bearer access token. */
-export function authenticate(options: { optional?: boolean } = {}): RequestHandler {
+/**
+ * Express middleware: requires (or, with `optional`, accepts) a ****** token. With
+ * `allowApiClient`, a client-credentials access token (core/integrations) is also accepted and
+ * sets `req.apiClient` instead of `req.auth`.
+ */
+export function authenticate(
+  options: { optional?: boolean; allowApiClient?: boolean } = {},
+): RequestHandler {
   return async (req, _res, next) => {
-    if (req.auth) return next();
+    if (req.auth || req.apiClient) return next();
     const token = bearerToken(req.get('authorization'));
     if (!token) {
       if (options.optional) return next();
       throw new UnauthenticatedError();
+    }
+    if (options.allowApiClient && peekTokenType(token) === 'client') {
+      req.apiClient = await authenticateApiClientToken(token);
+      return next();
     }
     req.auth = await authenticateToken(token);
     next();

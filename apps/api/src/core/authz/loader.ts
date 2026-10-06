@@ -1,3 +1,4 @@
+import type { ApiClientAuth } from '../auth/api-client-auth';
 import { prisma } from '../db/prisma';
 import { ALL_TENANT_PERMISSIONS, PLATFORM_ROLES } from './default-roles';
 import { createPrincipal, type Grant, type Principal } from './principal';
@@ -123,6 +124,28 @@ export function systemPrincipal(organizationId: string | null): Principal {
         roleKey: 'system',
         permissions: new Set(ALL_TENANT_PERMISSIONS),
         scopes: [{ type: 'ORGANIZATION', id: null }],
+      },
+    ],
+  });
+}
+
+/** Principal of a machine API client: its scopes as permissions, within its target only. */
+export function apiClientPrincipal(client: ApiClientAuth): Principal {
+  return createPrincipal({
+    actorType: 'api_client',
+    userId: null,
+    sessionId: null,
+    organizationId: client.organizationId,
+    apiClientId: client.apiClientId,
+    grants: [
+      {
+        roleKey: 'api_client',
+        permissions: new Set(client.scopes),
+        scopes: [
+          client.scopeType === 'ORGANIZATION'
+            ? { type: 'ORGANIZATION', id: null }
+            : { type: client.scopeType, id: client.targetId },
+        ],
       },
     ],
   });

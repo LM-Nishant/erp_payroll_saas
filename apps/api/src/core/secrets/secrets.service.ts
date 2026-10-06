@@ -9,7 +9,7 @@ import type {
 } from '@erp/shared';
 import { audit } from '../audit';
 import { isSensitiveKey } from '../audit/redact';
-import { accessFor, authorize, currentPrincipal, type AccessSet } from '../authz';
+import { accessFor, authorize, currentPrincipal, tryGetPrincipal, type AccessSet } from '../authz';
 import { prisma } from '../db/prisma';
 import { NotFoundError, ValidationError } from '../http/errors';
 import { toListResponse, toPageWindow } from '../http/pagination';
@@ -411,4 +411,92 @@ export async function rewrapOrganizationSecrets(): Promise<{ rewrapped: number; 
     metadata: { rewrapped, total: rows.length, activeKeyVersion: provider.activeVersion },
   });
   return { rewrapped, total: rows.length };
+}
+
+/**
+ * INTERNAL API for engines that own credentials on behalf of a configured object (a
+ * communication provider, a webhook signing secret, an integration credential). The CALLER is
+ * responsible for authorization (e.g. `communication.manage`). Creates the secret, or rotates it
+ * when one with the same target/kind/name exists. Audited as `secret.create` / `secret.rotate`.
+ */
+export async function putSecret(input: {
+  target: SettingTarget;
+  kind: string;
+  name: string;
+  value: string;
+  description?: string | null;
+  metadata?: Record<string, unknown> | null;
+}): Promise<{ id: string; last4: string | null; masked: string }> {
+  assertSafeMetadata(input.metadata);
+  const organizationId = currentOrganizationId();
+  const userId = tryGetPrincipal()?.userId ?? null;
+  const db = tenantDb();
+  const provider = keyProvider();
+  const existing = await db.tenantSecret.findFirst({
+    where: {
+      scopeType: input.target.scopeType,
+      targetId: input.target.targetId,
+      kind: input.kind,
+      name: input.name,
+    },
+    select: DISPLAY_SELECT,
+  });
+  const id = existing?.id ?? randomUUID();
+  const sealed = await sealSecret(provider, { organizationId, secretId: id }, input.value);
+  const valueFields = {
+    ...sealed,
+    ...maskInfo(input.value),
+    fingerprint: provider.fingerprint(input.value, organizationId),
+  };
+  const row = existing
+    ? await db.tenantSecret.update({
+        where: { id },
+        data: {
+          ...valueFields,
+          version: { increment: 1 },
+          rotatedAt: new Date(),
+          updatedById: userId,
+          ...(input.description !== undefined ? { description: input.description } : {}),
+        },
+        select: DISPLAY_SELECT,
+      })
+    : await db.tenantSecret.create({
+        data: withTenant({
+          id,
+          scopeType: input.target.scopeType,
+          targetId: input.target.targetId,
+          groupId: input.target.groupId,
+          institutionId: input.target.institutionId,
+          kind: input.kind,
+          name: input.name,
+          description: input.description ?? null,
+          metadata: metadataJson(input.metadata),
+          ...valueFields,
+          createdById: userId,
+          updatedById: userId,
+        }),
+        select: DISPLAY_SELECT,
+      });
+  await audit.record({
+    action: existing ? 'secret.rotate' : 'secret.create',
+    entityType: 'tenant_secret',
+    entityId: row.id,
+    ...(existing ? { before: auditView(existing) } : {}),
+    after: auditView(row),
+  });
+  return { id: row.id, last4: row.last4, masked: maskedDisplay(row.last4) };
+}
+
+/** INTERNAL: crypto-shred a secret owned by an engine object (caller authorizes). */
+export async function deleteSecretInternal(id: string): Promise<void> {
+  const db = tenantDb();
+  const row = await db.tenantSecret.findFirst({ where: { id }, select: DISPLAY_SELECT });
+  if (!row) return;
+  await db.tenantSecret.delete({ where: { id } });
+  await audit.record({
+    action: 'secret.delete',
+    entityType: 'tenant_secret',
+    entityId: id,
+    before: auditView(row),
+  });
 }

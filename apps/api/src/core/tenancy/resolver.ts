@@ -30,10 +30,14 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 /** The tenant is the organization bound to the authenticated session (JWT `org` claim). */
 export const jwtTenantResolver: TenantResolver = {
   name: 'jwt',
-  resolve: async (req) =>
-    req.auth?.organizationId
-      ? { organizationId: req.auth.organizationId, actorId: req.auth.userId }
-      : null,
+  resolve: async (req) => {
+    if (req.auth?.organizationId) {
+      return { organizationId: req.auth.organizationId, actorId: req.auth.userId };
+    }
+    // Machine API client (verified client-credentials token): its own organization.
+    if (req.apiClient) return { organizationId: req.apiClient.organizationId };
+    return null;
+  },
 };
 
 /**
@@ -45,7 +49,7 @@ export function devHeaderTenantResolver(lookup: OrganizationLookup): TenantResol
   return {
     name: 'dev-header',
     async resolve(req) {
-      if (req.auth) return jwtTenantResolver.resolve(req);
+      if (req.auth || req.apiClient) return jwtTenantResolver.resolve(req);
       const value = req.get(DEV_TENANT_HEADER)?.trim();
       if (!value) return null;
       const org = UUID.test(value) ? await lookup.findById(value) : await lookup.findBySlug(value);

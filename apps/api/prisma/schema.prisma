@@ -59,33 +59,58 @@ model Organization {
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
 
-  groups             Group[]
-  institutions       Institution[]
-  campuses           Campus[]
-  departments        Department[]
-  programs           Program[]
-  classSections      ClassSection[]
-  memberships        OrganizationMembership[]
-  roles              Role[]
-  rolePermissions    RolePermission[]
-  userRoles          UserRole[]
-  userScopes         UserScope[]
-  authSessions       AuthSession[]
-  loginEvents        LoginEvent[]
-  userTokens         UserToken[]
-  auditLogs          AuditLog[]
-  subscription       OrganizationSubscription?
-  invoices           Invoice[]
-  featureOverrides   FeatureOverride[]
-  usageCounters      UsageCounter[]
-  brandingProfiles   BrandingProfile[]
-  secrets            TenantSecret[]
-  documents          Document[]
-  documentVersions   DocumentVersion[]
-  documentGrants     DocumentPermission[]
-  documentReminders  DocumentExpiryReminder[]
-  documentSignatures DocumentSignature[]
-  storageUploads     StorageUpload[]
+  groups                  Group[]
+  institutions            Institution[]
+  campuses                Campus[]
+  departments             Department[]
+  programs                Program[]
+  classSections           ClassSection[]
+  memberships             OrganizationMembership[]
+  roles                   Role[]
+  rolePermissions         RolePermission[]
+  userRoles               UserRole[]
+  userScopes              UserScope[]
+  authSessions            AuthSession[]
+  loginEvents             LoginEvent[]
+  userTokens              UserToken[]
+  auditLogs               AuditLog[]
+  subscription            OrganizationSubscription?
+  invoices                Invoice[]
+  featureOverrides        FeatureOverride[]
+  usageCounters           UsageCounter[]
+  brandingProfiles        BrandingProfile[]
+  secrets                 TenantSecret[]
+  documents               Document[]
+  documentVersions        DocumentVersion[]
+  documentGrants          DocumentPermission[]
+  documentReminders       DocumentExpiryReminder[]
+  documentSignatures      DocumentSignature[]
+  storageUploads          StorageUpload[]
+  // Layer 5 engines
+  workflowDefinitions     WorkflowDefinition[]
+  workflowInstances       WorkflowInstance[]
+  workflowStepInstances   WorkflowStepInstance[]
+  workflowStepAssignees   WorkflowStepAssignee[]
+  workflowActions         WorkflowAction[]
+  notifications           Notification[]
+  notificationRules       NotificationRule[]
+  notificationJobs        NotificationJob[]
+  notificationPreferences NotificationPreference[]
+  pushDevices             PushDevice[]
+  communicationProviders  CommunicationProvider[]
+  messageTemplates        MessageTemplate[]
+  messageTemplateVersions MessageTemplateVersion[]
+  messageLogs             MessageLog[]
+  deliveryEvents          DeliveryEvent[]
+  campaigns               Campaign[]
+  campaignRecipients      CampaignRecipient[]
+  apiClients              ApiClient[]
+  apiScopes               ApiScope[]
+  apiUsage                ApiUsage[]
+  domainEvents            DomainEvent[]
+  webhooks                Webhook[]
+  webhookEvents           WebhookEvent[]
+  integrationCredentials  IntegrationCredential[]
 
   @@map("organizations")
 }
@@ -1087,4 +1112,633 @@ model StorageUpload {
 
   @@index([organizationId, status, expiresAt])
   @@map("storage_uploads")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Workflow engine (Layer 5, core/workflow). Tenant-scoped, versioned approval workflows.
+// ---------------------------------------------------------------------------------------------
+
+enum WorkflowDefinitionStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum WorkflowInstanceStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SENT_BACK
+  CANCELLED
+}
+
+enum WorkflowStepStatus {
+  WAITING
+  PENDING
+  APPROVED
+  REJECTED
+  SKIPPED
+  SENT_BACK
+  CANCELLED
+}
+
+enum WorkflowAssigneeStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  DELEGATED
+  SUPERSEDED
+}
+
+/// One version of an approval workflow for an entity type at a scope. Versions of the same
+/// workflow share `familyId`; at most one version per family is ACTIVE.
+model WorkflowDefinition {
+  id                String                   @id @default(uuid()) @db.Char(36)
+  organizationId    String                   @map("organization_id") @db.Char(36)
+  familyId          String                   @map("family_id") @db.Char(36)
+  version           Int
+  entityType        String                   @map("entity_type") @db.VarChar(64)
+  name              String                   @db.VarChar(200)
+  description       String?                  @db.VarChar(1000)
+  status            WorkflowDefinitionStatus @default(DRAFT)
+  scopeType         SettingScopeType         @map("scope_type")
+  targetId          String                   @map("target_id") @db.Char(36)
+  groupId           String?                  @map("group_id") @db.Char(36)
+  institutionId     String?                  @map("institution_id") @db.Char(36)
+  /// Array of step definitions (see @erp/shared workflowStepSchema).
+  steps             Json
+  allowSelfApproval Boolean                  @default(false) @map("allow_self_approval")
+  createdById       String?                  @map("created_by_id") @db.Char(36)
+  createdAt         DateTime                 @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime                 @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  instances    WorkflowInstance[]
+
+  @@unique([organizationId, familyId, version])
+  @@index([organizationId, entityType, status])
+  @@map("workflow_definitions")
+}
+
+/// A running / finished approval request for one business entity.
+model WorkflowInstance {
+  id                String                 @id @default(uuid()) @db.Char(36)
+  organizationId    String                 @map("organization_id") @db.Char(36)
+  definitionId      String                 @map("definition_id") @db.Char(36)
+  definitionVersion Int                    @map("definition_version")
+  entityType        String                 @map("entity_type") @db.VarChar(64)
+  entityId          String                 @map("entity_id") @db.VarChar(64)
+  title             String                 @db.VarChar(300)
+  status            WorkflowInstanceStatus @default(PENDING)
+  requesterUserId   String?                @map("requester_user_id") @db.Char(36)
+  groupId           String?                @map("group_id") @db.Char(36)
+  institutionId     String?                @map("institution_id") @db.Char(36)
+  departmentId      String?                @map("department_id") @db.Char(36)
+  /// Fields used by step conditions and shown to approvers (amount, dates…).
+  context           Json
+  currentStepOrder  Int?                   @map("current_step_order")
+  completedAt       DateTime?              @map("completed_at") @db.DateTime(3)
+  createdAt         DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime               @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  definition   WorkflowDefinition     @relation(fields: [definitionId], references: [id], onDelete: Restrict)
+  steps        WorkflowStepInstance[]
+  actions      WorkflowAction[]
+
+  @@index([organizationId, entityType, entityId])
+  @@index([organizationId, requesterUserId, status])
+  @@index([organizationId, status])
+  @@index([definitionId])
+  @@map("workflow_instances")
+}
+
+model WorkflowStepInstance {
+  id             String             @id @default(uuid()) @db.Char(36)
+  organizationId String             @map("organization_id") @db.Char(36)
+  instanceId     String             @map("instance_id") @db.Char(36)
+  stepKey        String             @map("step_key") @db.VarChar(50)
+  name           String             @db.VarChar(200)
+  order          Int
+  mode           String             @db.VarChar(8)
+  status         WorkflowStepStatus @default(WAITING)
+  /// Snapshot of the step definition at submission time.
+  config         Json
+  dueAt          DateTime?          @map("due_at") @db.DateTime(3)
+  escalatedAt    DateTime?          @map("escalated_at") @db.DateTime(3)
+  activatedAt    DateTime?          @map("activated_at") @db.DateTime(3)
+  completedAt    DateTime?          @map("completed_at") @db.DateTime(3)
+  createdAt      DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  instance     WorkflowInstance       @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+  assignees    WorkflowStepAssignee[]
+
+  @@unique([instanceId, order])
+  @@index([organizationId, status, dueAt])
+  @@map("workflow_step_instances")
+}
+
+model WorkflowStepAssignee {
+  id                  String                 @id @default(uuid()) @db.Char(36)
+  organizationId      String                 @map("organization_id") @db.Char(36)
+  stepInstanceId      String                 @map("step_instance_id") @db.Char(36)
+  instanceId          String                 @map("instance_id") @db.Char(36)
+  userId              String                 @map("user_id") @db.Char(36)
+  status              WorkflowAssigneeStatus @default(PENDING)
+  delegatedFromUserId String?                @map("delegated_from_user_id") @db.Char(36)
+  escalated           Boolean                @default(false)
+  actedAt             DateTime?              @map("acted_at") @db.DateTime(3)
+  createdAt           DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime               @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  stepInstance WorkflowStepInstance @relation(fields: [stepInstanceId], references: [id], onDelete: Cascade)
+
+  @@unique([stepInstanceId, userId])
+  @@index([organizationId, userId, status])
+  @@index([instanceId])
+  @@map("workflow_step_assignees")
+}
+
+/// Append-only history of everything that happened to an instance.
+model WorkflowAction {
+  id               String   @id @default(uuid()) @db.Char(36)
+  organizationId   String   @map("organization_id") @db.Char(36)
+  instanceId       String   @map("instance_id") @db.Char(36)
+  stepInstanceId   String?  @map("step_instance_id") @db.Char(36)
+  stepKey          String?  @map("step_key") @db.VarChar(50)
+  action           String   @db.VarChar(16)
+  actorUserId      String?  @map("actor_user_id") @db.Char(36)
+  comment          String?  @db.Text
+  delegateToUserId String?  @map("delegate_to_user_id") @db.Char(36)
+  metadata         Json?
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization     @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  instance     WorkflowInstance @relation(fields: [instanceId], references: [id], onDelete: Cascade)
+
+  @@index([instanceId, createdAt])
+  @@index([organizationId, actorUserId])
+  @@map("workflow_actions")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Notification engine (Layer 5, core/notifications).
+// ---------------------------------------------------------------------------------------------
+
+/// In-app notification for one user.
+model Notification {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  userId         String    @map("user_id") @db.Char(36)
+  eventKey       String    @map("event_key") @db.VarChar(100)
+  title          String    @db.VarChar(300)
+  body           String?   @db.Text
+  link           String?   @db.VarChar(500)
+  data           Json?
+  readAt         DateTime? @map("read_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, userId, readAt])
+  @@index([organizationId, userId, createdAt])
+  @@map("notifications")
+}
+
+/// Tenant rule: event key → channels / extra recipients / template.
+model NotificationRule {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  eventKey       String   @map("event_key") @db.VarChar(100)
+  name           String   @db.VarChar(200)
+  channels       Json
+  recipients     Json
+  templateKey    String?  @map("template_key") @db.VarChar(100)
+  institutionId  String?  @map("institution_id") @db.Char(36)
+  isActive       Boolean  @default(true) @map("is_active")
+  createdById    String?  @map("created_by_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, eventKey])
+  @@map("notification_rules")
+}
+
+/// One publish() call; fanned out asynchronously by the queue.
+model NotificationJob {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  eventKey       String    @map("event_key") @db.VarChar(100)
+  payload        Json
+  status         String    @default("PENDING") @db.VarChar(16)
+  recipientCount Int       @default(0) @map("recipient_count")
+  attempts       Int       @default(0)
+  error          String?   @db.VarChar(1000)
+  processedAt    DateTime? @map("processed_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status])
+  @@map("notification_jobs")
+}
+
+model NotificationPreference {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  userId         String   @map("user_id") @db.Char(36)
+  /// Event key or `*`.
+  eventKey       String   @map("event_key") @db.VarChar(100)
+  channel        String   @db.VarChar(16)
+  enabled        Boolean
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, userId, eventKey, channel])
+  @@map("notification_preferences")
+}
+
+/// Mobile push registration (FCM / APNs token).
+model PushDevice {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  userId         String   @map("user_id") @db.Char(36)
+  platform       String   @db.VarChar(8)
+  token          String   @db.Text
+  tokenHash      String   @map("token_hash") @db.Char(64)
+  deviceName     String?  @map("device_name") @db.VarChar(100)
+  lastSeenAt     DateTime @default(now()) @map("last_seen_at") @db.DateTime(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, tokenHash])
+  @@index([organizationId, userId])
+  @@map("push_devices")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Communication engine (Layer 5, core/communication). Credentials live in tenant_secrets.
+// ---------------------------------------------------------------------------------------------
+
+enum MessageStatus {
+  QUEUED
+  SENT
+  DELIVERED
+  FAILED
+  BOUNCED
+  SKIPPED
+}
+
+model CommunicationProvider {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  organizationId     String           @map("organization_id") @db.Char(36)
+  scopeType          SettingScopeType @map("scope_type")
+  targetId           String           @map("target_id") @db.Char(36)
+  groupId            String?          @map("group_id") @db.Char(36)
+  institutionId      String?          @map("institution_id") @db.Char(36)
+  channel            String           @db.VarChar(16)
+  providerType       String           @map("provider_type") @db.VarChar(32)
+  name               String           @db.VarChar(200)
+  priority           Int              @default(100)
+  /// Non-secret config (host, port, from, sender id, base URL…).
+  config             Json
+  /// tenant_secrets row holding the credentials (password / API key / token).
+  credentialSecretId String?          @map("credential_secret_id") @db.Char(36)
+  /// tenant_secrets row holding the delivery-callback signing secret.
+  webhookSecretId    String?          @map("webhook_secret_id") @db.Char(36)
+  rateLimitPerMinute Int?             @map("rate_limit_per_minute")
+  costPerMessage     Decimal?         @map("cost_per_message") @db.Decimal(12, 4)
+  isActive           Boolean          @default(true) @map("is_active")
+  createdById        String?          @map("created_by_id") @db.Char(36)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, channel, isActive])
+  @@map("communication_providers")
+}
+
+model MessageTemplate {
+  id               String           @id @default(uuid()) @db.Char(36)
+  organizationId   String           @map("organization_id") @db.Char(36)
+  scopeType        SettingScopeType @map("scope_type")
+  targetId         String           @map("target_id") @db.Char(36)
+  groupId          String?          @map("group_id") @db.Char(36)
+  institutionId    String?          @map("institution_id") @db.Char(36)
+  key              String           @db.VarChar(100)
+  channel          String           @db.VarChar(16)
+  name             String           @db.VarChar(200)
+  description      String?          @db.VarChar(1000)
+  useBrandedLayout Boolean          @default(true) @map("use_branded_layout")
+  isActive         Boolean          @default(true) @map("is_active")
+  currentVersion   Int              @default(1) @map("current_version")
+  createdAt        DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  versions     MessageTemplateVersion[]
+
+  @@unique([organizationId, scopeType, targetId, key, channel])
+  @@index([organizationId, key, channel])
+  @@map("message_templates")
+}
+
+/// Immutable template version (message logs reference the version they were rendered from).
+model MessageTemplateVersion {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  templateId     String   @map("template_id") @db.Char(36)
+  version        Int
+  subject        String?  @db.VarChar(500)
+  body           String   @db.Text
+  htmlBody       String?  @map("html_body") @db.MediumText
+  variables      Json
+  createdById    String?  @map("created_by_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  template     MessageTemplate @relation(fields: [templateId], references: [id], onDelete: Cascade)
+
+  @@unique([templateId, version])
+  @@map("message_template_versions")
+}
+
+/// One outbound message to one recipient. Sensitive messages (tokens) never store a body.
+model MessageLog {
+  id                String        @id @default(uuid()) @db.Char(36)
+  organizationId    String        @map("organization_id") @db.Char(36)
+  institutionId     String?       @map("institution_id") @db.Char(36)
+  channel           String        @db.VarChar(16)
+  status            MessageStatus @default(QUEUED)
+  recipientAddress  String        @map("recipient_address") @db.VarChar(254)
+  recipientUserId   String?       @map("recipient_user_id") @db.Char(36)
+  subject           String?       @db.VarChar(500)
+  body              String?       @db.Text
+  htmlBody          String?       @map("html_body") @db.MediumText
+  sensitive         Boolean       @default(false)
+  templateKey       String?       @map("template_key") @db.VarChar(100)
+  templateVersion   Int?          @map("template_version")
+  eventKey          String?       @map("event_key") @db.VarChar(100)
+  campaignId        String?       @map("campaign_id") @db.Char(36)
+  providerId        String?       @map("provider_id") @db.Char(36)
+  providerType      String?       @map("provider_type") @db.VarChar(32)
+  providerMessageId String?       @map("provider_message_id") @db.VarChar(255)
+  cost              Decimal?      @db.Decimal(12, 4)
+  attempts          Int           @default(0)
+  lastError         String?       @map("last_error") @db.VarChar(1000)
+  metadata          Json?
+  createdById       String?       @map("created_by_id") @db.Char(36)
+  sentAt            DateTime?     @map("sent_at") @db.DateTime(3)
+  deliveredAt       DateTime?     @map("delivered_at") @db.DateTime(3)
+  failedAt          DateTime?     @map("failed_at") @db.DateTime(3)
+  createdAt         DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  events       DeliveryEvent[]
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, status])
+  @@index([providerId, providerMessageId])
+  @@index([campaignId])
+  @@map("message_logs")
+}
+
+model DeliveryEvent {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  messageLogId   String   @map("message_log_id") @db.Char(36)
+  status         String   @db.VarChar(16)
+  rawStatus      String?  @map("raw_status") @db.VarChar(64)
+  payload        Json?
+  occurredAt     DateTime @map("occurred_at") @db.DateTime(3)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  messageLog   MessageLog   @relation(fields: [messageLogId], references: [id], onDelete: Cascade)
+
+  @@index([messageLogId])
+  @@map("delivery_events")
+}
+
+model Campaign {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @map("organization_id") @db.Char(36)
+  institutionId   String?   @map("institution_id") @db.Char(36)
+  name            String    @db.VarChar(200)
+  channel         String    @db.VarChar(16)
+  status          String    @db.VarChar(16)
+  templateKey     String?   @map("template_key") @db.VarChar(100)
+  subject         String?   @db.VarChar(500)
+  body            String?   @db.Text
+  variables       Json
+  totalRecipients Int       @default(0) @map("total_recipients")
+  sentCount       Int       @default(0) @map("sent_count")
+  failedCount     Int       @default(0) @map("failed_count")
+  scheduledAt     DateTime? @map("scheduled_at") @db.DateTime(3)
+  startedAt       DateTime? @map("started_at") @db.DateTime(3)
+  completedAt     DateTime? @map("completed_at") @db.DateTime(3)
+  createdById     String?   @map("created_by_id") @db.Char(36)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  recipients   CampaignRecipient[]
+
+  @@index([organizationId, status, scheduledAt])
+  @@map("campaigns")
+}
+
+model CampaignRecipient {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  campaignId     String   @map("campaign_id") @db.Char(36)
+  userId         String?  @map("user_id") @db.Char(36)
+  address        String?  @db.VarChar(254)
+  name           String?  @db.VarChar(200)
+  variables      Json?
+  status         String   @default("PENDING") @db.VarChar(16)
+  messageLogId   String?  @map("message_log_id") @db.Char(36)
+  error          String?  @db.VarChar(1000)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  campaign     Campaign     @relation(fields: [campaignId], references: [id], onDelete: Cascade)
+
+  @@index([campaignId, status])
+  @@map("campaign_recipients")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Integration framework (Layer 5, core/integrations + core/events).
+// ---------------------------------------------------------------------------------------------
+
+/// Machine client (OAuth2 client credentials). Only a SHA-256 hash of the secret is stored.
+model ApiClient {
+  id                 String           @id @default(uuid()) @db.Char(36)
+  organizationId     String           @map("organization_id") @db.Char(36)
+  clientId           String           @unique @map("client_id") @db.VarChar(64)
+  name               String           @db.VarChar(200)
+  description        String?          @db.VarChar(1000)
+  secretHash         String           @map("secret_hash") @db.Char(64)
+  secretLast4        String           @map("secret_last4") @db.VarChar(4)
+  scopeType          SettingScopeType @map("scope_type")
+  targetId           String           @map("target_id") @db.Char(36)
+  groupId            String?          @map("group_id") @db.Char(36)
+  institutionId      String?          @map("institution_id") @db.Char(36)
+  rateLimitPerMinute Int              @default(600) @map("rate_limit_per_minute")
+  status             String           @default("ACTIVE") @db.VarChar(16)
+  lastUsedAt         DateTime?        @map("last_used_at") @db.DateTime(3)
+  lastUsedIp         String?          @map("last_used_ip") @db.VarChar(64)
+  expiresAt          DateTime?        @map("expires_at") @db.DateTime(3)
+  revokedAt          DateTime?        @map("revoked_at") @db.DateTime(3)
+  createdById        String?          @map("created_by_id") @db.Char(36)
+  createdAt          DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  scopes       ApiScope[]
+  usage        ApiUsage[]
+
+  @@index([organizationId, status])
+  @@map("api_clients")
+}
+
+/// Permission codes granted to an API client.
+model ApiScope {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  apiClientId    String   @map("api_client_id") @db.Char(36)
+  scope          String   @db.VarChar(100)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  apiClient    ApiClient    @relation(fields: [apiClientId], references: [id], onDelete: Cascade)
+
+  @@unique([apiClientId, scope])
+  @@index([organizationId])
+  @@map("api_scopes")
+}
+
+model ApiUsage {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  apiClientId    String   @map("api_client_id") @db.Char(36)
+  method         String   @db.VarChar(8)
+  path           String   @db.VarChar(500)
+  statusCode     Int      @map("status_code")
+  durationMs     Int      @map("duration_ms")
+  ip             String?  @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  apiClient    ApiClient    @relation(fields: [apiClientId], references: [id], onDelete: Cascade)
+
+  @@index([apiClientId, createdAt])
+  @@index([organizationId, createdAt])
+  @@map("api_usage")
+}
+
+/// Every domain event emitted through core/events (source of webhook deliveries).
+model DomainEvent {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  eventKey       String   @map("event_key") @db.VarChar(100)
+  payload        Json
+  actorType      String?  @map("actor_type") @db.VarChar(16)
+  actorId        String?  @map("actor_id") @db.Char(36)
+  institutionId  String?  @map("institution_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, eventKey, createdAt])
+  @@map("domain_events")
+}
+
+/// Outbound webhook subscription. Signing secret lives in tenant_secrets.
+model Webhook {
+  id                  String    @id @default(uuid()) @db.Char(36)
+  organizationId      String    @map("organization_id") @db.Char(36)
+  name                String    @db.VarChar(200)
+  url                 String    @db.VarChar(2000)
+  events              Json
+  description         String?   @db.VarChar(1000)
+  secretId            String    @map("secret_id") @db.Char(36)
+  isActive            Boolean   @default(true) @map("is_active")
+  consecutiveFailures Int       @default(0) @map("consecutive_failures")
+  lastSuccessAt       DateTime? @map("last_success_at") @db.DateTime(3)
+  lastFailureAt       DateTime? @map("last_failure_at") @db.DateTime(3)
+  createdById         String?   @map("created_by_id") @db.Char(36)
+  createdAt           DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  deliveries   WebhookEvent[]
+
+  @@index([organizationId, isActive])
+  @@map("webhooks")
+}
+
+/// One delivery of one event to one webhook (with retries / replay).
+model WebhookEvent {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  webhookId      String    @map("webhook_id") @db.Char(36)
+  eventId        String    @map("event_id") @db.Char(36)
+  eventKey       String    @map("event_key") @db.VarChar(100)
+  payload        Json
+  status         String    @default("PENDING") @db.VarChar(16)
+  attempts       Int       @default(0)
+  lastStatusCode Int?      @map("last_status_code")
+  lastError      String?   @map("last_error") @db.VarChar(1000)
+  nextAttemptAt  DateTime? @map("next_attempt_at") @db.DateTime(3)
+  deliveredAt    DateTime? @map("delivered_at") @db.DateTime(3)
+  replayOfId     String?   @map("replay_of_id") @db.Char(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  webhook      Webhook      @relation(fields: [webhookId], references: [id], onDelete: Cascade)
+
+  @@index([webhookId, createdAt])
+  @@index([organizationId, status, nextAttemptAt])
+  @@map("webhook_events")
+}
+
+/// Third-party integration credentials (Tally, biometric devices, payment gateways…).
+model IntegrationCredential {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String           @map("organization_id") @db.Char(36)
+  scopeType      SettingScopeType @map("scope_type")
+  targetId       String           @map("target_id") @db.Char(36)
+  groupId        String?          @map("group_id") @db.Char(36)
+  institutionId  String?          @map("institution_id") @db.Char(36)
+  provider       String           @db.VarChar(50)
+  name           String           @db.VarChar(100)
+  description    String?          @db.VarChar(500)
+  config         Json
+  secretId       String           @map("secret_id") @db.Char(36)
+  isActive       Boolean          @default(true) @map("is_active")
+  createdById    String?          @map("created_by_id") @db.Char(36)
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, scopeType, targetId, provider, name])
+  @@map("integration_credentials")
 }

@@ -39,6 +39,7 @@ export async function recordAudit(input: AuditRecordInput): Promise<void> {
   if (principal?.platformAccessReason) {
     metadata.platformAccessReason = principal.platformAccessReason;
   }
+  if (principal?.apiClientId) metadata.apiClientId = principal.apiClientId;
   await prisma.auditLog.create({
     data: {
       organizationId:

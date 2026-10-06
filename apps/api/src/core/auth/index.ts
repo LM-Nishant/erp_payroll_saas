@@ -9,3 +9,4 @@ export * from './password';
 export * from './sessions';
 export * from './tokens';
 export * from './user-tokens';
+export * from './api-client-auth';
