@@ -86,3 +86,54 @@ Endpoints (under `/api/v1`):
 - Tenant hierarchy: `organization`, `groups`, `institutions`, `campuses`, `departments`,
   `programs`, `class-sections` (list/get/create/patch/soft delete, scope-filtered).
 - `users`, `roles`, `permissions`, `audit-logs`; `platform/*` for platform admins.
+
+## Foundation status (layers 1–8)
+
+The foundation was built as an 8-PR stack:
+
+1. Scaffold, multi-tenancy engine (`tenantDb()` / `withTenant()`), group → institution → campus →
+   department hierarchy.
+2. Auth (JWT + refresh, TOTP MFA, sessions), RBAC with scoped grants, users, audit log.
+3. Module licensing / subscriptions, branding, secret management.
+4. Cloud file storage, document management, PDF engine.
+5. Queue, workflow, notification and communication engines, integrations (API clients,
+   webhooks).
+6. HR employee master: lifecycle, transfers, effective-dated assignments, salary history.
+7. Attendance, leave, holidays and shifts, including the payroll attendance feed and period
+   locks.
+8. Payroll rule engine. This covers:
+   - salary components, rules and structures, with a safe formula evaluator and dependency
+     graph;
+   - India statutory packs (PF, ESI, PT, TDS, LWF);
+   - payroll runs and group batches with maker-checker approval, DB-enforced locking and
+     audited reopen;
+   - revisions with arrears, loans and reimbursements;
+   - branded payslips and Form 16;
+   - payroll reports (CSV, Excel, PDF) and the group consolidated summary.
+
+**Acceptance criteria (§65) covered by the foundation:**
+
+- multi-tenant isolation;
+- group/institution hierarchy and scoped roles;
+- module licensing and branding;
+- employee master with history;
+- attendance, leave and holiday;
+- separate salary policies per institution (7);
+- salary revisions with preserved history and arrears (10);
+- payroll computed from attendance/LOP (11–13);
+- locked payroll and audited reopen (14–15);
+- branded payslips with employee self-access (16–17);
+- Form 16 publication (18);
+- workflow approvals, notifications, documents, audit, and API/webhooks.
+
+**Remaining (future work per §67):**
+
+- education modules: admissions, students, academics, fees, exams, timetable, transport,
+  hostel, library, LMS;
+- asset management;
+- the AI gateway;
+- the generic reporting/BI engine;
+- the mobile app;
+- real Form 16 generation (currently a placeholder PDF);
+- full income-tax declarations and proofs;
+- bank-specific payment file formats.

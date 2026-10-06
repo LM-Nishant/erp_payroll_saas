@@ -91,6 +91,7 @@ const HR = [
   'salary.view',
   'salary.update',
   'payroll.view',
+  'payroll.report',
   'message.send',
   'ai.use',
 ] as PermissionCode[];
@@ -100,6 +101,8 @@ const FINANCE = [
   'payroll.view',
   'payroll.approve',
   'payroll.lock',
+  'payroll.report',
+  'payroll.disburse',
   'salary.view',
   'employee.view',
   ...TIME_VIEW,
@@ -152,6 +155,26 @@ const EMPLOYEE_SELF_SERVICE = [
   'employee.view_own',
   'employee.update_own',
   ...TIME_SELF_SERVICE,
+  'payroll.view_own',
+  'reimbursement.claim_own',
+] as PermissionCode[];
+
+/** Payroll preparation (Layer 8): masters, runs, loans, Form 16; never approves its own runs. */
+const PAYROLL = [
+  ...ACADEMIC_STRUCTURE_VIEW,
+  'employee.view',
+  ...TIME_VIEW,
+  'payroll.view',
+  'payroll.process',
+  'payroll.manage',
+  'payroll.report',
+  'payroll.disburse',
+  'form16.manage',
+  'salary.view',
+  'salary.update',
+  'document.view',
+  'document.download',
+  'ai.use',
 ] as PermissionCode[];
 
 export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
@@ -182,7 +205,8 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Group Finance',
       description: 'Finance across assigned groups',
       typicalScope: 'GROUP',
-      permissions: FINANCE,
+      // Group finance may also reopen a finalized payroll (explicit, audited).
+      permissions: [...FINANCE, 'payroll.reopen'],
     },
     {
       key: 'institution_owner',
@@ -259,18 +283,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Payroll Manager',
       description: 'Prepares and processes payroll',
       typicalScope: 'INSTITUTION',
-      permissions: [
-        ...ACADEMIC_STRUCTURE_VIEW,
-        'employee.view',
-        ...TIME_VIEW,
-        'payroll.view',
-        'payroll.process',
-        'salary.view',
-        'salary.update',
-        'document.view',
-        'document.download',
-        'ai.use',
-      ],
+      permissions: PAYROLL,
     },
     {
       key: 'finance_manager',
@@ -287,6 +300,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       permissions: [
         ...ACADEMIC_STRUCTURE_VIEW,
         'payroll.view',
+        'payroll.report',
         'salary.view',
         'document.view',
         'document.download',

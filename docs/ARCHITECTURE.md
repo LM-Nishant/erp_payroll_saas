@@ -922,7 +922,101 @@ and `/employee/leave` (balances, apply with live preview, cancel).
 4. Resolve holidays / shifts with the resolvers (per date, per as-of assignment), never by
    institution id alone.
 
-## 11. Frontend (apps/web)
+## 11. Payroll rule engine (Layer 8)
+
+Module `apps/api/src/modules/payroll` (`/api/v1/payroll`, `requireFeature('payroll')`, which
+depends on `hr`). Registrations (workflows, events, notifications, jobs, PDF templates) live in
+`payroll.registrations.ts`, imported by `engines.ts`.
+
+### 11.1 Data model
+
+| Table                                                | Purpose                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `salary_components`                                  | Component master per organization (`institutionId = null`) or institution: type (EARNING, DEDUCTION, EMPLOYER_CONTRIBUTION, REIMBURSEMENT, STATUTORY), calc type (FIXED, PERCENTAGE of CTC/BASIC/GROSS/component, FORMULA, SLAB, STATUTORY), taxable, pro-rated, rounding, display order, payslip visibility |
+| `salary_rules`                                       | Effective-dated, versioned calculation overrides (org or institution, optional condition formula). Immutable (trigger) — add a new version instead                                                                                                                                                           |
+| `salary_structures` / `salary_structure_versions`    | Templates of component lines per institution / grade / employment type; versions are effective-dated and immutable                                                                                                                                                                                           |
+| `payroll_settings`, `statutory_rule_packs`           | Per-institution statutory switches + state; data-driven PF/ESI/PT/TDS/LWF packs versioned by financial year (built-in defaults, custom overrides)                                                                                                                                                            |
+| `employee_salaries`                                  | Assignment = one `employee_salary_history` row (Layer 6, immutable) + structure, CTC, FIXED overrides, tax regime                                                                                                                                                                                            |
+| `salary_revisions`                                   | Revision requests (workflow `salary_revision`), with arrears for back-dated revisions                                                                                                                                                                                                                        |
+| `payroll_batches`, `payroll_runs`                    | Group batch (§53) → one run per institution and period; runs carry `revision` / `previousRunId`                                                                                                                                                                                                              |
+| `payroll_run_employees`, `payroll_items`             | Per-employee result (days, totals, calc trace, warnings) and per-component line items                                                                                                                                                                                                                        |
+| `payroll_adjustments`                                | One-time earnings / deductions / arrears / loan EMIs / reimbursements / leave encashment                                                                                                                                                                                                                     |
+| `payroll_payments`                                   | Net pay per employee, bank file export, payment status                                                                                                                                                                                                                                                       |
+| `payslips`, `form16_records`                         | Documents (category `payroll`) stored via the document engine                                                                                                                                                                                                                                                |
+| `loans`, `loan_installments`, `reimbursement_claims` | Auto-deducted EMIs; claims via workflow `reimbursement_claim` feeding adjustments                                                                                                                                                                                                                            |
+
+### 11.2 Formula evaluator & dependency graph
+
+`formula.ts` is a hand-written tokenizer + recursive-descent parser (no `eval` / `Function`):
+numbers, variables, `+ - * / %`, comparisons, `&& || !`, `?:` and the whitelisted functions
+`min max round floor ceil abs if`. Inputs are length-limited and identifiers are validated, so
+property access / calls to anything else are rejected. Variables: `CTC` (monthly), `ANNUAL_CTC`,
+`GROSS` (full-rate earnings), component codes, `PAYABLE_DAYS`, `CALENDAR_DAYS`, `LOP_DAYS`,
+`OT_HOURS`, `PRESENT_DAYS`, `EMPLOYED_DAYS`, `ENCASHMENT_DAYS`, `FACTOR`, `EMPLOYMENT_TYPE`.
+`engine.ts` builds the dependency graph across components (percentage bases, formula variables,
+slab bases), orders it topologically and rejects cycles / unknown references with
+`422 INVALID_SALARY_GRAPH` — at save time (components, rules, structure versions) and at compute
+time. Precedence of a component's calculation: structure line → institution rule → org rule →
+component default.
+
+### 11.3 Computation
+
+`computeEmployeePayroll` (in `payroll.compute.ts`) resolves `employeeAssignmentAsOf`,
+`salaryAsOf` → `employee_salaries`, the structure version effective at period end, rules and
+statutory packs, then reads attendance **only** through `attendanceSummaryForPeriod`. Pro-rated
+components use `payableDays / calendarDays`; mid-period transfers are split by
+`institutionDays` so each institution's run pays its share; joiners / leavers use
+`employedDays`. Statutory (`statutory.ts`): PF 12% of basic capped at the wage ceiling (configurable),
+ESI by gross threshold, PT by state slab table, TDS (old/new regime annualised estimate,
+declarations placeholder), optional LWF. Every amount produces a calc-trace entry and a
+human-readable explanation.
+
+### 11.4 Run lifecycle
+
+`DRAFT → (attendance lock check) → COMPUTING → COMPUTED → PENDING_APPROVAL → APPROVED →
+FINALIZED`, plus `CANCELLED` and `REOPENED`. Compute fans out `payroll.compute_batch` jobs (50
+employees per job); recompute is allowed only before submission. Submission starts the
+`payroll_run` workflow when a definition exists, otherwise `POST /runs/:id/decision` applies
+maker-checker (the preparer cannot approve unless an org owner). Finalize creates
+`payroll_payments`, marks loan installments deducted and enqueues
+`payroll.generate_payslips` (branded PDF via `renderPdfTemplate` + `resolveBranding`, attached
+with `documentEngine.attach({ authorization: 'caller' })`, employees notified).
+
+**Immutability (acceptance 14–15).** Locked runs are rejected by the service (409) **and** by
+MySQL triggers (`payroll_runs_guard_*`, `payroll_items_guard_*`, `payroll_run_employees_guard_*`,
+`payroll_adjustments_guard_*`, `payroll_payments_*`). The only path out of FINALIZED is
+`POST /runs/:id/reopen` (`payroll.reopen`, reason required, audited, event
+`payroll.run_reopened`): it marks the run REOPENED and creates a new DRAFT revision; the
+finalized data and payslips remain (payslips are superseded on the next finalize).
+
+### 11.5 Revisions, arrears, loans, reimbursements
+
+Revisions (workflow `salary_revision`) append salary history; a back-dated revision
+recomputes every FINALIZED run on/after `effectiveFrom` with the new salary and creates
+ARREAR adjustments for the differences in the next run. Loans generate installments deducted
+automatically while the run is computed; approved reimbursement claims become adjustments.
+
+### 11.6 Reports, events, web
+
+Reports (`payroll.report`): register, component summary, statutory PF/ESI/PT/TDS/LWF and group
+consolidated summary (scoped to institutions where the caller holds `payroll.report`, so
+`group_finance` / `group_hr` see their group), each as JSON / CSV / Excel (exceljs) / PDF.
+Events / webhooks: `payroll.run_computed|run_approved|run_finalized|run_reopened`,
+`payslip.published`. Permissions: `payroll.view|process|manage|approve|lock|reopen|report|disburse`,
+`salary.view|update`, `form16.manage`, `payroll.view_own`, `reimbursement.claim_own`; roles
+`payroll_manager`, `finance_manager`, `group_finance` (+ reopen), employee self-service.
+Web: `/hr/payroll/{runs,components,structures,salary,payslips}`, run wizard
+`/hr/payroll/runs/:id` (compute, review with per-employee trace, adjustments, approve,
+finalize, payments, reports, reopen), `/employee/payslips` (payslips + Form 16),
+`/group/payroll` (consolidated summary).
+
+### 11.7 Rules for later layers
+
+1. Never write `payroll_*` rows of a locked run; reopen creates a new revision.
+2. Add statutory changes as new `statutory_rule_packs` versions (per financial year), not code edits.
+3. Calculation changes are new rule / structure versions — never update existing versions.
+
+## 12. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
@@ -940,7 +1034,7 @@ and `/employee/leave` (balances, apply with live preview, cancel).
   requests, instance history + actions), `/group|institution/communication` (providers,
   templates, message log) and `/group/integrations` (API clients, webhooks, deliveries/replay).
 
-## 12. Testing & quality
+## 13. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -951,7 +1045,7 @@ and `/employee/leave` (balances, apply with live preview, cancel).
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 13. Foundation stack
+## 14. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit
