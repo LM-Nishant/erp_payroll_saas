@@ -1,8 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import type { PageWindow } from '../../core/http/pagination';
+import { andScope } from '../../core/authz';
 import { tenantDb, withTenant } from '../../core/tenancy';
 
 export interface ProgramListFilter extends PageWindow {
+  /** Authorization scope fragment from `scopeWhere` (core/authz). */
+  scope?: Record<string, unknown> | undefined;
   search?: string | undefined;
   institutionId?: string | undefined;
   departmentId?: string | undefined;
@@ -11,13 +14,14 @@ export interface ProgramListFilter extends PageWindow {
 export const programRepository = {
   async list(filter: ProgramListFilter) {
     const db = tenantDb();
-    const where: Prisma.ProgramWhereInput = {
+    const base: Prisma.ProgramWhereInput = {
       ...(filter.search
         ? { OR: [{ name: { contains: filter.search } }, { code: { contains: filter.search } }] }
         : {}),
       ...(filter.institutionId ? { institutionId: filter.institutionId } : {}),
       ...(filter.departmentId ? { departmentId: filter.departmentId } : {}),
     };
+    const where = andScope(base, filter.scope);
     const [items, total] = await Promise.all([
       db.program.findMany({
         where,

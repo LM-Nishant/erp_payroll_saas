@@ -1,8 +1,12 @@
 import { createApp } from './app';
+import { syncPermissionCatalog } from './core/authz';
 import { env } from './core/config/env';
 import { prisma } from './core/db/prisma';
 import { logger } from './core/logger';
 import { closeRedis } from './core/queue';
+
+// Keep the DB permission catalog in sync with @erp/shared before serving requests.
+await syncPermissionCatalog();
 
 const app = createApp();
 const server = app.listen(env.PORT, () => {

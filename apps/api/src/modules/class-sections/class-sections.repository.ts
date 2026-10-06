@@ -1,8 +1,11 @@
 import type { Prisma } from '@prisma/client';
 import type { PageWindow } from '../../core/http/pagination';
+import { andScope } from '../../core/authz';
 import { tenantDb, withTenant } from '../../core/tenancy';
 
 export interface ClassSectionListFilter extends PageWindow {
+  /** Authorization scope fragment from `scopeWhere` (core/authz). */
+  scope?: Record<string, unknown> | undefined;
   search?: string | undefined;
   institutionId?: string | undefined;
   departmentId?: string | undefined;
@@ -14,7 +17,7 @@ export interface ClassSectionListFilter extends PageWindow {
 export const classSectionRepository = {
   async list(filter: ClassSectionListFilter) {
     const db = tenantDb();
-    const where: Prisma.ClassSectionWhereInput = {
+    const base: Prisma.ClassSectionWhereInput = {
       ...(filter.search
         ? { OR: [{ name: { contains: filter.search } }, { code: { contains: filter.search } }] }
         : {}),
@@ -24,6 +27,7 @@ export const classSectionRepository = {
       ...(filter.campusId ? { campusId: filter.campusId } : {}),
       ...(filter.academicYear ? { academicYear: filter.academicYear } : {}),
     };
+    const where = andScope(base, filter.scope);
     const [items, total] = await Promise.all([
       db.classSection.findMany({
         where,

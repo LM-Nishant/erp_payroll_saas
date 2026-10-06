@@ -3,6 +3,12 @@ import { z } from 'zod';
 
 const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'] as const;
 
+/** Insecure fallbacks used ONLY outside production so dev/test work out of the box. */
+export const DEV_JWT_SECRET = 'dev-only-insecure-jwt-secret-change-me-0123456789';
+export const DEV_DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+
+const intFrom = (min: number, def: number) => z.coerce.number().int().min(min).default(def);
+
 export const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
@@ -23,9 +29,52 @@ export const envSchema = z
           .map((s) => s.trim())
           .filter(Boolean),
       ),
-    TENANT_RESOLVER: z.enum(['dev-header', 'none']).default('none'),
+    /**
+     * `jwt`: tenant derived from the authenticated access token (default).
+     * `dev-header`: jwt, falling back to the X-Dev-Organization header (dev/test only).
+     * `none`: deny all tenant-scoped requests.
+     */
+    TENANT_RESOLVER: z.enum(['jwt', 'dev-header', 'none']).default('jwt'),
+    /** Express `trust proxy` setting: false, true or a hop count. Needed for correct client IPs. */
+    TRUST_PROXY: z
+      .string()
+      .default('false')
+      .transform((v) => (v === 'true' ? true : v === 'false' ? false : Number(v)))
+      .refine((v) => typeof v === 'boolean' || (Number.isInteger(v) && v >= 0), 'Invalid'),
+
+    // --- Authentication -------------------------------------------------------------
+    JWT_ACCESS_SECRET: z.string().min(32).optional(),
+    JWT_ISSUER: z.string().min(1).default('erp-api'),
+    JWT_AUDIENCE: z.string().min(1).default('erp'),
+    ACCESS_TOKEN_TTL_SECONDS: intFrom(60, 900),
+    REFRESH_TOKEN_TTL_DAYS: intFrom(1, 30),
+    MFA_TOKEN_TTL_SECONDS: intFrom(60, 300),
+    MFA_ISSUER: z.string().min(1).default('Education ERP'),
+    AUTH_MAX_FAILED_LOGINS: intFrom(1, 5),
+    AUTH_LOCKOUT_MINUTES: intFrom(1, 15),
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: intFrom(1, 60),
+    AUTH_RATE_LIMIT_MAX: intFrom(1, 20),
+    INVITE_TOKEN_TTL_HOURS: intFrom(1, 72),
+    PASSWORD_RESET_TOKEN_TTL_MINUTES: intFrom(5, 60),
+    PLATFORM_ACCESS_TTL_MINUTES: intFrom(5, 30),
+    /** base64 32-byte key for AES-256-GCM encryption of MFA secrets (Layer 3 adds a KMS). */
+    DATA_ENCRYPTION_KEY: z
+      .string()
+      .refine((v) => Buffer.from(v, 'base64').length === 32, 'Must be 32 bytes, base64')
+      .optional(),
   })
   .superRefine((value, ctx) => {
+    if (value.NODE_ENV === 'production') {
+      for (const key of ['JWT_ACCESS_SECRET', 'DATA_ENCRYPTION_KEY'] as const) {
+        if (!value[key]) {
+          ctx.addIssue({
+            code: z.ZodIssueCode.custom,
+            path: [key],
+            message: `${key} is required in production`,
+          });
+        }
+      }
+    }
     if (value.NODE_ENV === 'production' && value.TENANT_RESOLVER === 'dev-header') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -35,7 +84,8 @@ export const envSchema = z
     }
   });
 
-export type Env = z.infer<typeof envSchema>;
+type ParsedEnv = z.infer<typeof envSchema>;
+export type Env = ParsedEnv & { JWT_ACCESS_SECRET: string; DATA_ENCRYPTION_KEY: string };
 
 export function parseEnv(source: Record<string, string | undefined>): Env {
   const result = envSchema.safeParse(source);
@@ -45,7 +95,11 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
-  return result.data;
+  return {
+    ...result.data,
+    JWT_ACCESS_SECRET: result.data.JWT_ACCESS_SECRET ?? DEV_JWT_SECRET,
+    DATA_ENCRYPTION_KEY: result.data.DATA_ENCRYPTION_KEY ?? DEV_DATA_ENCRYPTION_KEY,
+  };
 }
 
 // Local convenience: load apps/api/.env when present (never in tests, never overrides real env).
