@@ -56,6 +56,20 @@ export const DEMO_USERS: DemoUser[] = [
     scope: { type: 'DEPARTMENT', institution: 'ABBS-ENG', department: 'CSE' },
   },
   {
+    email: 'group.hr@abbs.test',
+    name: 'ABBS Group HR',
+    organization: 'abbs',
+    role: 'group_hr',
+    scope: { type: 'GROUP', group: 'ABBS' },
+  },
+  {
+    email: 'eng.hr@abbs.test',
+    name: 'ABBS Engineering HR Manager',
+    organization: 'abbs',
+    role: 'hr_manager',
+    scope: { type: 'INSTITUTION', institution: 'ABBS-ENG' },
+  },
+  {
     email: 'admin@bcc.test',
     name: 'BCC Group Admin',
     organization: 'bcc',

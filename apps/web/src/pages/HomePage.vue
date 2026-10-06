@@ -6,7 +6,7 @@ import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
-const workspaces = computed(() => visibleMenu(WORKSPACES, auth.can));
+const workspaces = computed(() => visibleMenu(WORKSPACES, auth.can, auth.hasFeature));
 
 async function signOut() {
   await auth.logout();

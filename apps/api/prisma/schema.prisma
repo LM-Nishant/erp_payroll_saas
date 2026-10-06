@@ -111,6 +111,19 @@ model Organization {
   webhooks                Webhook[]
   webhookEvents           WebhookEvent[]
   integrationCredentials  IntegrationCredential[]
+  // Layer 6 HR
+  designations            Designation[]
+  employeeCodeSequences   EmployeeCodeSequence[]
+  employees               Employee[]
+  employeeProfiles        EmployeeProfile[]
+  employeePositions       EmployeePosition[]
+  employeeDepartments     EmployeeDepartment[]
+  employeeReportingLines  EmployeeReportingLine[]
+  employeeMovements       EmployeeMovement[]
+  employeeSalaryHistory   EmployeeSalaryHistory[]
+  employeeChecklistItems  EmployeeChecklistItem[]
+  employeeChangeRequests  EmployeeProfileChangeRequest[]
+  employeeImportJobs      EmployeeImportJob[]
 
   @@map("organizations")
 }
@@ -134,6 +147,8 @@ model Group {
   brandingProfiles BrandingProfile[]
   secrets          TenantSecret[]
   documents        Document[]
+
+  employees Employee[]
 
   @@unique([organizationId, code])
   @@index([organizationId, deletedAt])
@@ -168,6 +183,8 @@ model Institution {
   secrets          TenantSecret[]
   documents        Document[]
 
+  employees Employee[]
+
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
   @@index([organizationId, deletedAt])
@@ -195,6 +212,8 @@ model Campus {
   userScopes    UserScope[]
   documents     Document[]
 
+  employees Employee[]
+
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
   @@index([organizationId, deletedAt])
@@ -221,6 +240,8 @@ model Department {
   classSections ClassSection[]
   userScopes    UserScope[]
   documents     Document[]
+
+  employees Employee[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -354,6 +375,8 @@ model User {
   recoveryCodes MfaRecoveryCode[]
   tokens        UserToken[]
   auditLogs     AuditLog[]
+
+  employees Employee[]
 
   @@map("users")
 }
@@ -1741,4 +1764,417 @@ model IntegrationCredential {
 
   @@unique([organizationId, scopeType, targetId, provider, name])
   @@map("integration_credentials")
+}
+
+// ---------------------------------------------------------------------------------------------
+// Layer 6 — HR employee master
+// ---------------------------------------------------------------------------------------------
+
+enum EmploymentType {
+  TEACHING
+  NON_TEACHING
+  CONTRACT
+  VISITING
+}
+
+/// Lifecycle (SPEC §5): DRAFT → ONBOARDING → ACTIVE → ON_NOTICE → EXITED (→ rehire → ONBOARDING).
+enum EmployeeStatus {
+  DRAFT
+  ONBOARDING
+  ACTIVE
+  ON_NOTICE
+  EXITED
+}
+
+enum EmployeeMovementType {
+  TRANSFER
+  PROMOTION
+  DESIGNATION_CHANGE
+  DEPARTMENT_CHANGE
+  REPORTING_CHANGE
+  REHIRE
+}
+
+enum EmployeeMovementStatus {
+  PENDING_APPROVAL
+  SCHEDULED
+  APPLIED
+  REJECTED
+  CANCELLED
+}
+
+enum EmployeeChecklistKind {
+  ONBOARDING
+  EXIT
+}
+
+enum EmployeeChecklistStatus {
+  PENDING
+  DONE
+  WAIVED
+}
+
+enum EmployeeChangeRequestStatus {
+  PENDING_APPROVAL
+  APPLIED
+  REJECTED
+  CANCELLED
+}
+
+enum EmployeeImportStatus {
+  QUEUED
+  PROCESSING
+  COMPLETED
+  FAILED
+}
+
+/// Designation / position master. Both scope columns null = organization-wide designation.
+model Designation {
+  id             String          @id @default(uuid()) @db.Char(36)
+  organizationId String          @map("organization_id") @db.Char(36)
+  groupId        String?         @map("group_id") @db.Char(36)
+  institutionId  String?         @map("institution_id") @db.Char(36)
+  code           String          @db.VarChar(32)
+  name           String          @db.VarChar(200)
+  category       EmploymentType?
+  /// Grade / band rank (higher = more senior); used to label promotions.
+  level          Int?
+  description    String?         @db.VarChar(1000)
+  status         EntityStatus    @default(ACTIVE)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?       @map("deleted_at") @db.DateTime(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employees    Employee[]
+  positions    EmployeePosition[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, deletedAt])
+  @@map("designations")
+}
+
+/// Employee code numbering per institution (`scope_key` = institution id, or `default`).
+model EmployeeCodeSequence {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  scopeKey       String   @map("scope_key") @db.VarChar(36)
+  prefix         String   @db.VarChar(20)
+  padding        Int      @default(4)
+  nextNumber     Int      @default(1) @map("next_number")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, scopeKey])
+  @@map("employee_code_sequences")
+}
+
+/// Employee master with the CURRENT assignment (history lives in the employee_* history tables).
+model Employee {
+  id                 String         @id @default(uuid()) @db.Char(36)
+  organizationId     String         @map("organization_id") @db.Char(36)
+  employeeCode       String         @map("employee_code") @db.VarChar(40)
+  userId             String?        @map("user_id") @db.Char(36)
+  groupId            String?        @map("group_id") @db.Char(36)
+  institutionId      String         @map("institution_id") @db.Char(36)
+  campusId           String?        @map("campus_id") @db.Char(36)
+  departmentId       String?        @map("department_id") @db.Char(36)
+  designationId      String?        @map("designation_id") @db.Char(36)
+  reportingManagerId String?        @map("reporting_manager_id") @db.Char(36)
+  employmentType     EmploymentType @map("employment_type")
+  status             EmployeeStatus @default(DRAFT)
+  firstName          String         @map("first_name") @db.VarChar(100)
+  middleName         String?        @map("middle_name") @db.VarChar(100)
+  lastName           String?        @map("last_name") @db.VarChar(100)
+  displayName        String         @map("display_name") @db.VarChar(200)
+  workEmail          String?        @map("work_email") @db.VarChar(254)
+  workPhone          String?        @map("work_phone") @db.VarChar(32)
+  dateOfJoining      DateTime?      @map("date_of_joining") @db.Date
+  probationEndDate   DateTime?      @map("probation_end_date") @db.Date
+  confirmationDate   DateTime?      @map("confirmation_date") @db.Date
+  noticePeriodDays   Int?           @map("notice_period_days")
+  resignationDate    DateTime?      @map("resignation_date") @db.Date
+  lastWorkingDate    DateTime?      @map("last_working_date") @db.Date
+  exitDate           DateTime?      @map("exit_date") @db.Date
+  exitType           String?        @map("exit_type") @db.VarChar(32)
+  exitReason         String?        @map("exit_reason") @db.VarChar(1000)
+  rehireCount        Int            @default(0) @map("rehire_count")
+  createdAt          DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt          DateTime?      @map("deleted_at") @db.DateTime(3)
+
+  organization     Organization                   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user             User?                          @relation(fields: [userId], references: [id], onDelete: Restrict)
+  group            Group?                         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution      Institution                    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus           Campus?                        @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department       Department?                    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  designation      Designation?                   @relation(fields: [designationId], references: [id], onDelete: Restrict)
+  reportingManager Employee?                      @relation("EmployeeReportingManager", fields: [reportingManagerId], references: [id], onDelete: Restrict)
+  directReports    Employee[]                     @relation("EmployeeReportingManager")
+  profile          EmployeeProfile?
+  positions        EmployeePosition[]
+  departments      EmployeeDepartment[]
+  reportingLines   EmployeeReportingLine[]        @relation("ReportingLineEmployee")
+  managedLines     EmployeeReportingLine[]        @relation("ReportingLineManager")
+  movements        EmployeeMovement[]
+  salaryHistory    EmployeeSalaryHistory[]
+  checklistItems   EmployeeChecklistItem[]
+  changeRequests   EmployeeProfileChangeRequest[]
+
+  @@unique([organizationId, employeeCode])
+  @@unique([organizationId, userId])
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, groupId])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, reportingManagerId])
+  @@index([organizationId, deletedAt])
+  @@map("employees")
+}
+
+/// Personal profile. Statutory ids + bank details are ONE envelope-encrypted JSON blob
+/// (core/secrets, AAD = org + employee); only masks and keyed blind indexes are stored in clear.
+model EmployeeProfile {
+  id                   String    @id @default(uuid()) @db.Char(36)
+  organizationId       String    @map("organization_id") @db.Char(36)
+  employeeId           String    @unique @map("employee_id") @db.Char(36)
+  dateOfBirth          DateTime? @map("date_of_birth") @db.Date
+  gender               String?   @db.VarChar(16)
+  maritalStatus        String?   @map("marital_status") @db.VarChar(16)
+  bloodGroup           String?   @map("blood_group") @db.VarChar(8)
+  nationality          String?   @db.VarChar(64)
+  personalEmail        String?   @map("personal_email") @db.VarChar(254)
+  personalPhone        String?   @map("personal_phone") @db.VarChar(32)
+  addresses            Json?
+  emergencyContacts    Json?     @map("emergency_contacts")
+  family               Json?
+  qualifications       Json?
+  experience           Json?
+  sensitiveCiphertext  String?   @map("sensitive_ciphertext") @db.Text
+  sensitiveWrappedKey  String?   @map("sensitive_wrapped_key") @db.VarChar(512)
+  sensitiveKeyVersion  Int?      @map("sensitive_key_version")
+  sensitiveKeyProvider String?   @map("sensitive_key_provider") @db.VarChar(32)
+  /// Masked display values (e.g. `••••••1234F`) — safe to return by default.
+  sensitiveMasked      Json?     @map("sensitive_masked")
+  panIndex             String?   @map("pan_index") @db.VarChar(64)
+  aadhaarIndex         String?   @map("aadhaar_index") @db.VarChar(64)
+  createdAt            DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, panIndex])
+  @@unique([organizationId, aadhaarIndex])
+  @@map("employee_profiles")
+}
+
+/// Designation / position history (effective-dated; open row has effective_to = null).
+model EmployeePosition {
+  id             String         @id @default(uuid()) @db.Char(36)
+  organizationId String         @map("organization_id") @db.Char(36)
+  employeeId     String         @map("employee_id") @db.Char(36)
+  groupId        String?        @map("group_id") @db.Char(36)
+  institutionId  String         @map("institution_id") @db.Char(36)
+  designationId  String?        @map("designation_id") @db.Char(36)
+  employmentType EmploymentType @map("employment_type")
+  effectiveFrom  DateTime       @map("effective_from") @db.Date
+  effectiveTo    DateTime?      @map("effective_to") @db.Date
+  reason         String?        @db.VarChar(500)
+  movementId     String?        @map("movement_id") @db.Char(36)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  designation  Designation? @relation(fields: [designationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, effectiveFrom])
+  @@index([organizationId, institutionId])
+  @@map("employee_positions")
+}
+
+/// Department / institution assignment history, including secondary departments.
+model EmployeeDepartment {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  employeeId     String    @map("employee_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  campusId       String?   @map("campus_id") @db.Char(36)
+  departmentId   String?   @map("department_id") @db.Char(36)
+  isPrimary      Boolean   @default(true) @map("is_primary")
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  movementId     String?   @map("movement_id") @db.Char(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, effectiveFrom])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, departmentId])
+  @@map("employee_departments")
+}
+
+/// Reporting manager history.
+model EmployeeReportingLine {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  employeeId     String    @map("employee_id") @db.Char(36)
+  managerId      String    @map("manager_id") @db.Char(36)
+  effectiveFrom  DateTime  @map("effective_from") @db.Date
+  effectiveTo    DateTime? @map("effective_to") @db.Date
+  movementId     String?   @map("movement_id") @db.Char(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation("ReportingLineEmployee", fields: [employeeId], references: [id], onDelete: Restrict)
+  manager      Employee     @relation("ReportingLineManager", fields: [managerId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, effectiveFrom])
+  @@index([organizationId, managerId])
+  @@map("employee_reporting_lines")
+}
+
+/// Transfer / promotion / designation, department or reporting change (effective-dated).
+/// `from_*` columns snapshot the assignment before the movement.
+model EmployeeMovement {
+  id                     String                 @id @default(uuid()) @db.Char(36)
+  organizationId         String                 @map("organization_id") @db.Char(36)
+  employeeId             String                 @map("employee_id") @db.Char(36)
+  type                   EmployeeMovementType
+  status                 EmployeeMovementStatus @default(PENDING_APPROVAL)
+  effectiveDate          DateTime               @map("effective_date") @db.Date
+  fromGroupId            String?                @map("from_group_id") @db.Char(36)
+  fromInstitutionId      String                 @map("from_institution_id") @db.Char(36)
+  fromCampusId           String?                @map("from_campus_id") @db.Char(36)
+  fromDepartmentId       String?                @map("from_department_id") @db.Char(36)
+  fromDesignationId      String?                @map("from_designation_id") @db.Char(36)
+  fromReportingManagerId String?                @map("from_reporting_manager_id") @db.Char(36)
+  toGroupId              String?                @map("to_group_id") @db.Char(36)
+  toInstitutionId        String                 @map("to_institution_id") @db.Char(36)
+  toCampusId             String?                @map("to_campus_id") @db.Char(36)
+  toDepartmentId         String?                @map("to_department_id") @db.Char(36)
+  toDesignationId        String?                @map("to_designation_id") @db.Char(36)
+  toReportingManagerId   String?                @map("to_reporting_manager_id") @db.Char(36)
+  reason                 String?                @db.VarChar(1000)
+  workflowInstanceId     String?                @map("workflow_instance_id") @db.Char(36)
+  requestedByUserId      String?                @map("requested_by_user_id") @db.Char(36)
+  decidedComment         String?                @map("decided_comment") @db.VarChar(1000)
+  appliedAt              DateTime?              @map("applied_at") @db.DateTime(3)
+  createdAt              DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime               @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, effectiveDate])
+  @@index([organizationId, status, effectiveDate])
+  @@index([organizationId, fromInstitutionId])
+  @@index([organizationId, toInstitutionId])
+  @@map("employee_movements")
+}
+
+/// Effective-dated salary / CTC revisions. IMMUTABLE (DB triggers): a revision is a new row.
+/// Layer 8 (payroll) sets `salary_structure_id` and reads `amounts` (component → amount).
+model EmployeeSalaryHistory {
+  id                String   @id @default(uuid()) @db.Char(36)
+  organizationId    String   @map("organization_id") @db.Char(36)
+  employeeId        String   @map("employee_id") @db.Char(36)
+  groupId           String?  @map("group_id") @db.Char(36)
+  institutionId     String   @map("institution_id") @db.Char(36)
+  effectiveFrom     DateTime @map("effective_from") @db.Date
+  currency          String   @default("INR") @db.VarChar(3)
+  annualCtc         Decimal  @map("annual_ctc") @db.Decimal(14, 2)
+  /// Free-form component amounts, e.g. `{ "basic": 30000, "hra": 12000 }` (monthly).
+  amounts           Json
+  salaryStructureId String?  @map("salary_structure_id") @db.VarChar(64)
+  revisionReason    String   @map("revision_reason") @db.VarChar(500)
+  previousId        String?  @map("previous_id") @db.Char(36)
+  createdByUserId   String?  @map("created_by_user_id") @db.Char(36)
+  createdAt         DateTime @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, effectiveFrom])
+  @@index([organizationId, institutionId])
+  @@map("employee_salary_history")
+}
+
+/// Onboarding / exit checklist tasks. `source` = `default`, `manual` or a hook key
+/// (e.g. `assets.recovery` registered by the asset module).
+model EmployeeChecklistItem {
+  id                String                  @id @default(uuid()) @db.Char(36)
+  organizationId    String                  @map("organization_id") @db.Char(36)
+  employeeId        String                  @map("employee_id") @db.Char(36)
+  kind              EmployeeChecklistKind
+  key               String                  @db.VarChar(64)
+  title             String                  @db.VarChar(200)
+  source            String                  @default("default") @db.VarChar(64)
+  status            EmployeeChecklistStatus @default(PENDING)
+  notes             String?                 @db.VarChar(1000)
+  completedAt       DateTime?               @map("completed_at") @db.DateTime(3)
+  completedByUserId String?                 @map("completed_by_user_id") @db.Char(36)
+  createdAt         DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeId, kind, key])
+  @@map("employee_checklist_items")
+}
+
+/// Employee self-service profile change request (workflow `employee_profile_change`).
+model EmployeeProfileChangeRequest {
+  id                 String                      @id @default(uuid()) @db.Char(36)
+  organizationId     String                      @map("organization_id") @db.Char(36)
+  employeeId         String                      @map("employee_id") @db.Char(36)
+  status             EmployeeChangeRequestStatus @default(PENDING_APPROVAL)
+  /// Requested personal field values (non-sensitive fields only).
+  changes            Json
+  reason             String?                     @db.VarChar(1000)
+  workflowInstanceId String?                     @map("workflow_instance_id") @db.Char(36)
+  requestedByUserId  String?                     @map("requested_by_user_id") @db.Char(36)
+  decidedComment     String?                     @map("decided_comment") @db.VarChar(1000)
+  appliedAt          DateTime?                   @map("applied_at") @db.DateTime(3)
+  createdAt          DateTime                    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime                    @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, status])
+  @@map("employee_profile_change_requests")
+}
+
+/// CSV bulk import run (queue job `hr.employee_import`) with its validation report.
+model EmployeeImportJob {
+  id                String               @id @default(uuid()) @db.Char(36)
+  organizationId    String               @map("organization_id") @db.Char(36)
+  status            EmployeeImportStatus @default(QUEUED)
+  fileName          String               @map("file_name") @db.VarChar(255)
+  dryRun            Boolean              @default(false) @map("dry_run")
+  /// Raw CSV (bounded by the upload limit); cleared once processed.
+  input             String?              @db.MediumText
+  totalRows         Int                  @default(0) @map("total_rows")
+  createdCount      Int                  @default(0) @map("created_count")
+  errorCount        Int                  @default(0) @map("error_count")
+  /// `[{ row, employeeCode?, errors: [{ field, message }] , employeeId? }]`
+  report            Json?
+  requestedByUserId String?              @map("requested_by_user_id") @db.Char(36)
+  startedAt         DateTime?            @map("started_at") @db.DateTime(3)
+  completedAt       DateTime?            @map("completed_at") @db.DateTime(3)
+  createdAt         DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@map("employee_import_jobs")
 }

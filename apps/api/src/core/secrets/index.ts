@@ -10,3 +10,4 @@ export {
   secretsService,
   type GetSecretOptions,
 } from './secrets.service';
+export * from './field-encryption';

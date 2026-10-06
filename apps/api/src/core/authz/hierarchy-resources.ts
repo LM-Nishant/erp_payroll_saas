@@ -33,4 +33,16 @@ export const hierarchyResource = {
     departmentId: s.departmentId,
     campusId: s.campusId,
   }),
+  /** HR employee — current assignment (Layer 6). */
+  employee: (e: {
+    groupId: string | null;
+    institutionId: string;
+    campusId: string | null;
+    departmentId: string | null;
+  }): ResourceScope => ({
+    groupId: e.groupId,
+    institutionId: e.institutionId,
+    campusId: e.campusId,
+    departmentId: e.departmentId,
+  }),
 };

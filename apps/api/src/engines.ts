@@ -10,3 +10,4 @@ import './core/notifications';
 import './core/workflow';
 import './core/integrations';
 import './core/jobs/documents';
+import './modules/employees/employees.registrations';

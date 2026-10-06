@@ -34,7 +34,10 @@ const INSTITUTION_ADMIN = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('campus', 'department', 'program', 'class_section'),
   'institution.update',
-  ...pick('user', 'student', 'employee', 'asset', 'document', 'message'),
+  ...pick('user', 'student', 'employee', 'asset', 'document', 'message').filter(
+    (c) => c !== 'employee.view_sensitive',
+  ),
+  'designation.view',
   'role.view',
   'audit.view',
   'payroll.view',
@@ -64,10 +67,11 @@ const GROUP_ADMIN = [
 const HR = [
   ...ACADEMIC_STRUCTURE_VIEW,
   'workflow.view',
-  ...pick('employee', 'document'),
+  ...pick('employee', 'document', 'designation'),
   'pdf.generate',
   'user.view',
   'salary.view',
+  'salary.update',
   'payroll.view',
   'message.send',
   'ai.use',
@@ -80,6 +84,7 @@ const FINANCE = [
   'payroll.lock',
   'salary.view',
   'employee.view',
+  'designation.view',
   'document.view',
   'document.download',
   'asset.view',
@@ -117,6 +122,13 @@ const TEACHING = [
  * never every document of their institution.
  */
 const SELF_SERVICE = ['organization.view', 'document.view_own', 'ai.use'] as PermissionCode[];
+
+/** Employee self-service adds the own-profile APIs (`/employees/me`). */
+const EMPLOYEE_SELF_SERVICE = [
+  ...SELF_SERVICE,
+  'employee.view_own',
+  'employee.update_own',
+] as PermissionCode[];
 
 export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
   [
@@ -319,7 +331,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Employee',
       description: 'Employee self-service',
       typicalScope: 'INSTITUTION',
-      permissions: SELF_SERVICE,
+      permissions: EMPLOYEE_SELF_SERVICE,
     },
   ] satisfies DefaultRoleDefinition[]
 ).map((r) => ({ ...r, permissions: [...new Set(r.permissions)] }));

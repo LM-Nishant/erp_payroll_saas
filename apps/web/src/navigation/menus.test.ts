@@ -37,4 +37,17 @@ describe('visibleMenu', () => {
     );
     expect(visible.map((i) => i.title)).toEqual(['Dashboard', 'Students']);
   });
+
+  it('shows the HR workspace only with employee.view and the hr module', () => {
+    const perms = new Set(['employee.view', 'designation.view']);
+    const can = (p?: string) => !p || perms.has(p);
+    const withHr = (f?: string) => !f || f === 'hr';
+    expect(visibleMenu(WORKSPACES, can, withHr).map((w) => w.layout)).toContain('hr');
+    expect(visibleMenu(WORKSPACES, can, (f) => !f).map((w) => w.layout)).not.toContain('hr');
+    expect(visibleMenu(MENUS.hr, can, withHr).map((i) => i.title)).toEqual([
+      'Employees',
+      'Designations',
+      'Approvals',
+    ]);
+  });
 });

@@ -113,6 +113,7 @@ describe.skipIf(!hasTestDatabase)('module licensing + subscriptions', () => {
     await bccAdmin.get('/api/v1/programs').expect(200);
     const audit = await prisma.auditLog.findFirst({
       where: { organizationId: orgIds.bcc, action: 'subscription.update' },
+      orderBy: { createdAt: 'desc' },
     });
     expect(audit).toMatchObject({ actorType: 'platform', reason: REASON });
     // Tenant users cannot change plans.

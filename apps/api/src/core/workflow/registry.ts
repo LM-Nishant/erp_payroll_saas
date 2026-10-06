@@ -23,7 +23,7 @@ export interface WorkflowInstanceRef {
   groupId: string | null;
   departmentId: string | null;
   context: Record<string, unknown>;
-  /** Comment of the deciding action (reject / send back). */
+  /** Comment of the deciding action (final approve / reject / send back). */
   comment?: string | null;
 }
 

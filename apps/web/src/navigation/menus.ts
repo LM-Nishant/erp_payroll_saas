@@ -10,7 +10,7 @@ export interface MenuItem {
   feature?: FeatureKey;
 }
 
-export type LayoutKey = 'platform' | 'group' | 'institution' | 'employee';
+export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee';
 
 /**
  * Menus are data-driven and filtered by the permissions AND enabled modules (features) returned
@@ -113,8 +113,39 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'branding.view',
     },
   ],
+  hr: [
+    {
+      title: 'Employees',
+      icon: 'mdi-badge-account',
+      to: '/hr/employees',
+      permission: 'employee.view',
+      feature: 'hr',
+    },
+    {
+      title: 'Designations',
+      icon: 'mdi-briefcase-variant',
+      to: '/hr/designations',
+      permission: 'designation.view',
+      feature: 'hr',
+    },
+    { title: 'Approvals', icon: 'mdi-check-decagram', to: '/hr/approvals' },
+    {
+      title: 'Documents',
+      icon: 'mdi-file-document-multiple',
+      to: '/hr/documents',
+      permission: 'document.view',
+      feature: 'documents',
+    },
+  ],
   employee: [
     { title: 'Home', icon: 'mdi-account', to: '/employee' },
+    {
+      title: 'My profile',
+      icon: 'mdi-card-account-details',
+      to: '/employee/profile',
+      permission: 'employee.view_own',
+      feature: 'hr',
+    },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/employee/approvals' },
     {
       title: 'Documents',
@@ -142,6 +173,14 @@ export const WORKSPACES: Array<MenuItem & { layout: LayoutKey }> = [
     to: '/institution',
     icon: 'mdi-school',
     permission: 'institution.view',
+  },
+  {
+    layout: 'hr',
+    title: 'HR',
+    to: '/hr',
+    icon: 'mdi-badge-account',
+    permission: 'employee.view',
+    feature: 'hr',
   },
   { layout: 'employee', title: 'Employee', to: '/employee', icon: 'mdi-account' },
 ];

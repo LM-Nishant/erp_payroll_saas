@@ -58,6 +58,19 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'Webhook',
   'WebhookEvent',
   'IntegrationCredential',
+  // HR employee master (Layer 6)
+  'Designation',
+  'EmployeeCodeSequence',
+  'Employee',
+  'EmployeeProfile',
+  'EmployeePosition',
+  'EmployeeDepartment',
+  'EmployeeReportingLine',
+  'EmployeeMovement',
+  'EmployeeSalaryHistory',
+  'EmployeeChecklistItem',
+  'EmployeeProfileChangeRequest',
+  'EmployeeImportJob',
 ]);
 
 /**
@@ -85,6 +98,8 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'OrganizationMembership',
   'Role',
   'Document',
+  'Designation',
+  'Employee',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */
