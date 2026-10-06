@@ -1,0 +1,229 @@
+// Education ERP — Prisma schema (MySQL 8)
+//
+// Conventions (binding for all layers, see docs/ARCHITECTURE.md):
+//  * Primary keys are UUID v4 strings stored as CHAR(36).
+//  * Every tenant-owned table carries `organization_id` (the tenant id) plus the
+//    hierarchy FKs relevant to it, and is indexed on (organization_id, ...).
+//  * All tables have created_at / updated_at; business tables are soft-deleted via deleted_at.
+//  * Table & column names are snake_case (@@map / @map); Prisma fields are camelCase.
+//  * Any new tenant-owned model MUST be registered in src/core/tenancy/tenant-models.ts.
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "mysql"
+  url      = env("DATABASE_URL")
+}
+
+enum EntityStatus {
+  ACTIVE
+  INACTIVE
+}
+
+enum OrganizationStatus {
+  ACTIVE
+  SUSPENDED
+  ARCHIVED
+}
+
+enum InstitutionType {
+  SCHOOL
+  COLLEGE
+  UNIVERSITY
+  INSTITUTE
+}
+
+enum ProgramLevel {
+  PRE_PRIMARY
+  PRIMARY
+  SECONDARY
+  HIGHER_SECONDARY
+  DIPLOMA
+  UNDERGRADUATE
+  POSTGRADUATE
+  DOCTORATE
+  CERTIFICATE
+  OTHER
+}
+
+/// Platform tenant root. One organization = one SaaS customer (an education group,
+/// an education society, or an independent institution). Not tenant-scoped itself.
+model Organization {
+  id        String             @id @default(uuid()) @db.Char(36)
+  name      String             @db.VarChar(200)
+  slug      String             @unique @db.VarChar(64)
+  status    OrganizationStatus @default(ACTIVE)
+  createdAt DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
+
+  groups         Group[]
+  institutions   Institution[]
+  campuses       Campus[]
+  departments    Department[]
+  programs       Program[]
+  classSections  ClassSection[]
+
+  @@map("organizations")
+}
+
+/// Education group (e.g. "ABBS Group") owning multiple institutions.
+model Group {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @map("organization_id") @db.Char(36)
+  name           String       @db.VarChar(200)
+  code           String       @db.VarChar(32)
+  description    String?      @db.VarChar(1000)
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institutions Institution[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, deletedAt])
+  @@map("groups")
+}
+
+/// School / college / university. `groupId` is null for independent institutions.
+model Institution {
+  id             String          @id @default(uuid()) @db.Char(36)
+  organizationId String          @map("organization_id") @db.Char(36)
+  groupId        String?         @map("group_id") @db.Char(36)
+  name           String          @db.VarChar(200)
+  code           String          @db.VarChar(32)
+  type           InstitutionType @default(COLLEGE)
+  status         EntityStatus    @default(ACTIVE)
+  email          String?         @db.VarChar(200)
+  phone          String?         @db.VarChar(32)
+  address        String?         @db.VarChar(500)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?       @map("deleted_at") @db.DateTime(3)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group         Group?         @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  campuses      Campus[]
+  departments   Department[]
+  programs      Program[]
+  classSections ClassSection[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, groupId])
+  @@index([organizationId, deletedAt])
+  @@index([groupId])
+  @@map("institutions")
+}
+
+model Campus {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @map("organization_id") @db.Char(36)
+  institutionId  String       @map("institution_id") @db.Char(36)
+  name           String       @db.VarChar(200)
+  code           String       @db.VarChar(32)
+  address        String?      @db.VarChar(500)
+  isMain         Boolean      @default(false) @map("is_main")
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  departments   Department[]
+  classSections ClassSection[]
+
+  @@unique([institutionId, code])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, deletedAt])
+  @@map("campuses")
+}
+
+model Department {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @map("organization_id") @db.Char(36)
+  institutionId  String       @map("institution_id") @db.Char(36)
+  campusId       String?      @map("campus_id") @db.Char(36)
+  name           String       @db.VarChar(200)
+  code           String       @db.VarChar(32)
+  description    String?      @db.VarChar(1000)
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus        Campus?        @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  programs      Program[]
+  classSections ClassSection[]
+
+  @@unique([institutionId, code])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, campusId])
+  @@index([organizationId, deletedAt])
+  @@map("departments")
+}
+
+/// Program / course offered by a department (e.g. B.Sc Computer Science, Grade 10).
+model Program {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @map("organization_id") @db.Char(36)
+  institutionId  String       @map("institution_id") @db.Char(36)
+  departmentId   String       @map("department_id") @db.Char(36)
+  name           String       @db.VarChar(200)
+  code           String       @db.VarChar(32)
+  level          ProgramLevel @default(UNDERGRADUATE)
+  durationMonths Int?         @map("duration_months")
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  department    Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  classSections ClassSection[]
+
+  @@unique([institutionId, code])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, deletedAt])
+  @@map("programs")
+}
+
+/// Class / section / batch within a program (e.g. "BSc CS 2025 - Section A").
+model ClassSection {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @map("organization_id") @db.Char(36)
+  institutionId  String       @map("institution_id") @db.Char(36)
+  departmentId   String       @map("department_id") @db.Char(36)
+  programId      String       @map("program_id") @db.Char(36)
+  campusId       String?      @map("campus_id") @db.Char(36)
+  name           String       @db.VarChar(200)
+  code           String       @db.VarChar(32)
+  academicYear   String?      @map("academic_year") @db.VarChar(9)
+  capacity       Int?
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program      Program      @relation(fields: [programId], references: [id], onDelete: Restrict)
+  campus       Campus?      @relation(fields: [campusId], references: [id], onDelete: Restrict)
+
+  @@unique([programId, code, academicYear])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, programId])
+  @@index([organizationId, campusId])
+  @@index([organizationId, deletedAt])
+  @@map("class_sections")
+}
