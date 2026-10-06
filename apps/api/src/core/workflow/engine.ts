@@ -249,13 +249,13 @@ async function emitStatus(instance: WorkflowInstance, eventKey: string, comment?
   );
 }
 
-async function finish(instance: WorkflowInstance) {
+async function finish(instance: WorkflowInstance, comment?: string | null) {
   const db = tenantDb();
   const updated = await db.workflowInstance.update({
     where: { id: instance.id },
     data: { status: 'APPROVED', completedAt: now(), currentStepOrder: null },
   });
-  await getWorkflowEntity(updated.entityType)?.onApproved?.(toRef(updated));
+  await getWorkflowEntity(updated.entityType)?.onApproved?.(toRef(updated, comment));
   await audit.record({
     action: 'workflow_instance.approved',
     entityType: 'workflow_instance',
@@ -272,7 +272,12 @@ async function finish(instance: WorkflowInstance) {
  * (or with no resolvable approvers and `skipIfNoApprovers`) are SKIPPED. Without approvers the
  * step falls back to workflow administrators (`workflow.manage` covering the subject).
  */
-async function advance(instance: WorkflowInstance, fromOrder: number): Promise<WorkflowInstance> {
+async function advance(
+  instance: WorkflowInstance,
+  fromOrder: number,
+  /** Comment of the approving action, handed to `onApproved` when this completes the flow. */
+  comment?: string | null,
+): Promise<WorkflowInstance> {
   const db = tenantDb();
   const steps = await db.workflowStepInstance.findMany({
     where: { instanceId: instance.id, order: { gte: fromOrder } },
@@ -349,7 +354,7 @@ async function advance(instance: WorkflowInstance, fromOrder: number): Promise<W
     await notifyAssignees(updated, activated, approvers);
     return updated;
   }
-  return finish(instance);
+  return finish(instance, comment);
 }
 
 async function createSteps(instance: WorkflowInstance, steps: WorkflowStepInput[]) {
@@ -573,7 +578,7 @@ export async function actOnWorkflow(
       where: { stepInstanceId: step.id, status: 'PENDING' },
       data: { status: 'SUPERSEDED' },
     });
-    return advance(instance, step.order + 1);
+    return advance(instance, step.order + 1, input.comment);
   }
 
   // reject / send back end the instance.

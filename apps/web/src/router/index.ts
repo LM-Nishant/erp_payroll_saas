@@ -159,10 +159,57 @@ export const routes: RouteRecordRaw[] = [
     ],
   },
   {
+    path: '/hr',
+    component: () => import('@/layouts/HrLayout.vue'),
+    meta: { permission: 'employee.view', feature: 'hr' },
+    children: [
+      { path: '', redirect: { name: 'hr-employees' } },
+      {
+        path: 'employees',
+        name: 'hr-employees',
+        component: () => import('@/pages/hr/EmployeesPage.vue'),
+      },
+      {
+        path: 'employees/:id',
+        name: 'hr-employee',
+        props: true,
+        component: () => import('@/pages/hr/EmployeeDetailPage.vue'),
+      },
+      {
+        path: 'designations',
+        name: 'hr-designations',
+        meta: { permission: 'designation.view' },
+        component: () => import('@/pages/hr/DesignationsPage.vue'),
+      },
+      {
+        path: 'documents',
+        name: 'hr-documents',
+        meta: { permission: 'document.view', feature: 'documents' },
+        component: () => import('@/pages/DocumentsPage.vue'),
+      },
+      {
+        path: 'notifications',
+        name: 'hr-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+      {
+        path: 'approvals',
+        name: 'hr-approvals',
+        component: () => import('@/pages/ApprovalsPage.vue'),
+      },
+    ],
+  },
+  {
     path: '/employee',
     component: () => import('@/layouts/EmployeeLayout.vue'),
     children: [
       { path: '', name: 'employee-home', ...placeholder('Employee home') },
+      {
+        path: 'profile',
+        name: 'employee-profile',
+        meta: { permission: 'employee.view_own', feature: 'hr' },
+        component: () => import('@/pages/hr/MyEmployeeProfilePage.vue'),
+      },
       {
         path: 'notifications',
         name: 'employee-notifications',

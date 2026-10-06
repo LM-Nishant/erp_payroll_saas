@@ -75,3 +75,32 @@ export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise
     throw err;
   }
 }
+
+/**
+ * Authenticated file download (e.g. CSV exports): fetches the body as a blob and saves it via a
+ * temporary object URL. Errors surface as `ApiError` like `apiFetch`.
+ */
+export async function apiDownload(path: string, fileName: string): Promise<void> {
+  const send = (token?: string | null) => {
+    const headers = new Headers();
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return fetch(`${BASE_URL}${path}`, { headers, credentials: 'include' });
+  };
+  let res = await send(hooks?.accessToken());
+  if (res.status === 401 && hooks && (await hooks.refresh())) res = await send(hooks.accessToken());
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new ApiError(
+      res.status,
+      body?.error.code ?? 'HTTP_ERROR',
+      body?.error.message ?? res.statusText,
+      body?.error.details,
+    );
+  }
+  const url = URL.createObjectURL(await res.blob());
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = fileName;
+  a.click();
+  URL.revokeObjectURL(url);
+}

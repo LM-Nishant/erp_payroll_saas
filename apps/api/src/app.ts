@@ -38,6 +38,7 @@ import {
 } from './modules/communication/communication.routes';
 import { classSectionsRouter } from './modules/class-sections/class-sections.routes';
 import { documentsRouter } from './modules/documents/documents.routes';
+import { designationsRouter, employeesRouter } from './modules/employees/employees.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -141,6 +142,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   // Module-gated routes: 403 FEATURE_DISABLED when the module is not licensed / enabled.
   api.use('/programs', requireFeature('education'), programsRouter);
   api.use('/class-sections', requireFeature('education'), classSectionsRouter);
+  api.use('/employees', requireFeature('hr'), employeesRouter);
+  api.use('/designations', requireFeature('hr'), designationsRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
   api.use('/permissions', permissionsRouter);

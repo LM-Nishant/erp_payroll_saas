@@ -668,7 +668,119 @@ admins per their scope). Feature keys: `communication`, `email`, `sms`, `whatsap
 5. Background work uses `defineJob`/`enqueue` with `organizationId` in the payload; register
    jobs from a module imported by `engines.ts`.
 
-## 9. Frontend (apps/web)
+## 9. HR employee master (Layer 6)
+
+Module: `apps/api/src/modules/employees` (routes under `/api/v1/employees` and
+`/api/v1/designations`), registered from `employees.registrations.ts` which is imported by
+`src/engines.ts`. Every route is behind `requireFeature('hr')`. Shared zod schemas / DTOs live
+in `@erp/shared` (`schemas/hr.ts`, `types/hr.ts`).
+
+### 9.1 Data model
+
+| Table                                                                    | Purpose                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `employees`                                                              | Current assignment (denormalized `groupId/institutionId/campusId/departmentId`, `designationId`, `reportingManagerId`), `employeeCode` (unique per org), `employmentType` (TEACHING / NON_TEACHING / CONTRACT / VISITING), `status` (DRAFT → ONBOARDING → ACTIVE → ON_NOTICE → EXITED), joining / probation / confirmation / resignation / exit dates, optional `userId`. |
+| `employee_profiles`                                                      | Personal fields (`employeePersonalSchema`: contacts, addresses, family, qualifications, experience as JSON) + envelope-encrypted `sensitive*` columns + `sensitiveMasked` + PAN / Aadhaar blind indexes (`panIndex`, `aadhaarIndex`, unique per org).                                                                                                                     |
+| `designations`                                                           | Position master; org-wide, group-level or institution-level.                                                                                                                                                                                                                                                                                                              |
+| `employee_positions`, `employee_departments`, `employee_reporting_lines` | **Effective-dated history** (`effectiveFrom`, `effectiveTo` null = open). Departments carry `isPrimary` (secondary departments are extra open rows).                                                                                                                                                                                                                      |
+| `employee_movements`                                                     | Transfer / promotion / designation / department / reporting change requests (PENDING_APPROVAL → SCHEDULED → APPLIED, or REJECTED / CANCELLED). Transfers stay inside the employee's organization/group.                                                                                                                                                                   |
+| `employee_salary_history`                                                | Immutable salary revisions (DB triggers reject UPDATE / DELETE).                                                                                                                                                                                                                                                                                                          |
+| `employee_checklist_items`                                               | Onboarding / exit checklist (PENDING / DONE / WAIVED).                                                                                                                                                                                                                                                                                                                    |
+| `employee_profile_change_requests`                                       | Self-service change requests.                                                                                                                                                                                                                                                                                                                                             |
+| `employee_code_sequences`                                                | Per-institution (or org default) numbering: `prefix + zero-padded nextNumber`.                                                                                                                                                                                                                                                                                            |
+
+History rows are never rewritten when an employee moves: the open row is closed
+(`effectiveTo = effectiveFrom(new) - 1 day`) and a new row is opened, so historical rows keep
+the **old** institution / department ids (acceptance 8-9). Dates are `@db.Date`, exchanged as
+`YYYY-MM-DD`.
+
+### 9.2 Lookup helpers for later layers
+
+```ts
+import { employeeAssignmentAsOf, employeeIdsForUser } from '../employees/employees.assignment';
+import { salaryAsOf } from '../employees/employees.salary';
+
+await employeeAssignmentAsOf(employeeId, '2026-03-31');
+// → { groupId, institutionId, campusId, departmentId, secondaryDepartmentIds, designationId,
+//     employmentType, reportingManagerId, asOf } | null (not employed that day)
+await salaryAsOf(employeeId, '2026-03-31'); // latest revision with effectiveFrom ≤ date | null
+await employeeIdsForUser(userId); // employees linked to a login (normally 0/1)
+```
+
+- Use `employeeAssignmentAsOf` (not the denormalized `employees` columns) whenever a date
+  matters: attendance/leave approver routing for a past day, payroll institution attribution
+  for a period that spans a transfer.
+- Authorization: load with `loadVisibleEmployee(id)` / `loadEmployeeFor(id, permission)` from
+  `employees.service.ts`; they authorize against the employee's current hierarchy
+  (`hierarchyResource('employee', …)`), so Group HR (`group_hr` at a group) sees all
+  institutions in the group and `hr_manager` at an institution sees only that institution.
+
+### 9.3 Salary history extension points (Layer 8)
+
+`employee_salary_history` rows carry `effectiveFrom`, `annualCtc`, `currency`, `amounts`
+(free-form `{ component: monthlyAmount }` JSON), nullable `salaryStructureId` (string ref —
+payroll attaches its structure id), `revisionReason`, `previousId` (chain to the prior revision).
+Rows are immutable; a correction is a new revision. Create through
+`POST /employees/:id/salary` (`salary.update`; emits `employee.salary_revised`).
+Payroll should resolve the structure via `salaryAsOf()` and must not edit history rows.
+
+### 9.4 Lifecycle, workflow & hooks
+
+- Lifecycle endpoints: `POST /employees/:id/{onboard,activate,confirm,resign,withdraw-resignation,exit,rehire}`
+  (`employee.lifecycle`). Creating (and rehiring) an employee consumes the `employees` limit
+  (`withLimit('employees', 1, …)`); deleting a draft or exiting releases it;
+  `registerUsageSource('employees', …)` counts non-exited employees.
+- Checklists: `registerChecklistHook(kind, { key, title })` / `registerExitChecklistHook(...)`
+  add items to every new ONBOARDING / EXIT checklist (e.g. a future assets module registers
+  `asset_recovery` and calls `completeChecklistItem` when assets are returned).
+- Workflow entities: `employee_transfer` (movements) and `employee_profile_change`
+  (self-service). When no ACTIVE definition exists the request auto-applies. Future-dated
+  approved movements become SCHEDULED and are applied by the daily job
+  `hr.apply_scheduled_movements`.
+- `registerReportingManagerResolver(reportingManagerUserIds)`: `levels` = how many managers
+  up the CURRENT chain contribute approvers (1 = direct manager). Managers without a user or
+  EXITED are skipped but still count as a level. Layer 7 leave approvals get this for free via
+  the `reporting_manager` approver type.
+- Engine change: workflow `onApproved` now receives `ref.comment` (the final approver's
+  comment); modules store it as `decidedComment`.
+
+### 9.5 Sensitive fields
+
+PAN / Aadhaar / UAN / ESIC / PF number and bank account are sealed together as one JSON blob
+with `encryptFields(orgId, 'employee:<id>', values)` (`core/secrets/field-encryption.ts`,
+envelope encryption via the Layer 3 key provider, AAD-bound to the employee). `sensitiveMasked` is stored alongside and
+is all APIs ever return. `POST /employees/:id/sensitive/reveal` (`employee.view_sensitive`,
+not granted to institution admins by default) decrypts and writes an `employee.sensitive_view`
+audit row. Duplicate PAN / Aadhaar checks use `blindIndex` (HMAC) columns. Audit diffs redact
+the `sensitive` key. Payroll (Layer 8) must use `decryptSensitive()` server-side for bank
+transfer files and never persist clear values.
+
+### 9.6 Events, notifications, documents, PDFs, jobs
+
+- Events (all webhook-deliverable): `employee.created|updated|deleted|activated|confirmed|resigned|exited|rehired|transferred|promoted|reassigned|salary_revised`.
+- Notifications: `employee.joined`, `employee.transferred`, `employee.exiting`,
+  `employee.exited`, `employee.profile_change_decided`.
+- Document owner type `employee`: HR in scope via `document.*` on the employee's hierarchy;
+  the linked user (SELF_SERVICE, `document.view_own`) can view/download their own documents.
+- PDF templates `hr_offer_letter`, `hr_experience_letter`, `hr_relieving_letter` (branded);
+  `POST /employees/:id/letters` generates and stores them as employee documents.
+- Bulk import: `POST /employees/import` (multipart `file`, `dryRun`) enqueues
+  `hr.employee_import`; `GET /employees/import/:jobId` returns the validation report.
+  `GET /employees/export` streams CSV (`employee.export`).
+- Self-service: `GET /employees/me` (masked), `POST /employees/me/change-requests` (only
+  `SELF_SERVICE_PROFILE_FIELDS`).
+
+### 9.7 Rules for later layers
+
+1. Reference employees by `employeeId`; never copy assignment fields into your own tables
+   without also storing the effective date they were taken from.
+2. Resolve "where/what was the employee on date D" via `employeeAssignmentAsOf`, salary via
+   `salaryAsOf`.
+3. Never read the `sensitive*` ciphertext columns directly; use `decryptSensitive()` and audit the access.
+4. Add exit/onboarding steps through `registerChecklistHook`, not by editing lifecycle code.
+5. Only act on employees in status ACTIVE / ON_NOTICE (ONBOARDING for joining-day flows).
+
+## 10. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
@@ -686,7 +798,7 @@ admins per their scope). Feature keys: `communication`, `email`, `sms`, `whatsap
   requests, instance history + actions), `/group|institution/communication` (providers,
   templates, message log) and `/group/integrations` (API clients, webhooks, deliveries/replay).
 
-## 10. Testing & quality
+## 11. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -697,7 +809,7 @@ admins per their scope). Feature keys: `communication`, `email`, `sms`, `whatsap
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 11. Foundation stack
+## 12. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit
