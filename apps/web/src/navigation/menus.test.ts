@@ -50,4 +50,20 @@ describe('visibleMenu', () => {
       'Approvals',
     ]);
   });
+
+  it('shows time-office pages by their own permissions', () => {
+    const perms = new Set(['employee.view', 'attendance.view', 'holiday.view']);
+    const can = (p?: string) => !p || perms.has(p);
+    const withHr = (f?: string) => !f || f === 'hr';
+    expect(visibleMenu(MENUS.hr, can, withHr).map((i) => i.title)).toEqual([
+      'Employees',
+      'Attendance',
+      'Holiday calendars',
+      'Approvals',
+    ]);
+    const self = new Set(['attendance.view_own', 'leave.view_own']);
+    expect(
+      visibleMenu(MENUS.employee, (p) => !p || self.has(p), withHr).map((i) => i.title),
+    ).toEqual(['Home', 'My attendance', 'My leave', 'Approvals']);
+  });
 });

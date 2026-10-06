@@ -59,71 +59,86 @@ model Organization {
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
 
-  groups                  Group[]
-  institutions            Institution[]
-  campuses                Campus[]
-  departments             Department[]
-  programs                Program[]
-  classSections           ClassSection[]
-  memberships             OrganizationMembership[]
-  roles                   Role[]
-  rolePermissions         RolePermission[]
-  userRoles               UserRole[]
-  userScopes              UserScope[]
-  authSessions            AuthSession[]
-  loginEvents             LoginEvent[]
-  userTokens              UserToken[]
-  auditLogs               AuditLog[]
-  subscription            OrganizationSubscription?
-  invoices                Invoice[]
-  featureOverrides        FeatureOverride[]
-  usageCounters           UsageCounter[]
-  brandingProfiles        BrandingProfile[]
-  secrets                 TenantSecret[]
-  documents               Document[]
-  documentVersions        DocumentVersion[]
-  documentGrants          DocumentPermission[]
-  documentReminders       DocumentExpiryReminder[]
-  documentSignatures      DocumentSignature[]
-  storageUploads          StorageUpload[]
+  groups                    Group[]
+  institutions              Institution[]
+  campuses                  Campus[]
+  departments               Department[]
+  programs                  Program[]
+  classSections             ClassSection[]
+  memberships               OrganizationMembership[]
+  roles                     Role[]
+  rolePermissions           RolePermission[]
+  userRoles                 UserRole[]
+  userScopes                UserScope[]
+  authSessions              AuthSession[]
+  loginEvents               LoginEvent[]
+  userTokens                UserToken[]
+  auditLogs                 AuditLog[]
+  subscription              OrganizationSubscription?
+  invoices                  Invoice[]
+  featureOverrides          FeatureOverride[]
+  usageCounters             UsageCounter[]
+  brandingProfiles          BrandingProfile[]
+  secrets                   TenantSecret[]
+  documents                 Document[]
+  documentVersions          DocumentVersion[]
+  documentGrants            DocumentPermission[]
+  documentReminders         DocumentExpiryReminder[]
+  documentSignatures        DocumentSignature[]
+  storageUploads            StorageUpload[]
   // Layer 5 engines
-  workflowDefinitions     WorkflowDefinition[]
-  workflowInstances       WorkflowInstance[]
-  workflowStepInstances   WorkflowStepInstance[]
-  workflowStepAssignees   WorkflowStepAssignee[]
-  workflowActions         WorkflowAction[]
-  notifications           Notification[]
-  notificationRules       NotificationRule[]
-  notificationJobs        NotificationJob[]
-  notificationPreferences NotificationPreference[]
-  pushDevices             PushDevice[]
-  communicationProviders  CommunicationProvider[]
-  messageTemplates        MessageTemplate[]
-  messageTemplateVersions MessageTemplateVersion[]
-  messageLogs             MessageLog[]
-  deliveryEvents          DeliveryEvent[]
-  campaigns               Campaign[]
-  campaignRecipients      CampaignRecipient[]
-  apiClients              ApiClient[]
-  apiScopes               ApiScope[]
-  apiUsage                ApiUsage[]
-  domainEvents            DomainEvent[]
-  webhooks                Webhook[]
-  webhookEvents           WebhookEvent[]
-  integrationCredentials  IntegrationCredential[]
+  workflowDefinitions       WorkflowDefinition[]
+  workflowInstances         WorkflowInstance[]
+  workflowStepInstances     WorkflowStepInstance[]
+  workflowStepAssignees     WorkflowStepAssignee[]
+  workflowActions           WorkflowAction[]
+  notifications             Notification[]
+  notificationRules         NotificationRule[]
+  notificationJobs          NotificationJob[]
+  notificationPreferences   NotificationPreference[]
+  pushDevices               PushDevice[]
+  communicationProviders    CommunicationProvider[]
+  messageTemplates          MessageTemplate[]
+  messageTemplateVersions   MessageTemplateVersion[]
+  messageLogs               MessageLog[]
+  deliveryEvents            DeliveryEvent[]
+  campaigns                 Campaign[]
+  campaignRecipients        CampaignRecipient[]
+  apiClients                ApiClient[]
+  apiScopes                 ApiScope[]
+  apiUsage                  ApiUsage[]
+  domainEvents              DomainEvent[]
+  webhooks                  Webhook[]
+  webhookEvents             WebhookEvent[]
+  integrationCredentials    IntegrationCredential[]
   // Layer 6 HR
-  designations            Designation[]
-  employeeCodeSequences   EmployeeCodeSequence[]
-  employees               Employee[]
-  employeeProfiles        EmployeeProfile[]
-  employeePositions       EmployeePosition[]
-  employeeDepartments     EmployeeDepartment[]
-  employeeReportingLines  EmployeeReportingLine[]
-  employeeMovements       EmployeeMovement[]
-  employeeSalaryHistory   EmployeeSalaryHistory[]
-  employeeChecklistItems  EmployeeChecklistItem[]
-  employeeChangeRequests  EmployeeProfileChangeRequest[]
-  employeeImportJobs      EmployeeImportJob[]
+  designations              Designation[]
+  employeeCodeSequences     EmployeeCodeSequence[]
+  employees                 Employee[]
+  employeeProfiles          EmployeeProfile[]
+  employeePositions         EmployeePosition[]
+  employeeDepartments       EmployeeDepartment[]
+  employeeReportingLines    EmployeeReportingLine[]
+  employeeMovements         EmployeeMovement[]
+  employeeSalaryHistory     EmployeeSalaryHistory[]
+  employeeChecklistItems    EmployeeChecklistItem[]
+  employeeChangeRequests    EmployeeProfileChangeRequest[]
+  employeeImportJobs        EmployeeImportJob[]
+  holidayCalendars          HolidayCalendar[]
+  holidays                  Holiday[]
+  shifts                    Shift[]
+  shiftAssignments          ShiftAssignment[]
+  attendancePunches         AttendancePunch[]
+  attendanceRecords         AttendanceRecord[]
+  attendanceRegularizations AttendanceRegularization[]
+  attendancePeriodLocks     AttendancePeriodLock[]
+  attendancePolicies        AttendancePolicy[]
+  attendanceImportJobs      AttendanceImportJob[]
+  leaveTypes                LeaveType[]
+  leavePolicies             LeavePolicy[]
+  leavePolicyRules          LeavePolicyRule[]
+  leaveLedgerEntries        LeaveLedgerEntry[]
+  leaveRequests             LeaveRequest[]
 
   @@map("organizations")
 }
@@ -183,7 +198,12 @@ model Institution {
   secrets          TenantSecret[]
   documents        Document[]
 
-  employees Employee[]
+  employees          Employee[]
+  holidayCalendars   HolidayCalendar[]
+  shifts             Shift[]
+  attendanceLocks    AttendancePeriodLock[]
+  attendancePolicies AttendancePolicy[]
+  leavePolicies      LeavePolicy[]
 
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
@@ -1924,6 +1944,12 @@ model Employee {
   salaryHistory    EmployeeSalaryHistory[]
   checklistItems   EmployeeChecklistItem[]
   changeRequests   EmployeeProfileChangeRequest[]
+  shiftAssignments ShiftAssignment[]
+  punches          AttendancePunch[]
+  attendance       AttendanceRecord[]
+  regularizations  AttendanceRegularization[]
+  leaveLedger      LeaveLedgerEntry[]
+  leaveRequests    LeaveRequest[]
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, userId])
@@ -2177,4 +2203,502 @@ model EmployeeImportJob {
 
   @@index([organizationId, createdAt])
   @@map("employee_import_jobs")
+}
+
+// ============================================================================================
+// Attendance / leave / holiday / shift foundation (Layer 7)
+// ============================================================================================
+
+enum HolidayCalendarScope {
+  ORGANIZATION
+  GROUP
+  INSTITUTION
+  CAMPUS
+}
+
+enum HolidayType {
+  PUBLIC
+  RESTRICTED
+  OPTIONAL
+}
+
+/// Holiday calendar of one year at one level (org default → group → institution → campus).
+/// Lower levels inherit everything from higher ones and may add / suppress holidays and
+/// override the weekly-off pattern. `scopeKey` = `ORG` or the group / institution / campus id.
+model HolidayCalendar {
+  id             String               @id @default(uuid()) @db.Char(36)
+  organizationId String               @map("organization_id") @db.Char(36)
+  scope          HolidayCalendarScope
+  scopeKey       String               @map("scope_key") @db.VarChar(36)
+  groupId        String?              @map("group_id") @db.Char(36)
+  institutionId  String?              @map("institution_id") @db.Char(36)
+  campusId       String?              @map("campus_id") @db.Char(36)
+  year           Int
+  name           String               @db.VarChar(200)
+  /// `[{ weekday: 0..6, weeks?: [1..5] }]`; null = inherit from the parent calendar.
+  weeklyOffs     Json?                @map("weekly_offs")
+  createdAt      DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution? @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  holidays     Holiday[]
+
+  @@unique([organizationId, scopeKey, year])
+  @@index([organizationId, year, scope])
+  @@index([organizationId, institutionId])
+  @@map("holiday_calendars")
+}
+
+model Holiday {
+  id             String      @id @default(uuid()) @db.Char(36)
+  organizationId String      @map("organization_id") @db.Char(36)
+  calendarId     String      @map("calendar_id") @db.Char(36)
+  date           DateTime    @db.Date
+  name           String      @db.VarChar(200)
+  type           HolidayType @default(PUBLIC)
+  /// Override entry: suppresses an inherited holiday on this date.
+  removed        Boolean     @default(false)
+  createdAt      DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  calendar     HolidayCalendar @relation(fields: [calendarId], references: [id], onDelete: Cascade)
+
+  @@unique([calendarId, date])
+  @@index([organizationId, date])
+  @@map("holidays")
+}
+
+enum ShiftStatus {
+  ACTIVE
+  INACTIVE
+}
+
+/// Work shift of an institution. Times are minutes after local midnight; `endMinute <=
+/// startMinute` means the shift crosses midnight.
+model Shift {
+  id                   String      @id @default(uuid()) @db.Char(36)
+  organizationId       String      @map("organization_id") @db.Char(36)
+  institutionId        String      @map("institution_id") @db.Char(36)
+  code                 String      @db.VarChar(32)
+  name                 String      @db.VarChar(200)
+  startMinute          Int         @map("start_minute")
+  endMinute            Int         @map("end_minute")
+  crossesMidnight      Boolean     @default(false) @map("crosses_midnight")
+  graceInMinutes       Int         @default(0) @map("grace_in_minutes")
+  graceOutMinutes      Int         @default(0) @map("grace_out_minutes")
+  breakMinutes         Int         @default(0) @map("break_minutes")
+  halfDayMinutes       Int         @default(240) @map("half_day_minutes")
+  fullDayMinutes       Int         @default(480) @map("full_day_minutes")
+  overtimeAfterMinutes Int         @default(0) @map("overtime_after_minutes")
+  weeklyOffs           Json?       @map("weekly_offs")
+  isDefault            Boolean     @default(false) @map("is_default")
+  status               ShiftStatus @default(ACTIVE)
+  createdAt            DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution       @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  assignments  ShiftAssignment[]
+
+  @@unique([organizationId, institutionId, code])
+  @@index([organizationId, institutionId, isDefault])
+  @@map("shifts")
+}
+
+/// Effective-dated shift of an employee (wins) or a department; optional basic rotation.
+model ShiftAssignment {
+  id               String    @id @default(uuid()) @db.Char(36)
+  organizationId   String    @map("organization_id") @db.Char(36)
+  institutionId    String    @map("institution_id") @db.Char(36)
+  employeeId       String?   @map("employee_id") @db.Char(36)
+  departmentId     String?   @map("department_id") @db.Char(36)
+  shiftId          String    @map("shift_id") @db.Char(36)
+  /// `[shiftId, ...]` cycled every `rotationDays` days from `effectiveFrom`.
+  rotationShiftIds Json?     @map("rotation_shift_ids")
+  rotationDays     Int?      @map("rotation_days")
+  effectiveFrom    DateTime  @map("effective_from") @db.Date
+  effectiveTo      DateTime? @map("effective_to") @db.Date
+  createdByUserId  String?   @map("created_by_user_id") @db.Char(36)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  shift        Shift        @relation(fields: [shiftId], references: [id], onDelete: Restrict)
+  employee     Employee?    @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, effectiveFrom])
+  @@index([organizationId, departmentId, effectiveFrom])
+  @@map("shift_assignments")
+}
+
+enum PunchSource {
+  WEB
+  MOBILE
+  BIOMETRIC
+  API
+  MANUAL
+}
+
+enum PunchDirection {
+  IN
+  OUT
+  UNKNOWN
+}
+
+/// Raw punch (append-only). `attendanceDate` is the local shift day the punch belongs to.
+model AttendancePunch {
+  id              String         @id @default(uuid()) @db.Char(36)
+  organizationId  String         @map("organization_id") @db.Char(36)
+  employeeId      String         @map("employee_id") @db.Char(36)
+  punchedAt       DateTime       @map("punched_at") @db.DateTime(3)
+  attendanceDate  DateTime       @map("attendance_date") @db.Date
+  direction       PunchDirection @default(UNKNOWN)
+  source          PunchSource
+  deviceId        String?        @map("device_id") @db.VarChar(100)
+  latitude        Decimal?       @db.Decimal(9, 6)
+  longitude       Decimal?       @db.Decimal(9, 6)
+  accuracyMeters  Decimal?       @map("accuracy_meters") @db.Decimal(10, 2)
+  importJobId     String?        @map("import_job_id") @db.Char(36)
+  createdByUserId String?        @map("created_by_user_id") @db.Char(36)
+  createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeId, punchedAt])
+  @@index([organizationId, employeeId, attendanceDate])
+  @@map("attendance_punches")
+}
+
+enum AttendanceStatus {
+  PRESENT
+  ABSENT
+  HALF_DAY
+  LATE
+  ON_LEAVE
+  HOLIDAY
+  WEEKLY_OFF
+  ON_DUTY
+  LOP
+}
+
+/// Derived daily attendance (one row per employee per day), recomputed from punches + shift +
+/// holidays + approved leave unless the day lies in a locked period. Hierarchy columns are the
+/// employee's assignment AS OF `date` (scope filtering + payroll institution attribution).
+model AttendanceRecord {
+  id               String            @id @default(uuid()) @db.Char(36)
+  organizationId   String            @map("organization_id") @db.Char(36)
+  employeeId       String            @map("employee_id") @db.Char(36)
+  date             DateTime          @db.Date
+  groupId          String?           @map("group_id") @db.Char(36)
+  institutionId    String            @map("institution_id") @db.Char(36)
+  campusId         String?           @map("campus_id") @db.Char(36)
+  departmentId     String?           @map("department_id") @db.Char(36)
+  shiftId          String?           @map("shift_id") @db.Char(36)
+  status           AttendanceStatus
+  overrideStatus   AttendanceStatus? @map("override_status")
+  overrideReason   String?           @map("override_reason") @db.VarChar(1000)
+  firstIn          DateTime?         @map("first_in") @db.DateTime(3)
+  lastOut          DateTime?         @map("last_out") @db.DateTime(3)
+  workedMinutes    Int               @default(0) @map("worked_minutes")
+  lateMinutes      Int               @default(0) @map("late_minutes")
+  earlyExitMinutes Int               @default(0) @map("early_exit_minutes")
+  overtimeMinutes  Int               @default(0) @map("overtime_minutes")
+  isLate           Boolean           @default(false) @map("is_late")
+  missingPunch     Boolean           @default(false) @map("missing_punch")
+  presentDays      Decimal           @default(0) @map("present_days") @db.Decimal(3, 2)
+  paidLeaveDays    Decimal           @default(0) @map("paid_leave_days") @db.Decimal(3, 2)
+  unpaidLeaveDays  Decimal           @default(0) @map("unpaid_leave_days") @db.Decimal(3, 2)
+  absentDays       Decimal           @default(0) @map("absent_days") @db.Decimal(3, 2)
+  offDays          Decimal           @default(0) @map("off_days") @db.Decimal(3, 2)
+  leaveTypeId      String?           @map("leave_type_id") @db.Char(36)
+  leaveRequestId   String?           @map("leave_request_id") @db.Char(36)
+  holidayName      String?           @map("holiday_name") @db.VarChar(200)
+  computedAt       DateTime          @map("computed_at") @db.DateTime(3)
+  createdAt        DateTime          @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime          @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeId, date])
+  @@index([organizationId, institutionId, date])
+  @@index([organizationId, departmentId, date])
+  @@index([organizationId, date, status])
+  @@map("attendance_records")
+}
+
+enum RegularizationStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Attendance regularization request (workflow `attendance_regularization`).
+model AttendanceRegularization {
+  id                 String               @id @default(uuid()) @db.Char(36)
+  organizationId     String               @map("organization_id") @db.Char(36)
+  employeeId         String               @map("employee_id") @db.Char(36)
+  date               DateTime             @db.Date
+  groupId            String?              @map("group_id") @db.Char(36)
+  institutionId      String               @map("institution_id") @db.Char(36)
+  campusId           String?              @map("campus_id") @db.Char(36)
+  departmentId       String?              @map("department_id") @db.Char(36)
+  inMinute           Int?                 @map("in_minute")
+  outMinute          Int?                 @map("out_minute")
+  requestedStatus    AttendanceStatus?    @map("requested_status")
+  reason             String               @db.VarChar(1000)
+  status             RegularizationStatus @default(PENDING_APPROVAL)
+  workflowInstanceId String?              @map("workflow_instance_id") @db.Char(36)
+  requestedByUserId  String?              @map("requested_by_user_id") @db.Char(36)
+  decidedComment     String?              @map("decided_comment") @db.VarChar(1000)
+  createdAt          DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, date])
+  @@index([organizationId, institutionId, status])
+  @@map("attendance_regularizations")
+}
+
+enum AttendanceLockStatus {
+  LOCKED
+  UNLOCKED
+}
+
+/// Locked attendance period of an institution: days inside are frozen (no recompute, no
+/// override, no regularization, no leave) until explicitly unlocked (`attendance.unlock`).
+model AttendancePeriodLock {
+  id               String               @id @default(uuid()) @db.Char(36)
+  organizationId   String               @map("organization_id") @db.Char(36)
+  institutionId    String               @map("institution_id") @db.Char(36)
+  periodStart      DateTime             @map("period_start") @db.Date
+  periodEnd        DateTime             @map("period_end") @db.Date
+  status           AttendanceLockStatus @default(LOCKED)
+  reason           String?              @db.VarChar(500)
+  lockedByUserId   String?              @map("locked_by_user_id") @db.Char(36)
+  lockedAt         DateTime             @default(now()) @map("locked_at") @db.DateTime(3)
+  unlockedByUserId String?              @map("unlocked_by_user_id") @db.Char(36)
+  unlockedAt       DateTime?            @map("unlocked_at") @db.DateTime(3)
+  unlockReason     String?              @map("unlock_reason") @db.VarChar(500)
+  createdAt        DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime             @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, institutionId, status, periodStart])
+  @@map("attendance_period_locks")
+}
+
+/// Per-institution attendance policy (time zone, late-mark rule, punch channels).
+model AttendancePolicy {
+  id                  String   @id @default(uuid()) @db.Char(36)
+  organizationId      String   @map("organization_id") @db.Char(36)
+  institutionId       String   @map("institution_id") @db.Char(36)
+  timezone            String   @default("Asia/Kolkata") @db.VarChar(64)
+  lateMarksPerHalfDay Int?     @map("late_marks_per_half_day")
+  absentIsLop         Boolean  @default(true) @map("absent_is_lop")
+  allowWebPunch       Boolean  @default(true) @map("allow_web_punch")
+  allowMobilePunch    Boolean  @default(true) @map("allow_mobile_punch")
+  createdAt           DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId])
+  @@map("attendance_policies")
+}
+
+/// Biometric CSV / integration punch import run (synchronous) with its report.
+model AttendanceImportJob {
+  id                String      @id @default(uuid()) @db.Char(36)
+  organizationId    String      @map("organization_id") @db.Char(36)
+  source            PunchSource
+  fileName          String?     @map("file_name") @db.VarChar(255)
+  status            String      @db.VarChar(16)
+  totalRows         Int         @default(0) @map("total_rows")
+  importedRows      Int         @default(0) @map("imported_rows")
+  duplicateRows     Int         @default(0) @map("duplicate_rows")
+  failedRows        Int         @default(0) @map("failed_rows")
+  /// `[{ row, message }]`
+  errors            Json?
+  requestedByUserId String?     @map("requested_by_user_id") @db.Char(36)
+  createdAt         DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@map("attendance_import_jobs")
+}
+
+enum LeaveStatus {
+  ACTIVE
+  INACTIVE
+}
+
+model LeaveType {
+  id                   String      @id @default(uuid()) @db.Char(36)
+  organizationId       String      @map("organization_id") @db.Char(36)
+  code                 String      @db.VarChar(32)
+  name                 String      @db.VarChar(200)
+  isPaid               Boolean     @default(true) @map("is_paid")
+  allowHalfDay         Boolean     @default(true) @map("allow_half_day")
+  /// `["FEMALE", ...]`; null = all.
+  genders              Json?
+  /// `["TEACHING", ...]`; null = all.
+  employmentTypes      Json?       @map("employment_types")
+  requiresDocument     Boolean     @default(false) @map("requires_document")
+  documentAfterDays    Decimal     @default(0) @map("document_after_days") @db.Decimal(6, 2)
+  sandwichRule         Boolean     @default(false) @map("sandwich_rule")
+  encashable           Boolean     @default(false)
+  maxEncashDays        Decimal?    @map("max_encash_days") @db.Decimal(6, 2)
+  maxCarryForward      Decimal?    @map("max_carry_forward") @db.Decimal(6, 2)
+  allowNegativeBalance Boolean     @default(false) @map("allow_negative_balance")
+  status               LeaveStatus @default(ACTIVE)
+  createdAt            DateTime    @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime    @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  policyRules  LeavePolicyRule[]
+  ledger       LeaveLedgerEntry[]
+  requests     LeaveRequest[]
+
+  @@unique([organizationId, code])
+  @@map("leave_types")
+}
+
+enum AccrualFrequency {
+  NONE
+  MONTHLY
+  QUARTERLY
+  YEARLY
+}
+
+/// Leave policy for an institution (null = org default) and employment type (null = all).
+/// The most specific active policy applies to an employee.
+model LeavePolicy {
+  id             String          @id @default(uuid()) @db.Char(36)
+  organizationId String          @map("organization_id") @db.Char(36)
+  name           String          @db.VarChar(200)
+  institutionId  String?         @map("institution_id") @db.Char(36)
+  employmentType EmploymentType? @map("employment_type")
+  status         LeaveStatus     @default(ACTIVE)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution?      @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  rules        LeavePolicyRule[]
+
+  @@index([organizationId, institutionId, employmentType])
+  @@map("leave_policies")
+}
+
+model LeavePolicyRule {
+  id               String           @id @default(uuid()) @db.Char(36)
+  organizationId   String           @map("organization_id") @db.Char(36)
+  policyId         String           @map("policy_id") @db.Char(36)
+  leaveTypeId      String           @map("leave_type_id") @db.Char(36)
+  accrualFrequency AccrualFrequency @map("accrual_frequency")
+  annualQuota      Decimal          @map("annual_quota") @db.Decimal(6, 2)
+  proRataOnJoining Boolean          @default(true) @map("pro_rata_on_joining")
+  maxCarryForward  Decimal?         @map("max_carry_forward") @db.Decimal(6, 2)
+  createdAt        DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  policy       LeavePolicy  @relation(fields: [policyId], references: [id], onDelete: Cascade)
+  leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([policyId, leaveTypeId])
+  @@index([organizationId, leaveTypeId])
+  @@map("leave_policy_rules")
+}
+
+enum LeaveLedgerEntryType {
+  ACCRUAL
+  CONSUMPTION
+  ADJUSTMENT
+  CARRY_FORWARD
+  LAPSE
+  ENCASHMENT
+  REVERSAL
+}
+
+/// Append-only leave balance ledger; balance = SUM(days). `periodKey` makes system entries
+/// idempotent (e.g. accrual `2026-03`, year-end `YE-2026`).
+model LeaveLedgerEntry {
+  id              String               @id @default(uuid()) @db.Char(36)
+  organizationId  String               @map("organization_id") @db.Char(36)
+  employeeId      String               @map("employee_id") @db.Char(36)
+  leaveTypeId     String               @map("leave_type_id") @db.Char(36)
+  entryType       LeaveLedgerEntryType @map("entry_type")
+  days            Decimal              @db.Decimal(7, 2)
+  effectiveDate   DateTime             @map("effective_date") @db.Date
+  periodKey       String?              @map("period_key") @db.VarChar(32)
+  leaveRequestId  String?              @map("leave_request_id") @db.Char(36)
+  reason          String?              @db.VarChar(500)
+  createdByUserId String?              @map("created_by_user_id") @db.Char(36)
+  createdAt       DateTime             @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, employeeId, leaveTypeId, entryType, periodKey])
+  @@index([organizationId, employeeId, leaveTypeId, effectiveDate])
+  @@index([organizationId, leaveRequestId])
+  @@map("leave_ledger_entries")
+}
+
+enum LeaveRequestStatus {
+  PENDING_APPROVAL
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
+/// Leave request (workflow `leave_request`). `breakdown` = `[{ date, days, kind, sandwiched }]`
+/// computed at application time (holidays / weekly offs / half days / sandwich rule).
+model LeaveRequest {
+  id                 String             @id @default(uuid()) @db.Char(36)
+  organizationId     String             @map("organization_id") @db.Char(36)
+  employeeId         String             @map("employee_id") @db.Char(36)
+  leaveTypeId        String             @map("leave_type_id") @db.Char(36)
+  groupId            String?            @map("group_id") @db.Char(36)
+  institutionId      String             @map("institution_id") @db.Char(36)
+  campusId           String?            @map("campus_id") @db.Char(36)
+  departmentId       String?            @map("department_id") @db.Char(36)
+  fromDate           DateTime           @map("from_date") @db.Date
+  toDate             DateTime           @map("to_date") @db.Date
+  startHalf          Boolean            @default(false) @map("start_half")
+  endHalf            Boolean            @default(false) @map("end_half")
+  days               Decimal            @db.Decimal(6, 2)
+  breakdown          Json
+  reason             String             @db.VarChar(1000)
+  documentId         String?            @map("document_id") @db.Char(36)
+  status             LeaveRequestStatus @default(PENDING_APPROVAL)
+  workflowInstanceId String?            @map("workflow_instance_id") @db.Char(36)
+  appliedByUserId    String?            @map("applied_by_user_id") @db.Char(36)
+  decidedComment     String?            @map("decided_comment") @db.VarChar(1000)
+  cancelReason       String?            @map("cancel_reason") @db.VarChar(1000)
+  cancelledAt        DateTime?          @map("cancelled_at") @db.DateTime(3)
+  createdAt          DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
+  leaveType    LeaveType    @relation(fields: [leaveTypeId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, employeeId, fromDate, toDate])
+  @@index([organizationId, institutionId, status])
+  @@map("leave_requests")
 }

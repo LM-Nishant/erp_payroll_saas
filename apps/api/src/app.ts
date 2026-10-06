@@ -38,7 +38,11 @@ import {
 } from './modules/communication/communication.routes';
 import { classSectionsRouter } from './modules/class-sections/class-sections.routes';
 import { documentsRouter } from './modules/documents/documents.routes';
+import { attendanceRouter } from './modules/attendance/attendance.routes';
 import { designationsRouter, employeesRouter } from './modules/employees/employees.routes';
+import { holidaysRouter } from './modules/holidays/holidays.routes';
+import { leaveRouter } from './modules/leave/leave.routes';
+import { shiftsRouter } from './modules/shifts/shifts.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -144,6 +148,10 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/class-sections', requireFeature('education'), classSectionsRouter);
   api.use('/employees', requireFeature('hr'), employeesRouter);
   api.use('/designations', requireFeature('hr'), designationsRouter);
+  api.use('/holidays', requireFeature('hr'), holidaysRouter);
+  api.use('/shifts', requireFeature('hr'), shiftsRouter);
+  api.use('/attendance', requireFeature('hr'), attendanceRouter);
+  api.use('/leave', requireFeature('hr'), leaveRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
   api.use('/permissions', permissionsRouter);

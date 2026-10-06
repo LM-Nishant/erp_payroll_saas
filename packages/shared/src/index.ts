@@ -1,6 +1,7 @@
 export * from './auth/password-policy';
 export * from './auth/permissions';
 export * from './licensing/features';
+export * from './schemas/attendance';
 export * from './schemas/auth';
 export * from './schemas/branding';
 export * from './schemas/communication';
@@ -15,6 +16,7 @@ export * from './schemas/pdf';
 export * from './schemas/secrets';
 export * from './schemas/workflow';
 export * from './types/api';
+export * from './types/attendance';
 export * from './types/auth';
 export * from './types/documents';
 export * from './types/engines';

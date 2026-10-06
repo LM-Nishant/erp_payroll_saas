@@ -1,0 +1,267 @@
+<script setup lang="ts">
+import type {
+  AttendancePunchDto,
+  AttendanceRecordDto,
+  AttendanceRegularizationDto,
+  MyAttendanceDto,
+} from '@erp/shared';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { apiFetch } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
+import { label } from './useHrOptions';
+import {
+  ATTENDANCE_COLORS,
+  REQUEST_COLORS,
+  WEEKDAYS,
+  currentMonth,
+  hhmm,
+  monthRange,
+  toMinute,
+} from './timeOffice';
+
+/** Employee self-service: punch in / out, monthly attendance calendar and regularization. */
+const auth = useAuthStore();
+const month = ref(currentMonth());
+const data = ref<MyAttendanceDto | null>(null);
+const regularizations = ref<AttendanceRegularizationDto[]>([]);
+const error = ref<string | null>(null);
+const notice = ref<string | null>(null);
+const run = async (fn: () => Promise<void>) => {
+  error.value = null;
+  try {
+    await fn();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+};
+
+async function load() {
+  const { from, to } = monthRange(month.value);
+  await run(async () => {
+    [data.value, regularizations.value] = await Promise.all([
+      apiFetch<{ data: MyAttendanceDto }>(`/api/v1/attendance/me?from=${from}&to=${to}`).then(
+        (r) => r.data,
+      ),
+      auth.can('attendance.regularize_own')
+        ? apiFetch<{ data: AttendanceRegularizationDto[] }>(
+            '/api/v1/attendance/me/regularizations',
+          ).then((r) => r.data)
+        : Promise.resolve([]),
+    ]);
+  });
+}
+onMounted(load);
+
+const position = () =>
+  new Promise<GeolocationPosition | null>((resolve) => {
+    if (!navigator.geolocation) return resolve(null);
+    navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 5000 });
+  });
+async function punch(direction: 'IN' | 'OUT') {
+  const pos = await position();
+  await run(async () => {
+    const res = await apiFetch<{ data: { punch: AttendancePunchDto } }>(
+      '/api/v1/attendance/me/punch',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          source: 'WEB',
+          direction,
+          ...(pos ? { latitude: pos.coords.latitude, longitude: pos.coords.longitude } : {}),
+        }),
+      },
+    );
+    notice.value = `Punched ${direction.toLowerCase()} at ${new Date(res.data.punch.punchedAt).toLocaleTimeString()}`;
+    await load();
+  });
+}
+
+// Calendar grid (Sunday-first weeks)
+const byDate = computed(
+  () =>
+    new Map((data.value?.records ?? []).map((r) => [r.date, r] as [string, AttendanceRecordDto])),
+);
+const cells = computed(() => {
+  const { from, to } = monthRange(month.value);
+  const first = new Date(`${from}T00:00:00Z`);
+  const lastDay = Number(to.slice(8));
+  const out: ({ date: string; day: number; record?: AttendanceRecordDto } | null)[] = Array.from(
+    { length: first.getUTCDay() },
+    () => null,
+  );
+  for (let d = 1; d <= lastDay; d++) {
+    const date = `${month.value}-${String(d).padStart(2, '0')}`;
+    out.push({ date, day: d, record: byDate.value.get(date) });
+  }
+  return out;
+});
+
+// Regularization
+const reg = reactive({
+  open: false,
+  date: '',
+  mode: 'times' as 'times' | 'status',
+  inTime: '09:00',
+  outTime: '17:30',
+  requestedStatus: 'ON_DUTY',
+  reason: '',
+});
+function openReg(date: string) {
+  Object.assign(reg, { open: true, date, reason: '' });
+}
+async function saveReg() {
+  await run(async () => {
+    await apiFetch('/api/v1/attendance/me/regularizations', {
+      method: 'POST',
+      body: JSON.stringify({
+        date: reg.date,
+        reason: reg.reason.trim(),
+        ...(reg.mode === 'times'
+          ? { inMinute: toMinute(reg.inTime), outMinute: toMinute(reg.outTime) }
+          : { requestedStatus: reg.requestedStatus }),
+      }),
+    });
+    reg.open = false;
+    notice.value = 'Regularization submitted';
+    await load();
+  });
+}
+async function cancelReg(id: string) {
+  await run(async () => {
+    await apiFetch(`/api/v1/attendance/me/regularizations/${id}/cancel`, { method: 'POST' });
+    await load();
+  });
+}
+const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
+  value,
+  title: label(value),
+}));
+</script>
+
+<template>
+  <div class="d-flex align-center mb-4 ga-2 flex-wrap">
+    <h2 class="text-h5">My attendance</h2>
+    <v-spacer />
+    <template v-if="auth.can('attendance.punch_own')">
+      <v-btn color="success" prepend-icon="mdi-login" @click="punch('IN')">Punch in</v-btn>
+      <v-btn color="primary" prepend-icon="mdi-logout" @click="punch('OUT')">Punch out</v-btn>
+    </template>
+    <v-text-field
+      v-model="month"
+      type="month"
+      label="Month"
+      density="compact"
+      hide-details
+      style="max-width: 180px"
+      @change="load"
+    />
+  </div>
+  <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
+    {{ error }}
+  </v-alert>
+  <v-alert v-if="notice" type="success" closable class="mb-4" @click:close="notice = null">
+    {{ notice }}
+  </v-alert>
+
+  <div class="calendar">
+    <div v-for="w in WEEKDAYS" :key="w" class="text-caption text-medium-emphasis text-center">
+      {{ w }}
+    </div>
+    <template v-for="(c, i) in cells" :key="i">
+      <div v-if="!c" />
+      <v-card v-else variant="outlined" class="pa-1 cell">
+        <div class="d-flex align-center">
+          <strong>{{ c.day }}</strong>
+          <v-spacer />
+          <v-btn
+            v-if="auth.can('attendance.regularize_own') && c.record && !c.record.locked"
+            size="x-small"
+            variant="text"
+            icon="mdi-pencil-clock"
+            :title="'Regularize'"
+            @click="openReg(c.date)"
+          />
+        </div>
+        <template v-if="c.record">
+          <v-chip :color="ATTENDANCE_COLORS[c.record.status]" size="x-small">
+            {{ label(c.record.status) }}
+          </v-chip>
+          <div class="text-caption">
+            <template v-if="c.record.workedMinutes">{{ hhmm(c.record.workedMinutes) }} h</template>
+            <template v-else-if="c.record.holidayName">{{ c.record.holidayName }}</template>
+          </div>
+        </template>
+      </v-card>
+    </template>
+  </div>
+
+  <template v-if="auth.can('attendance.regularize_own')">
+    <h3 class="text-h6 mt-8 mb-2">My regularizations</h3>
+    <v-table density="compact">
+      <tbody>
+        <tr v-for="r in regularizations" :key="r.id">
+          <td>{{ r.date }}</td>
+          <td>
+            {{
+              r.requestedStatus
+                ? label(r.requestedStatus)
+                : `${hhmm(r.inMinute)} – ${hhmm(r.outMinute)}`
+            }}
+          </td>
+          <td>{{ r.reason }}</td>
+          <td>
+            <v-chip :color="REQUEST_COLORS[r.status]" size="small">{{ label(r.status) }}</v-chip>
+          </td>
+          <td class="text-right">
+            <v-btn
+              v-if="r.status === 'PENDING_APPROVAL'"
+              size="small"
+              variant="text"
+              @click="cancelReg(r.id)"
+            >
+              Withdraw
+            </v-btn>
+          </td>
+        </tr>
+        <tr v-if="!regularizations.length">
+          <td class="text-medium-emphasis">No regularization requests.</td>
+        </tr>
+      </tbody>
+    </v-table>
+  </template>
+
+  <v-dialog v-model="reg.open" max-width="480">
+    <v-card :title="`Regularize ${reg.date}`">
+      <v-card-text>
+        <v-btn-toggle v-model="reg.mode" mandatory density="compact" class="mb-4">
+          <v-btn value="times">Correct times</v-btn>
+          <v-btn value="status">Request status</v-btn>
+        </v-btn-toggle>
+        <template v-if="reg.mode === 'times'">
+          <v-text-field v-model="reg.inTime" type="time" label="In" />
+          <v-text-field v-model="reg.outTime" type="time" label="Out" />
+        </template>
+        <v-select v-else v-model="reg.requestedStatus" :items="regStatuses" label="Status" />
+        <v-textarea v-model="reg.reason" label="Reason *" rows="2" />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="reg.open = false">Cancel</v-btn>
+        <v-btn color="primary" :disabled="reg.reason.trim().length < 3" @click="saveReg">
+          Submit
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
+</template>
+
+<style scoped>
+.calendar {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(0, 1fr));
+  gap: 4px;
+}
+.cell {
+  min-height: 72px;
+}
+</style>
