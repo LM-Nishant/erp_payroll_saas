@@ -71,6 +71,22 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'EmployeeChecklistItem',
   'EmployeeProfileChangeRequest',
   'EmployeeImportJob',
+  // Attendance / leave / holiday / shift (Layer 7)
+  'HolidayCalendar',
+  'Holiday',
+  'Shift',
+  'ShiftAssignment',
+  'AttendancePunch',
+  'AttendanceRecord',
+  'AttendanceRegularization',
+  'AttendancePeriodLock',
+  'AttendancePolicy',
+  'AttendanceImportJob',
+  'LeaveType',
+  'LeavePolicy',
+  'LeavePolicyRule',
+  'LeaveLedgerEntry',
+  'LeaveRequest',
 ]);
 
 /**

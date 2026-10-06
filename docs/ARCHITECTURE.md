@@ -780,7 +780,149 @@ transfer files and never persist clear values.
 4. Add exit/onboarding steps through `registerChecklistHook`, not by editing lifecycle code.
 5. Only act on employees in status ACTIVE / ON_NOTICE (ONBOARDING for joining-day flows).
 
-## 10. Frontend (apps/web)
+## 10. Attendance, leave, holidays & shifts (Layer 7)
+
+Modules `holidays`, `shifts`, `attendance` and `leave` (all under `/api/v1`, mounted with
+`requireFeature('hr')`; no new feature keys). Registrations (workflow entities, events,
+notification events, jobs) live in `src/modules/attendance/attendance.registrations.ts`, imported
+by `engines.ts`. Dates are `YYYY-MM-DD` strings in the organization's local calendar; minute
+values are minutes after midnight.
+
+### 10.1 Data model
+
+| Model                             | Purpose                                                                                                                                                                                                                                                                                   |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HolidayCalendar` / `Holiday`     | Per-year calendar at scope ORGANIZATION / GROUP / INSTITUTION / CAMPUS with optional `weeklyOffs` pattern; holidays typed PUBLIC / RESTRICTED / OPTIONAL; `removed=true` suppresses an inherited holiday.                                                                                 |
+| `Shift` / `ShiftAssignment`       | Shift per institution (start/end minute, cross-midnight, grace in/out, half-day & full-day minimum minutes, break, overtime threshold, weekly offs, `isDefault`). Assignments are effective-dated per employee **or** department, optional rotation (`rotationShiftIds`, `rotationDays`). |
+| `AttendancePunch`                 | Raw punches: source WEB / MOBILE / BIOMETRIC / API, direction, device id, geo (lat/lng/accuracy), import job id. Never mutated by computation.                                                                                                                                            |
+| `AttendanceRecord`                | One derived row per employee per date: status (PRESENT, ABSENT, HALF_DAY, LATE, ON_LEAVE, HOLIDAY, WEEKLY_OFF, ON_DUTY, LOP), first in / last out, worked / late / early-exit / overtime minutes, shift + institution as of that date, leave link, `manualOverride`.                      |
+| `AttendanceRegularization`        | Employee correction requests (workflow `attendance_regularization`).                                                                                                                                                                                                                      |
+| `AttendancePeriodLock`            | LOCKED / UNLOCKED per institution + period, with lock/unlock actor + reason.                                                                                                                                                                                                              |
+| `AttendancePolicy`                | Per institution: `lateMarksPerHalfDay`, `absentIsLop`, etc.                                                                                                                                                                                                                               |
+| `AttendanceImportJob`             | Biometric CSV / API import batches with per-row errors.                                                                                                                                                                                                                                   |
+| `LeaveType`                       | Paid/unpaid, half-day allowed, gender & employment-type eligibility, documents required (after N days), sandwich rule, encashable, carry-forward cap, max consecutive days.                                                                                                               |
+| `LeavePolicy` / `LeavePolicyRule` | Per institution (or org-wide) and optional employment type; rule per leave type: accrual frequency (MONTHLY / QUARTERLY / YEARLY / NONE), amount, joining pro-rata, carry-forward cap, encash cap. Most specific policy wins (`pickPolicy`).                                              |
+| `LeaveLedgerEntry`                | Append-only ledger: ACCRUAL, CONSUMPTION, ADJUSTMENT, CARRY_FORWARD, LAPSE, ENCASHMENT, REVERSAL. **Balance is always derived** from the ledger (sum of entries effective in the leave year up to the as-of date).                                                                        |
+| `LeaveRequest`                    | Leave application with half-day flags, computed day breakdown, workflow `leave_request`.                                                                                                                                                                                                  |
+
+### 10.2 Holiday resolution
+
+`HolidayResolver` (`holidays/holidays.resolver.ts`): for a date the **most specific** calendar
+(CAMPUS → INSTITUTION → GROUP → ORGANIZATION) that has an entry for the date wins (so an
+institution can override or remove a group/org holiday). The weekly-off pattern comes from the most
+specific calendar defining one (default: every Sunday). Weekly-off rules are `{ weekday, weeks? }`,
+e.g. Sunday + 2nd/4th Saturday = `[{weekday:0},{weekday:6,weeks:[2,4]}]`. The employee's calendar is
+chosen **per date** from `employeeAssignmentAsOf`, so a transferred employee uses the old
+institution's calendar before the transfer and the new one after.
+`GET /holidays/resolve?employeeId&from&to` exposes this.
+
+### 10.3 Shift resolution
+
+`shifts/shifts.resolver.ts`, per employee + date: (1) the employee's own active assignment (latest
+`effectiveFrom`), (2) the assignment of the as-of department, (3) the institution default shift,
+(4) none → 4 h / 8 h half / full-day thresholds, no lateness. Rotations cycle every `rotationDays`
+from `effectiveFrom`. Cross-midnight shifts (end ≤ start) attribute punches up to 4 h after shift
+end to the shift's start date. A shift's own `weeklyOffs` override the calendar pattern.
+
+### 10.4 Daily computation, regularization, locks
+
+`computeAttendance(employeeIds, from, to)` (`attendance.compute.ts`) combines punches + shift +
+holidays + approved leave + approved regularizations into `AttendanceRecord`s via the pure
+`computeDay`. Precedence: full-day leave → holiday / weekly off → punches (late if first-in >
+start + grace; half day below the full-day minimum; absent below the half-day minimum). Only
+ACTIVE / ON_NOTICE (and EXITED, up to their exit date) employees are computed; dates outside
+employment are skipped. Records with `manualOverride` and dates in a LOCKED period are never
+recomputed. Triggers: punch / import (punched days), leave decisions, regularization approval,
+`POST /attendance/recompute`, and the recurring `attendance.daily_recompute` job (last 3 days,
+`forEachActiveOrganization`).
+
+Regularizations go through `submitWorkflow('attendance_regularization')` (reporting-manager
+approval is possible via the workflow definition; auto-approves when no definition exists). On
+approval the day is recomputed with the corrected in/out times or status.
+
+**Period lock:** `POST /attendance/locks` (`attendance.lock`) locks an institution + period. Any
+punch, override, recompute or regularization touching a locked date fails with
+`409 PERIOD_LOCKED`. `POST /attendance/locks/:id/unlock` requires `attendance.unlock` and a reason
+and is audited (`attendance.period_unlock`). Payroll should lock the period before finalizing.
+
+### 10.5 Leave
+
+- **Day calculation** (`calculateLeaveDays`): working days count 1 (0.5 for the start/end half);
+  holidays / weekly offs count 0 unless the type's sandwich rule is on and they lie between
+  leave days. Uses the employee's as-of calendar and shift per date. `POST /leave/preview` returns
+  the breakdown.
+- **Validation:** eligibility (gender, employment type), half-day allowed, max consecutive days,
+  overlap with pending/approved requests, sufficient balance for paid types (unpaid types never
+  check balance), documents if required, employee ACTIVE / ON_NOTICE.
+- **Workflow** `leave_request` (reporting manager approval via definitions; auto-approve when none).
+  Approval posts a CONSUMPTION ledger entry for paid types and recomputes attendance. Cancel /
+  withdraw (`POST /leave/requests/:id/cancel`) posts a REVERSAL entry and recomputes.
+- **Accrual** (`runAccrual`, job `leave.daily_accrual`, also `POST /leave/accrual/run`):
+  idempotent per period key; joining pro-rata in the joining period.
+- **Year-end** (`runYearEnd`, `POST /leave/year-end`): per type, encash (capped) and lapse dated
+  Dec 31 and carry forward (capped) dated Jan 1 of the next year.
+
+### 10.6 Events, notifications, jobs
+
+Events: `attendance.regularization_requested`, `attendance.regularized`,
+`attendance.period_locked`, `attendance.period_unlocked`, `leave.applied`, `leave.approved`,
+`leave.rejected`, `leave.cancelled`. Notification events: `leave.applied`, `leave.approved`,
+`leave.rejected`, `leave.cancelled`, `attendance.regularization_decided`. Jobs:
+`attendance.daily_recompute`, `leave.daily_accrual`, recurring `time_office.daily.schedule`.
+
+### 10.7 Payroll feed (contract for Layer 8)
+
+```ts
+// apps/api/src/modules/attendance/attendance.summary.ts
+attendanceSummaryForPeriod(
+  target: string /* employeeId */ | { employeeIds: string[] } | { institutionId: string; departmentId?: string },
+  periodStart: 'YYYY-MM-DD',
+  periodEnd: 'YYYY-MM-DD',
+): Promise<AttendanceSummaryDto[]>   // type from @erp/shared
+```
+
+No authorization (callers run in a tenant context and decide access). Recomputes the non-locked
+days first, so it is always consistent with punches / leave / holidays. HTTP:
+`GET /attendance/summary?from&to&(employeeId|institutionId[&departmentId])` (`attendance.view`,
+scoped). Per employee it returns:
+
+| Field                                                             | Meaning                                                                                                                                                                         |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `calendarDays`, `employedDays`                                    | Days in period / days within employment (join → exit).                                                                                                                          |
+| `pendingDays`                                                     | Employed days with no record yet (should be 0 after recompute).                                                                                                                 |
+| `presentDays`, `onDutyDays`                                       | Present days (LATE and ON_DUTY count as present; HALF_DAY counts 0.5); `onDutyDays` is the ON_DUTY subset.                                                                      |
+| `paidLeaveDays`, `paidLeaveByType[{leaveTypeId, code, days}]`     | Approved paid leave.                                                                                                                                                            |
+| `unpaidLeaveDays`, `absentDays`                                   | Approved unpaid leave; absences (incl. the absent half of half days).                                                                                                           |
+| `holidays`, `weeklyOffs`                                          | Per as-of calendar / shift.                                                                                                                                                     |
+| `lateCount`, `earlyExitCount`, `overtimeMinutes`, `overtimeHours` | From computed records.                                                                                                                                                          |
+| `lateDeductionDays`                                               | `floor(lateCount / lateMarksPerHalfDay) × 0.5`, capped at present days (0 when the policy has no rule). Policy = attendance policy of the institution on the last employed day. |
+| `lopDays`                                                         | `unpaidLeaveDays + (absentIsLop ? absentDays : 0) + lateDeductionDays`.                                                                                                         |
+| `payableDays`                                                     | `presentDays + paidLeaveDays + holidays + weeklyOffs + (absentIsLop ? 0 : absentDays) − lateDeductionDays`.                                                                     |
+| `locked`                                                          | Every employed day of the period is in a LOCKED period.                                                                                                                         |
+| `institutionDays[{institutionId, days}]`                          | Split per as-of institution (transfers mid-period).                                                                                                                             |
+
+`payableDays + lopDays = employedDays` (when `pendingDays = 0`). Pro-ration for joiners / leavers
+should use `employedDays` vs `calendarDays`.
+
+### 10.8 Permissions, roles, web
+
+Permissions: `holiday.view|manage`, `shift.view|manage`,
+`attendance.view|manage|import|lock|unlock`, `attendance.view_own|punch_own|regularize_own`,
+`leave.view|manage|apply|adjust`, `leave.view_own|apply_own`. HR roles get management permissions;
+the employee role gets the `*_own` set. Web: `/hr/attendance`, `/hr/leave`, `/hr/leave-setup`,
+`/hr/shifts`, `/hr/holidays`; self-service `/employee/attendance` (punch, calendar, regularize)
+and `/employee/leave` (balances, apply with live preview, cancel).
+
+### 10.9 Rules for later layers
+
+1. Payroll must read attendance only through `attendanceSummaryForPeriod`; never re-derive LOP.
+2. Lock the attendance period before finalizing payroll; edits after that need explicit unlock.
+3. Leave encashment payouts read ENCASHMENT ledger entries; never mutate ledger rows (append
+   ADJUSTMENT / REVERSAL instead).
+4. Resolve holidays / shifts with the resolvers (per date, per as-of assignment), never by
+   institution id alone.
+
+## 11. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
@@ -798,7 +940,7 @@ transfer files and never persist clear values.
   requests, instance history + actions), `/group|institution/communication` (providers,
   templates, message log) and `/group/integrations` (API clients, webhooks, deliveries/replay).
 
-## 11. Testing & quality
+## 12. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -809,7 +951,7 @@ transfer files and never persist clear values.
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 12. Foundation stack
+## 13. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit

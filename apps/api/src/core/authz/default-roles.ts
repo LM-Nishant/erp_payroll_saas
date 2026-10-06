@@ -29,6 +29,21 @@ const views = (...resources: string[]) => resources.map((r) => `${r}.view` as Pe
 const HIERARCHY = ['group', 'institution', 'campus', 'department', 'program', 'class_section'];
 const ACADEMIC_STRUCTURE_VIEW = views('organization', ...HIERARCHY);
 
+/** Attendance / leave / holiday / shift (Layer 7). Unlocking a locked period is NOT included. */
+const TIME_OFFICE = pick('holiday', 'shift', 'attendance', 'leave').filter(
+  (c) => c !== 'attendance.unlock',
+);
+/** Self-service attendance / leave for anyone who is also an employee. */
+const TIME_SELF_SERVICE = [
+  'attendance.view_own',
+  'attendance.punch_own',
+  'attendance.regularize_own',
+  'leave.view_own',
+  'leave.apply_own',
+] as PermissionCode[];
+/** Read access used by payroll / finance (attendance summary = payroll feed). */
+const TIME_VIEW = views('holiday', 'shift', 'attendance', 'leave');
+
 /** Full administration of everything below the group/institution level. */
 const INSTITUTION_ADMIN = [
   ...ACADEMIC_STRUCTURE_VIEW,
@@ -38,6 +53,7 @@ const INSTITUTION_ADMIN = [
     (c) => c !== 'employee.view_sensitive',
   ),
   'designation.view',
+  ...TIME_OFFICE,
   'role.view',
   'audit.view',
   'payroll.view',
@@ -56,6 +72,7 @@ const GROUP_ADMIN = [
   'institution.create',
   'institution.delete',
   'group.update',
+  'attendance.unlock',
   'feature.manage',
   'secret.view',
   'workflow.manage',
@@ -68,6 +85,7 @@ const HR = [
   ...ACADEMIC_STRUCTURE_VIEW,
   'workflow.view',
   ...pick('employee', 'document', 'designation'),
+  ...TIME_OFFICE,
   'pdf.generate',
   'user.view',
   'salary.view',
@@ -84,6 +102,7 @@ const FINANCE = [
   'payroll.lock',
   'salary.view',
   'employee.view',
+  ...TIME_VIEW,
   'designation.view',
   'document.view',
   'document.download',
@@ -98,6 +117,9 @@ const ACADEMIC_LEAD = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('student', 'program', 'class_section'),
   'employee.view',
+  'attendance.view',
+  'leave.view',
+  ...TIME_SELF_SERVICE,
   'user.view',
   'document.view',
   'document.download',
@@ -109,6 +131,7 @@ const ACADEMIC_LEAD = [
 
 const TEACHING = [
   ...ACADEMIC_STRUCTURE_VIEW,
+  ...TIME_SELF_SERVICE,
   'student.view',
   'document.view',
   'document.download',
@@ -128,6 +151,7 @@ const EMPLOYEE_SELF_SERVICE = [
   ...SELF_SERVICE,
   'employee.view_own',
   'employee.update_own',
+  ...TIME_SELF_SERVICE,
 ] as PermissionCode[];
 
 export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
@@ -165,7 +189,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Institution Owner',
       description: 'Owner of assigned institutions',
       typicalScope: 'INSTITUTION',
-      permissions: [...INSTITUTION_ADMIN, 'payroll.approve', 'payroll.lock'],
+      permissions: [...INSTITUTION_ADMIN, 'payroll.approve', 'payroll.lock', 'attendance.unlock'],
     },
     {
       key: 'institution_admin',
@@ -238,6 +262,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       permissions: [
         ...ACADEMIC_STRUCTURE_VIEW,
         'employee.view',
+        ...TIME_VIEW,
         'payroll.view',
         'payroll.process',
         'salary.view',

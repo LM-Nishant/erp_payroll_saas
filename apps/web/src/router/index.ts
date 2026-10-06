@@ -182,6 +182,36 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/hr/DesignationsPage.vue'),
       },
       {
+        path: 'attendance',
+        name: 'hr-attendance',
+        meta: { permission: 'attendance.view' },
+        component: () => import('@/pages/hr/AttendancePage.vue'),
+      },
+      {
+        path: 'leave',
+        name: 'hr-leave',
+        meta: { permission: 'leave.view' },
+        component: () => import('@/pages/hr/LeaveRequestsPage.vue'),
+      },
+      {
+        path: 'leave-setup',
+        name: 'hr-leave-setup',
+        meta: { permission: 'leave.view' },
+        component: () => import('@/pages/hr/LeaveSetupPage.vue'),
+      },
+      {
+        path: 'shifts',
+        name: 'hr-shifts',
+        meta: { permission: 'shift.view' },
+        component: () => import('@/pages/hr/ShiftsPage.vue'),
+      },
+      {
+        path: 'holidays',
+        name: 'hr-holidays',
+        meta: { permission: 'holiday.view' },
+        component: () => import('@/pages/hr/HolidayCalendarsPage.vue'),
+      },
+      {
         path: 'documents',
         name: 'hr-documents',
         meta: { permission: 'document.view', feature: 'documents' },
@@ -209,6 +239,18 @@ export const routes: RouteRecordRaw[] = [
         name: 'employee-profile',
         meta: { permission: 'employee.view_own', feature: 'hr' },
         component: () => import('@/pages/hr/MyEmployeeProfilePage.vue'),
+      },
+      {
+        path: 'attendance',
+        name: 'employee-attendance',
+        meta: { permission: 'attendance.view_own', feature: 'hr' },
+        component: () => import('@/pages/hr/MyAttendancePage.vue'),
+      },
+      {
+        path: 'leave',
+        name: 'employee-leave',
+        meta: { permission: 'leave.view_own', feature: 'hr' },
+        component: () => import('@/pages/hr/MyLeavePage.vue'),
       },
       {
         path: 'notifications',
