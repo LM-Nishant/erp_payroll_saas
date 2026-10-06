@@ -36,6 +36,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'institution.view',
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
+    { title: 'Approvals', icon: 'mdi-check-decagram', to: '/group/approvals' },
     {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',
@@ -61,6 +62,19 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/group/branding',
       permission: 'branding.view',
     },
+    {
+      title: 'Communication',
+      icon: 'mdi-email-fast',
+      to: '/group/communication',
+      permission: 'communication.view',
+      feature: 'communication',
+    },
+    {
+      title: 'API & webhooks',
+      icon: 'mdi-api',
+      to: '/group/integrations',
+      permission: 'integration.view',
+    },
     { title: 'Secrets', icon: 'mdi-key-chain', to: '/group/secrets', permission: 'secret.view' },
   ],
   institution: [
@@ -77,12 +91,20 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/institution/users',
       permission: 'user.view',
     },
+    { title: 'Approvals', icon: 'mdi-check-decagram', to: '/institution/approvals' },
     {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',
       to: '/institution/documents',
       permission: 'document.view',
       feature: 'documents',
+    },
+    {
+      title: 'Communication',
+      icon: 'mdi-email-fast',
+      to: '/institution/communication',
+      permission: 'communication.view',
+      feature: 'communication',
     },
     {
       title: 'Branding',
@@ -93,6 +115,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
   ],
   employee: [
     { title: 'Home', icon: 'mdi-account', to: '/employee' },
+    { title: 'Approvals', icon: 'mdi-check-decagram', to: '/employee/approvals' },
     {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',

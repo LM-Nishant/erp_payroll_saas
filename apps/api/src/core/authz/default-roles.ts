@@ -44,6 +44,8 @@ const INSTITUTION_ADMIN = [
   'branding.view',
   'branding.manage',
   'pdf.generate',
+  'workflow.view',
+  'communication.view',
 ] as PermissionCode[];
 
 const GROUP_ADMIN = [
@@ -53,10 +55,15 @@ const GROUP_ADMIN = [
   'group.update',
   'feature.manage',
   'secret.view',
+  'workflow.manage',
+  'notification.manage',
+  'communication.manage',
+  'integration.view',
 ] as PermissionCode[];
 
 const HR = [
   ...ACADEMIC_STRUCTURE_VIEW,
+  'workflow.view',
   ...pick('employee', 'document'),
   'pdf.generate',
   'user.view',
@@ -262,7 +269,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'ai.configure',
         'feature.view',
         'branding.view',
-        ...pick('secret'),
+        ...pick('secret', 'integration', 'communication'),
       ],
     },
     {

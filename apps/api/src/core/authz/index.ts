@@ -8,3 +8,4 @@ export * from './scope-targets';
 export * from './hierarchy-resources';
 export * from './catalog';
 export * from './principal-middleware';
+export * from './holders';

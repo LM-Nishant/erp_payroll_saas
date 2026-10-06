@@ -1,3 +1,4 @@
+import './engines';
 import cors from 'cors';
 import express, { Router, type Express } from 'express';
 import helmet from 'helmet';
@@ -7,7 +8,13 @@ import { authenticate } from './core/auth';
 import { principalContext } from './core/authz';
 import { prisma } from './core/db/prisma';
 import { errorHandler, notFoundHandler } from './core/http/error-handler';
-import { memoryRateLimitStore, rateLimit, type RateLimitStore } from './core/http/rate-limit';
+import {
+  memoryRateLimitStore,
+  rateLimit,
+  redisRateLimitStore,
+  type RateLimitStore,
+} from './core/http/rate-limit';
+import { apiClientUsage } from './core/integrations';
 import { requestContext } from './core/http/request-context';
 import { REQUEST_ID_HEADER, requestId } from './core/http/request-id';
 import { requireFeature } from './core/features';
@@ -25,14 +32,20 @@ import { auditLogsRouter } from './modules/audit-logs/audit-logs.routes';
 import { authRouter } from './modules/auth/auth.routes';
 import { brandingRouter } from './modules/branding/branding.routes';
 import { campusesRouter } from './modules/campuses/campuses.routes';
+import {
+  communicationCallbackRouter,
+  communicationRouter,
+} from './modules/communication/communication.routes';
 import { classSectionsRouter } from './modules/class-sections/class-sections.routes';
 import { documentsRouter } from './modules/documents/documents.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
 import { healthRouter, type ReadinessCheck } from './modules/health/health.routes';
+import { integrationsRouter, oauthRouter } from './modules/integrations/integrations.routes';
 import { institutionsRouter } from './modules/institutions/institutions.routes';
 import { meRouter } from './modules/me/me.routes';
+import { notificationsRouter } from './modules/notifications/notifications.routes';
 import { organizationRouter } from './modules/organization/organization.routes';
 import { pdfRouter } from './modules/pdf/pdf.routes';
 import { platformRouter } from './modules/platform/platform.routes';
@@ -41,12 +54,13 @@ import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
 import { secretsRouter } from './modules/secrets/secrets.routes';
 import { subscriptionRouter } from './modules/subscription/subscription.routes';
 import { usersRouter } from './modules/users/users.routes';
+import { workflowsRouter } from './modules/workflows/workflows.routes';
 
 export interface AppDependencies {
   organizationLookup: OrganizationLookup;
   tenantResolver: TenantResolver;
   readinessCheck: ReadinessCheck;
-  /** Store for auth endpoint rate limits (swap for Redis when running several instances). */
+  /** Store for auth endpoint rate limits (RATE_LIMIT_STORE=redis shares it across instances). */
   rateLimitStore: RateLimitStore;
   authRateLimit: { windowMs: number; max: number };
 }
@@ -58,7 +72,8 @@ export function defaultDependencies(): AppDependencies {
     readinessCheck: async () => {
       await prisma.$queryRaw`SELECT 1`;
     },
-    rateLimitStore: memoryRateLimitStore(),
+    rateLimitStore:
+      env.RATE_LIMIT_STORE === 'redis' ? redisRateLimitStore('rl:auth:') : memoryRateLimitStore(),
     authRateLimit: {
       windowMs: env.AUTH_RATE_LIMIT_WINDOW_SECONDS * 1000,
       max: env.AUTH_RATE_LIMIT_MAX,
@@ -85,7 +100,12 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   );
   app.use(helmet());
   app.use(cors({ origin: env.CORS_ORIGINS, credentials: true }));
-  app.use(express.json({ limit: '1mb' }));
+  // Keep the raw body for signature verification (provider delivery callbacks).
+  const keepRaw = (req: express.Request, _res: express.Response, buf: Buffer) => {
+    (req as express.Request & { rawBody?: Buffer }).rawBody = buf;
+  };
+  app.use(express.json({ limit: '1mb', verify: keepRaw }));
+  app.use(express.urlencoded({ extended: false, limit: '1mb', verify: keepRaw }));
   app.use(requestContext);
 
   app.use('/health', healthRouter(deps.readinessCheck));
@@ -101,11 +121,16 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/platform', authenticate(), principalContext(), platformRouter);
   // Local/memory storage drivers (dev/test): the HMAC-signed token in the URL is the credential.
   api.use(LOCAL_STORAGE_ROUTE.replace('/api/v1', ''), localStorageRouter());
+  // Public machine endpoints: the signature / client secret is the credential.
+  api.use('/communication/webhooks', communicationCallbackRouter);
+  api.use('/oauth', limit('oauth'), oauthRouter);
 
   // Everything below is tenant-scoped: the tenant comes from the authenticated session (JWT).
   // The dev-header resolver (dev/test only, refused in production) may substitute a header.
   const devHeader = deps.tenantResolver.name === 'dev-header';
-  api.use(authenticate({ optional: devHeader }));
+  // API clients (client-credentials tokens) are accepted here, with per-client rate limits.
+  api.use(authenticate({ optional: devHeader, allowApiClient: true }));
+  api.use(apiClientUsage());
   api.use(tenantContext(deps.tenantResolver, deps.organizationLookup));
   api.use(principalContext({ allowDevPrincipal: devHeader }));
   api.use('/organization', organizationRouter);
@@ -126,6 +151,10 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/secrets', secretsRouter);
   api.use('/documents', requireFeature('documents'), documentsRouter);
   api.use('/pdf', requireFeature('documents'), pdfRouter);
+  api.use('/workflows', workflowsRouter);
+  api.use('/notifications', notificationsRouter);
+  api.use('/communication', requireFeature('communication'), communicationRouter);
+  api.use('/integrations', integrationsRouter);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

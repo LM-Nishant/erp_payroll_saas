@@ -42,3 +42,8 @@ export function getTenantContext(): TenantContext {
 export function currentOrganizationId(): string {
   return getTenantContext().organizationId;
 }
+
+/** Run `fn` OUTSIDE any tenant context (used by the queue to start jobs in a fresh context). */
+export function exitTenantContext<T>(fn: () => T): T {
+  return storage.exit(fn);
+}

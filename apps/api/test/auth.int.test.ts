@@ -3,6 +3,7 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { hashPassword } from '../src/core/auth/password';
 import { totp } from '../src/core/auth/totp';
+import { messageOutbox } from '../src/core/communication';
 import { prisma } from '../src/core/db/prisma';
 import {
   DEMO_PASSWORD,
@@ -12,6 +13,13 @@ import {
   login,
   seedAccessFixture,
 } from './helpers';
+
+function tokenFromOutbox(to: string, path: string): string {
+  const mail = [...messageOutbox].reverse().find((m) => m.to === to && m.text.includes(path));
+  const match = mail?.text.match(/token=([A-Za-z0-9_%.-]+)/);
+  if (!match?.[1]) throw new Error(`No ${path} e-mail for ${to}`);
+  return decodeURIComponent(match[1]);
+}
 
 describe.skipIf(!hasTestDatabase)('authentication', () => {
   const app = createApp({ authRateLimit: TEST_AUTH_RATE_LIMIT });
@@ -251,8 +259,10 @@ describe.skipIf(!hasTestDatabase)('authentication', () => {
       })
       .expect(201);
     expect(created.body.data.membershipStatus).toBe('INVITED');
-    const inviteToken = created.body.data.inviteToken as string;
-    expect(inviteToken).toBeTruthy();
+    // Tokens are never returned by the API; they are e-mailed (log provider outbox in tests).
+    expect(created.body.data.inviteToken).toBeUndefined();
+    expect(JSON.stringify(created.body)).not.toMatch(/token=/);
+    const inviteToken = tokenFromOutbox(email, 'accept-invite');
 
     await http()
       .post('/api/v1/auth/accept-invite')
@@ -269,13 +279,16 @@ describe.skipIf(!hasTestDatabase)('authentication', () => {
     const reset = await admin
       .post(`/api/v1/users/${created.body.data.id}/password-reset`)
       .expect(201);
+    expect(reset.body.data.resetToken).toBeUndefined();
+    expect(reset.body.data.deliveryStatus).toBe('SENT');
+    const resetToken = tokenFromOutbox(email, 'reset-password');
     await http()
       .post('/api/v1/auth/password/reset')
-      .send({ token: reset.body.data.resetToken, newPassword: 'Reset-Passw0rd!' })
+      .send({ token: resetToken, newPassword: 'Reset-Passw0rd!' })
       .expect(204);
     await http()
       .post('/api/v1/auth/password/reset')
-      .send({ token: reset.body.data.resetToken, newPassword: 'Reset-Passw0rd!' })
+      .send({ token: resetToken, newPassword: 'Reset-Passw0rd!' })
       .expect(400);
     // Reset revokes existing sessions.
     await asBearer(app, teacherLogin.accessToken).get('/api/v1/me').expect(401);

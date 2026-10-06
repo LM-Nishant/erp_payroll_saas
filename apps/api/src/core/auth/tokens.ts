@@ -1,5 +1,5 @@
 import { randomUUID } from 'node:crypto';
-import { SignJWT, errors as joseErrors, jwtVerify, type JWTPayload } from 'jose';
+import { SignJWT, decodeJwt, errors as joseErrors, jwtVerify, type JWTPayload } from 'jose';
 import { env } from '../config/env';
 import { UnauthenticatedError } from '../http/errors';
 
@@ -81,4 +81,39 @@ export async function verifyMfaToken(token: string): Promise<MfaClaims> {
     deviceName: typeof payload.deviceName === 'string' ? payload.deviceName : undefined,
     tokenDelivery: payload.tokenDelivery === 'cookie' ? 'cookie' : 'body',
   };
+}
+
+/** Access token of a machine API client (OAuth2 client credentials, core/integrations). */
+export interface ClientClaims {
+  /** ApiClient row id. */
+  sub: string;
+  org: string;
+  /** Granted scopes (subset of the client's scopes at issue time). */
+  scope: string[];
+}
+
+export function signClientToken(claims: ClientClaims, ttlSeconds: number) {
+  return sign(
+    { sub: claims.sub, org: claims.org, scope: claims.scope.join(' ') },
+    'client',
+    ttlSeconds,
+  );
+}
+
+export async function verifyClientToken(token: string): Promise<ClientClaims> {
+  const payload = await verify(token, 'client');
+  if (typeof payload.org !== 'string' || typeof payload.scope !== 'string') {
+    throw new UnauthenticatedError('Invalid token', 'TOKEN_INVALID');
+  }
+  return { sub: payload.sub!, org: payload.org, scope: payload.scope.split(' ').filter(Boolean) };
+}
+
+/** Unverified `typ` claim (routing only — the token is verified by the matching verifier). */
+export function peekTokenType(token: string): string | null {
+  try {
+    const typ = decodeJwt(token).typ;
+    return typeof typ === 'string' ? typ : null;
+  } catch {
+    return null;
+  }
 }

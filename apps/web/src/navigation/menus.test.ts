@@ -4,7 +4,8 @@ import { MENUS, WORKSPACES, visibleMenu, type MenuItem } from './menus';
 describe('visibleMenu', () => {
   it('hides items the user lacks permission for', () => {
     const items = visibleMenu(MENUS.group, (p) => !p);
-    expect(items.map((i) => i.title)).toEqual(['Dashboard']);
+    // Approvals inbox is self-scoped, so it needs no permission.
+    expect(items.map((i) => i.title)).toEqual(['Dashboard', 'Approvals']);
   });
 
   it('shows everything for wildcard permissions', () => {
@@ -17,6 +18,7 @@ describe('visibleMenu', () => {
     expect(visibleMenu(MENUS.institution, can).map((i) => i.title)).toEqual([
       'Dashboard',
       'Departments',
+      'Approvals',
     ]);
     expect(visibleMenu(WORKSPACES, can).map((w) => w.layout)).toEqual(['institution', 'employee']);
   });

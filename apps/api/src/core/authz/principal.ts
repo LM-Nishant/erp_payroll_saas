@@ -20,8 +20,10 @@ export interface Grant {
  * - `platform`: a platform admin inside an audited tenant-access session.
  * - `dev`: X-Dev-Organization header principal (dev/test only, refused in production).
  * - `system`: trusted server code (seeds, jobs).
+ * - `api_client`: a machine client (OAuth2 client credentials, core/integrations); its grants
+ *   are the client's API scopes within the client's hierarchy target.
  */
-export type ActorType = 'user' | 'platform' | 'dev' | 'system';
+export type ActorType = 'user' | 'platform' | 'dev' | 'system' | 'api_client';
 
 export interface Principal {
   readonly actorType: ActorType;
@@ -33,6 +35,8 @@ export interface Principal {
   /** Reason recorded when the platform tenant-access session was opened. */
   readonly platformAccessReason: string | null;
   readonly grants: readonly Grant[];
+  /** Set for `api_client` principals. */
+  readonly apiClientId?: string | null;
   /** Per-request memo for expanded scope sets (see engine.ts). */
   readonly cache: Map<string, unknown>;
 }
@@ -57,6 +61,11 @@ const storage = new AsyncLocalStorage<Principal>();
 
 export function runWithPrincipal<T>(principal: Principal, fn: () => T): T {
   return storage.run(principal, fn);
+}
+
+/** Run `fn` with no principal (used by the queue to start jobs in a fresh context). */
+export function exitPrincipal<T>(fn: () => T): T {
+  return storage.exit(fn);
 }
 
 export function tryGetPrincipal(): Principal | undefined {

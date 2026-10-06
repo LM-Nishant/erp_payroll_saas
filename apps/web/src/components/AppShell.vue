@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import NotificationBell from '@/components/NotificationBell.vue';
 import { MENUS, visibleMenu, type LayoutKey } from '@/navigation/menus';
 import { useAuthStore } from '@/stores/auth';
 
@@ -40,6 +41,7 @@ async function signOut() {
       platform access
     </v-chip>
     <v-chip class="mr-2" variant="outlined" size="small">{{ auth.me?.user.name }}</v-chip>
+    <NotificationBell :base="`/${layout === 'platform' ? 'platform' : layout}`" />
     <v-btn to="/" icon="mdi-swap-horizontal" title="Switch workspace" />
     <v-btn icon="mdi-logout" title="Sign out" @click="signOut" />
   </v-app-bar>
