@@ -37,8 +37,29 @@ describe('parseEnv', () => {
       JWT_ACCESS_SECRET: 'x'.repeat(40),
       DATA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
       SECRETS_MASTER_KEYS: `1:${Buffer.alloc(32, 2).toString('base64')}`,
+      STORAGE_DRIVER: 's3',
+      STORAGE_S3_BUCKET: 'erp-docs',
     });
     expect(env.JWT_ACCESS_SECRET).toBe('x'.repeat(40));
+  });
+
+  it('validates storage configuration', () => {
+    const prod = {
+      ...base,
+      NODE_ENV: 'production',
+      JWT_ACCESS_SECRET: 'x'.repeat(40),
+      DATA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+      SECRETS_MASTER_KEYS: `1:${Buffer.alloc(32, 2).toString('base64')}`,
+    };
+    expect(() => parseEnv({ ...prod, STORAGE_DRIVER: 'memory' })).toThrow(/memory storage/);
+    expect(() => parseEnv({ ...prod, STORAGE_DRIVER: 'local' })).toThrow(
+      /STORAGE_LOCAL_SIGNING_SECRET/,
+    );
+    expect(() => parseEnv({ ...base, STORAGE_DRIVER: 's3' })).toThrow(/STORAGE_S3_BUCKET/);
+    const dev = parseEnv(base);
+    expect(dev.STORAGE_DRIVER).toBe('local');
+    expect(dev.STORAGE_SIGNED_URL_TTL_SECONDS).toBe(300);
+    expect(dev.STORAGE_LOCAL_SIGNING_SECRET.length).toBeGreaterThanOrEqual(32);
   });
 
   it('requires secrets master keys in production', () => {

@@ -172,6 +172,7 @@ describe.skipIf(!hasTestDatabase)('platform super admin', () => {
     expect(count).toBe(1);
     const row = await prisma.auditLog.findFirst({
       where: { action: 'platform.run_as', organizationId: orgIds['jp-college'] },
+      orderBy: { createdAt: 'desc' },
     });
     expect(row).toMatchObject({ reason: 'Nightly integrity check job' });
   });

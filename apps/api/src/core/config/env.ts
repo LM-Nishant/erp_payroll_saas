@@ -6,6 +6,7 @@ const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']
 /** Insecure fallbacks used ONLY outside production so dev/test work out of the box. */
 export const DEV_JWT_SECRET = 'dev-only-insecure-jwt-secret-change-me-0123456789';
 export const DEV_DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+export const DEV_STORAGE_SIGNING_SECRET = 'dev-only-insecure-storage-signing-secret-0123456789';
 export const DEV_SECRETS_MASTER_KEYS = `1:${Buffer.alloc(32, 9).toString('base64')}`;
 
 /** Parse `SECRETS_MASTER_KEYS` (`<version>:<base64 32 bytes>[,…]`) into a version → key map. */
@@ -99,6 +100,37 @@ export const envSchema = z
       .optional(),
     /** Version used to wrap NEW data keys. Defaults to the highest configured version. */
     SECRETS_ACTIVE_KEY_VERSION: z.coerce.number().int().min(1).optional(),
+
+    // --- File storage (core/storage) -------------------------------------------------
+    /** `s3` (production), `local` (filesystem, dev) or `memory` (tests; never production). */
+    STORAGE_DRIVER: z.enum(['s3', 'local', 'memory']).default('local'),
+    STORAGE_LOCAL_DIR: z.string().min(1).default('.storage'),
+    /** HMAC key for local/memory signed URLs (dev default derived when unset). */
+    STORAGE_LOCAL_SIGNING_SECRET: z.string().min(32).optional(),
+    /** Public origin of this API used to build local signed URLs (empty = relative URLs). */
+    STORAGE_PUBLIC_BASE_URL: z
+      .string()
+      .url()
+      .optional()
+      .transform((v) => v?.replace(/\/+$/, '')),
+    STORAGE_S3_BUCKET: z.string().min(3).optional(),
+    STORAGE_S3_REGION: z.string().min(1).default('ap-south-1'),
+    /** Custom endpoint for S3-compatible stores (MinIO, R2…). */
+    STORAGE_S3_ENDPOINT: z.string().url().optional(),
+    STORAGE_S3_FORCE_PATH_STYLE: z
+      .enum(['true', 'false'])
+      .default('false')
+      .transform((v) => v === 'true'),
+    /** Optional static credentials; default is the AWS SDK credential chain (IAM role). */
+    STORAGE_S3_ACCESS_KEY_ID: z.string().min(1).optional(),
+    STORAGE_S3_SECRET_ACCESS_KEY: z.string().min(1).optional(),
+    STORAGE_S3_SSE: z.enum(['AES256', 'aws:kms']).default('AES256'),
+    STORAGE_S3_KMS_KEY_ID: z.string().min(1).optional(),
+    STORAGE_SIGNED_URL_TTL_SECONDS: z.coerce.number().int().min(30).max(3600).default(300),
+    STORAGE_UPLOAD_URL_TTL_SECONDS: z.coerce.number().int().min(60).max(3600).default(900),
+    STORAGE_MAX_UPLOAD_BYTES: intFrom(1024, 25 * 1024 * 1024),
+    /** Days a soft-deleted document's objects are kept before `purgeExpiredDocuments`. */
+    DOCUMENT_RETENTION_DAYS: intFrom(0, 30),
   })
   .superRefine((value, ctx) => {
     const masterKeys = value.SECRETS_MASTER_KEYS ?? DEV_SECRETS_MASTER_KEYS;
@@ -127,6 +159,29 @@ export const envSchema = z
         }
       }
     }
+    if (value.NODE_ENV === 'production' && value.STORAGE_DRIVER === 'memory') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_DRIVER'],
+        message: 'The memory storage driver is not allowed in production',
+      });
+    }
+    if (value.STORAGE_DRIVER === 's3' && !value.STORAGE_S3_BUCKET) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['STORAGE_S3_BUCKET'],
+        message: 'STORAGE_S3_BUCKET is required for the s3 storage driver',
+      });
+    }
+    if (value.NODE_ENV === 'production' && value.STORAGE_DRIVER === 'local') {
+      if (!value.STORAGE_LOCAL_SIGNING_SECRET) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          path: ['STORAGE_LOCAL_SIGNING_SECRET'],
+          message: 'STORAGE_LOCAL_SIGNING_SECRET is required for local storage in production',
+        });
+      }
+    }
     if (value.NODE_ENV === 'production' && value.TENANT_RESOLVER === 'dev-header') {
       ctx.addIssue({
         code: z.ZodIssueCode.custom,
@@ -150,6 +205,7 @@ export type Env = ParsedEnv & {
   DATA_ENCRYPTION_KEY: string;
   SECRETS_MASTER_KEYS: string;
   SECRETS_ACTIVE_KEY_VERSION: number;
+  STORAGE_LOCAL_SIGNING_SECRET: string;
 };
 
 export function parseEnv(source: Record<string, string | undefined>): Env {
@@ -168,6 +224,8 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
     SECRETS_MASTER_KEYS: masterKeys,
     SECRETS_ACTIVE_KEY_VERSION:
       result.data.SECRETS_ACTIVE_KEY_VERSION ?? Math.max(...parseMasterKeys(masterKeys).keys()),
+    STORAGE_LOCAL_SIGNING_SECRET:
+      result.data.STORAGE_LOCAL_SIGNING_SECRET ?? DEV_STORAGE_SIGNING_SECRET,
   };
 }
 

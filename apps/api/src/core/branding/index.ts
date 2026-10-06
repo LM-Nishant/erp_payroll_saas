@@ -161,3 +161,4 @@ export function invalidateBrandingCache(): void {
   if (!cache) return;
   for (const key of [...cache.keys()]) if (key.startsWith('branding:')) cache.delete(key);
 }
+export { brandingLogoUrl } from './logo';

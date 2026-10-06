@@ -326,7 +326,28 @@ export async function getSecret(options: GetSecretOptions): Promise<SecretValue 
     .map((c) => rows.find((r) => r.scopeType === c.scopeType && r.targetId === c.targetId))
     .find(Boolean);
   if (!row) return null;
+  return openRow(row, options.purpose, { resolvedScope: row.scopeType });
+}
 
+/**
+ * INTERNAL: decrypt one specific secret of the CURRENT tenant by id (e.g. the storage secret a
+ * stored object was written with). Audited like `getSecret`. Null when it no longer exists.
+ */
+export async function getSecretById(options: {
+  id: string;
+  purpose: string;
+}): Promise<SecretValue | null> {
+  const row = await tenantDb().tenantSecret.findFirst({ where: { id: options.id } });
+  if (!row) return null;
+  return openRow(row, options.purpose, { byId: true });
+}
+
+async function openRow(
+  row: TenantSecret,
+  purpose: string,
+  extra: Record<string, unknown>,
+): Promise<SecretValue> {
+  const organizationId = currentOrganizationId();
   let plaintext: string;
   try {
     plaintext = await openSecret(keyProvider(), { organizationId, secretId: row.id }, row);
@@ -339,7 +360,7 @@ export async function getSecret(options: GetSecretOptions): Promise<SecretValue 
       action: 'secret.access_failed',
       entityType: 'tenant_secret',
       entityId: row.id,
-      metadata: { kind: row.kind, name: row.name, purpose: options.purpose },
+      metadata: { kind: row.kind, name: row.name, purpose },
     });
     throw new Error('Secret could not be decrypted');
   }
@@ -350,8 +371,8 @@ export async function getSecret(options: GetSecretOptions): Promise<SecretValue 
     metadata: {
       kind: row.kind,
       name: row.name,
-      purpose: options.purpose,
-      resolvedScope: row.scopeType,
+      purpose,
+      ...extra,
       version: row.version,
     },
   });

@@ -13,6 +13,7 @@ const sharedEnv = {
   NODE_ENV: 'test',
   LOG_LEVEL: 'silent',
   TENANT_RESOLVER: 'dev-header',
+  STORAGE_DRIVER: 'memory',
 };
 
 export default defineConfig({

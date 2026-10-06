@@ -337,12 +337,173 @@ finance: subscription + billing view.
 4. Rendered documents and notifications use `resolveBranding()`.
 5. Test fixtures provision a subscription (`provisionOrganizationSubscription`) for new orgs.
 
-## 7. Queues & cache
+## 7. File storage, documents & PDFs (Layer 4)
+
+### 7.1 Storage engine (`src/core/storage`)
+
+- `StorageProvider` interface: `putObject`, `getObject`, `headObject`, `deleteObject`, `copy`,
+  `getSignedDownloadUrl`, `getSignedUploadUrl`. Implementations: `S3StorageProvider`
+  (`@aws-sdk/client-s3` + presigner; private bucket, SSE `AES256`/`aws:kms`, SHA-256 checksums,
+  version-aware), `FsStorageProvider` (`STORAGE_DRIVER=local`, dev) and `MemoryStorageProvider`
+  (unit tests). Local providers serve HMAC-signed, expiring tokens at
+  `/api/v1/storage/local/:token` (GET download / PUT signed upload; checksum + size enforced).
+- **Provider selection:** `storageForWrite({ institutionId, groupId })` uses the most specific
+  tenant secret of kind `storage` (institution → group → org via `getSecret`), else the
+  platform provider from env (`STORAGE_*`). Storage secret value:
+  `{"accessKeyId":"…","secretAccessKey":"…"}`; metadata:
+  `{provider:"s3", bucket, region, endpoint?, forcePathStyle?, sse?, kmsKeyId?}`. Each
+  version records which secret wrote it (`storageSecretId`); reads use
+  `storageForObject(ref)` (`getSecretById`), so rotating/adding a tenant bucket never breaks
+  old files.
+- **Keys are server-generated, never client-supplied:**
+  `org/{orgId}[/grp/{groupId}][/inst/{institutionId}]/{module}/{entity}/{entityId}/{uuid}-{sanitizedName}`
+  (`buildObjectKey`); every read/delete calls `assertTenantKey(key, orgId)`.
+- Signed URLs only (`STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_UPLOAD_URL_TTL_SECONDS`), no
+  public objects; responses are `no-store` with forced `Content-Disposition`.
+- **Upload policy:** extension + MIME allowlist (`DOCUMENT_UPLOAD_TYPES`, `LOGO_UPLOAD_TYPES`
+  in `@erp/shared`; no SVG/HTML), magic-byte sniffing, `STORAGE_MAX_UPLOAD_BYTES`. Bytes are
+  counted against the `storage_bytes` limit (`consumeLimit` on write, `releaseLimit` on purge /
+  failure; `registerUsageSource('storage_bytes')` for reconciliation). No BLOBs in MySQL.
+- **Virus scanning:** `setVirusScanner({ scan })` — the default no-op marks versions
+  `SKIPPED`; a real scanner can return `PENDING` and later call
+  `recordScanResult(versionId, 'CLEAN' | 'INFECTED')`. `INFECTED` versions cannot be downloaded.
+
+### 7.2 Document engine (`src/core/documents`, `/api/v1/documents`)
+
+- Models (tenant-owned): `Document` (org + group/institution/campus/department FKs, owner
+  `ownerType`/`ownerId`, `module`, `category`/`documentType`, title, `confidentiality`
+  PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED, `status`, `currentVersionId`, issue/expiry date,
+  soft delete + `purgeAfter`), `DocumentVersion` (**immutable** — DB triggers reject updates
+  of content columns and deletes; storage key, size, sha256, mime, uploader, version number,
+  scan status), `DocumentPermission` (grants to a USER, ROLE key or SCOPE with actions
+  `view|download|upload_version|delete|share`, optional expiry), `DocumentExpiryReminder`
+  (`daysBefore` → `remindAt`, PENDING/SENT/CANCELLED), `DocumentSignature` (e-signature
+  placeholder: status only), `DocumentUpload` (pending signed-URL uploads).
+- **Attaching documents from a module** (always through `documentEngine`, never Prisma):
+
+  ```ts
+  import { documentEngine } from '../../core/documents';
+  const doc = await documentEngine.attach({
+    ownerType: 'employee',
+    ownerId: employee.id,
+    module: 'hr',
+    metadata: {
+      title: 'PAN card',
+      category: 'identity',
+      documentType: 'pan',
+      confidentiality: 'CONFIDENTIAL',
+      expiryDate: '2030-01-01',
+    },
+    file: { fileName, mimeType, body }, // or the signed-URL flow below
+    authorization: 'caller', // only if your service already authorized
+  });
+  ```
+
+  Other APIs: `addVersion`, `restoreVersion` (copies the old object into a NEW version),
+  `list`/`get`/`versions`, `downloadUrl` (audited `document.download`), `currentVersionUrl`,
+  `readCurrentVersion`, `update`, `remove` (soft delete; bytes purged after
+  `DOCUMENT_RETENTION_DAYS`), `expiring`, grants and signature requests.
+
+- **Upload flows:** (a) multipart through the API — `POST /documents/files` (`file` +
+  `metadata` JSON) or `POST /documents/:id/versions`; (b) signed URL —
+  `POST /documents/uploads` (validates type/size, pre-checks `storage_bytes`) → client `PUT`s
+  to the returned URL with the returned headers → `POST /documents/uploads/:id/complete`
+  (`headObject` verifies size + checksum, records metadata, consumes the limit). Same for
+  versions via `POST /documents/:id/versions/uploads`.
+- **Authorization** (`core/documents/access.ts`) — a document is visible when ANY of:
+  1. RBAC + scope: `document.view` in a scope covering the document's hierarchy FKs, plus
+     confidentiality (`CONFIDENTIAL` needs `document.view_confidential`; `RESTRICTED` needs
+     it at ORGANIZATION scope). Action permissions: `download` → `document.download`,
+     `upload_version` → `document.upload`, `delete` → `document.delete`, `share` →
+     `document.share`; metadata edits → `document.manage`.
+  2. Explicit grants (`DocumentPermission`) by user, role key or scope. Creating a RESTRICTED
+     document auto-grants the creator.
+  3. **Owner self-access** via the owner-type registry (requires `document.view_own`).
+     Invisible documents return 404; visible ones with a missing action return 403
+     `DOCUMENT_ACCESS_DENIED`. DTOs include `allowedActions` for the UI.
+- **Registering an owner type** (do this once at module import; Layer 6 registers
+  `employee` so employees see their own documents):
+
+  ```ts
+  registerDocumentOwnerType({
+    type: 'employee',
+    // Hierarchy of the owner (tenant-scoped lookup); null = not found → 422.
+    resolveScope: async (id) => { const e = await tenantDb().employee.findFirst(...);
+      return e && { groupId: …, institutionId: e.institutionId, campusId: …, departmentId: … }; },
+    selfAccess: {
+      actions: ['view', 'download'],
+      ownedIds: async (principal) => (await employeeIdsForUser(principal.userId)),
+    },
+  });
+  ```
+
+  Built-in owner types: `organization`, `group`, `institution`, `campus`, `department`.
+
+- **Hooks for jobs / Layer 5** (`core/documents/hooks.ts`, run in a tenant context such as
+  `runAsPlatform`, no principal checks): `dueExpiryReminders({ asOf })` +
+  `markReminderSent(id)` (notification delivery is Layer 5), `purgeExpiredDocuments()`,
+  `expireStaleUploads()`, `recordScanResult()`.
+- Routes are mounted with `requireFeature('documents')`; every mutation is audited
+  (`document.create|version_create|version_restore|update|delete|share|unshare|download|purge|…`).
+
+### 7.3 Branding logos
+
+`POST /api/v1/branding/{organization,groups/:id,institutions/:id}/logo` (multipart `file`,
+PNG/JPEG ≤ `LOGO_MAX_BYTES`, `branding.manage`) stores the logo as a PUBLIC `branding`
+document (new uploads add versions to the same document) and sets `BrandingProfile.logoFileId`
+(+ `logoStorageKey`); `DELETE …/logo` detaches it. `brandingLogoUrl(target)` /
+`GET /branding/logo-url?institutionId=` return an audited, short-lived signed URL of the
+resolved (possibly inherited) logo.
+
+### 7.4 PDF engine (`src/core/pdf`, `/api/v1/pdf`)
+
+- Templates are versioned code in a registry: `registerPdfTemplate({ key, version, name,
+inputSchema (zod .strict()), defaultCategory, defaultDocumentType, title(input), build(input,
+ctx) })` → returns a `PdfDocumentModel` of blocks (`heading`, `paragraph`, `keyValue`,
+  `table`, `signature`, `spacer`; `{{ var }}` interpolation). `pdfTemplate(key, version?)`
+  resolves the latest version unless pinned; generated documents record
+  `metadata.templateKey/templateVersion` so old PDFs stay reproducible.
+- Renderer is pluggable (`setPdfRenderer`); default `PdfKitRenderer` (pure JS) draws the
+  letterhead from `resolveBranding` (logo, display name, colors, letterhead text, contact
+  line) and a footer with page numbers on every page.
+- `generatePdf({ templateKey, version?, data, ownerType, ownerId, title?, category?,
+confidentiality? })` checks `pdf.generate` + `document.upload` in the owner's scope, renders
+  with the owner's branding and stores the result through the document engine (module `pdf`).
+  `renderPdfTemplate()` renders without storing. Sample: `generic_letter` v1. Later layers
+  register `offer_letter`, `relieving_letter`, `payslip`, … in their module and call
+  `generatePdf` (or `renderPdfTemplate` + `documentEngine.attach` with
+  `authorization: 'caller'` for batch jobs).
+
+### 7.5 Permissions, roles, env
+
+- Permissions: `document.view|upload|download|delete|manage|share|view_confidential|view_own`,
+  `pdf.generate`. Group owner/admin: all; institution admin: all in scope; HR: documents +
+  confidential + pdf; finance/academic/teaching: view + download; self-service: `document.view_own`.
+- Env: `STORAGE_DRIVER` (`s3|local|memory`), `STORAGE_LOCAL_DIR`,
+  `STORAGE_LOCAL_SIGNING_SECRET` (required in production for `local`), `STORAGE_PUBLIC_BASE_URL`,
+  `STORAGE_S3_{BUCKET,REGION,ENDPOINT,FORCE_PATH_STYLE,ACCESS_KEY_ID,SECRET_ACCESS_KEY,SSE,KMS_KEY_ID}`,
+  `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_UPLOAD_URL_TTL_SECONDS`, `STORAGE_MAX_UPLOAD_BYTES`,
+  `DOCUMENT_RETENTION_DAYS`.
+- Web: `pages/DocumentsPage.vue` (list/upload/download/versions/restore) under
+  `/group|/institution|/employee/documents`; `BrandingPage` handles logo upload/preview.
+  `apiFetch` accepts `FormData` bodies for multipart.
+
+### 7.6 Rules for later layers
+
+1. Never store files in MySQL or build storage keys yourself — use `documentEngine` (or
+   `core/storage` + `buildObjectKey` for non-document artifacts).
+2. Register an owner type for every entity that owns documents, with `selfAccess` when the
+   person should see their own files.
+3. Never return storage keys or long-lived URLs; issue signed URLs via `downloadUrl` (audited).
+4. Generated documents (letters, payslips) are PDF templates registered in the module and
+   stored through `generatePdf`; bump `version` instead of changing a template's output.
+
+## 8. Queues & cache
 
 Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires configuration
 (`REDIS_URL`, `QUEUE_PREFIX`, `createQueue()`); connections are lazy.
 
-## 8. Frontend (apps/web)
+## 9. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
@@ -356,7 +517,7 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
   the server is always the authority on tenant, permissions and scopes.
 - Shared DTO types/schemas come from `@erp/shared`.
 
-## 9. Testing & quality
+## 10. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -367,7 +528,7 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 10. Foundation stack
+## 11. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit
