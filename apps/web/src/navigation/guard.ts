@@ -1,3 +1,4 @@
+import type { FeatureKey } from '@erp/shared';
 import type { RouteLocationNormalized, RouteLocationRaw } from 'vue-router';
 
 declare module 'vue-router' {
@@ -6,12 +7,16 @@ declare module 'vue-router' {
     public?: boolean;
     /** Permission required to open the route (checked on every matched record). */
     permission?: string;
+    /** Licensed module required to open the route (from `/me.features`). */
+    feature?: FeatureKey;
   }
 }
 
 export interface GuardState {
   isAuthenticated: boolean;
   can: (permission?: string) => boolean;
+  /** Defaults to "all enabled" (the API returns 403 FEATURE_DISABLED regardless). */
+  hasFeature?: (feature?: FeatureKey) => boolean;
 }
 
 /**
@@ -30,5 +35,7 @@ export function guardDecision(
     return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } };
   }
   const allowed = to.matched.every((r) => state.can(r.meta.permission));
-  return allowed ? true : { name: 'forbidden' };
+  if (!allowed) return { name: 'forbidden' };
+  const hasFeature = state.hasFeature ?? (() => true);
+  return to.matched.every((r) => hasFeature(r.meta.feature)) ? true : { name: 'module-disabled' };
 }

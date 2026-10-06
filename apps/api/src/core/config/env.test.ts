@@ -36,8 +36,30 @@ describe('parseEnv', () => {
       NODE_ENV: 'production',
       JWT_ACCESS_SECRET: 'x'.repeat(40),
       DATA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+      SECRETS_MASTER_KEYS: `1:${Buffer.alloc(32, 2).toString('base64')}`,
     });
     expect(env.JWT_ACCESS_SECRET).toBe('x'.repeat(40));
+  });
+
+  it('requires secrets master keys in production', () => {
+    expect(() =>
+      parseEnv({
+        ...base,
+        NODE_ENV: 'production',
+        JWT_ACCESS_SECRET: 'x'.repeat(40),
+        DATA_ENCRYPTION_KEY: Buffer.alloc(32, 1).toString('base64'),
+      }),
+    ).toThrow(/SECRETS_MASTER_KEYS/);
+  });
+
+  it('parses versioned master keys and defaults the active version to the highest', () => {
+    const k = (n: number) => Buffer.alloc(32, n).toString('base64');
+    const env = parseEnv({ ...base, SECRETS_MASTER_KEYS: `1:${k(1)},3:${k(3)}` });
+    expect(env.SECRETS_ACTIVE_KEY_VERSION).toBe(3);
+    expect(() => parseEnv({ ...base, SECRETS_MASTER_KEYS: '1:c2hvcnQ=' })).toThrow(/32 bytes/);
+    expect(() =>
+      parseEnv({ ...base, SECRETS_MASTER_KEYS: `1:${k(1)}`, SECRETS_ACTIVE_KEY_VERSION: '2' }),
+    ).toThrow(/No master key/);
   });
 
   it('validates the data encryption key length', () => {

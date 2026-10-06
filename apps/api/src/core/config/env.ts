@@ -6,6 +6,26 @@ const logLevels = ['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent']
 /** Insecure fallbacks used ONLY outside production so dev/test work out of the box. */
 export const DEV_JWT_SECRET = 'dev-only-insecure-jwt-secret-change-me-0123456789';
 export const DEV_DATA_ENCRYPTION_KEY = Buffer.alloc(32, 7).toString('base64');
+export const DEV_SECRETS_MASTER_KEYS = `1:${Buffer.alloc(32, 9).toString('base64')}`;
+
+/** Parse `SECRETS_MASTER_KEYS` (`<version>:<base64 32 bytes>[,…]`) into a version → key map. */
+export function parseMasterKeys(value: string): Map<number, Buffer> {
+  const keys = new Map<number, Buffer>();
+  for (const entry of value
+    .split(',')
+    .map((s) => s.trim())
+    .filter(Boolean)) {
+    const match = /^(\d+):(.+)$/.exec(entry);
+    if (!match) throw new Error('Entries must look like <version>:<base64 key>');
+    const version = Number(match[1]);
+    const key = Buffer.from(match[2]!, 'base64');
+    if (version < 1 || key.length !== 32) throw new Error('Keys must be 32 bytes, versions >= 1');
+    if (keys.has(version)) throw new Error(`Duplicate key version ${version}`);
+    keys.set(version, key);
+  }
+  if (keys.size === 0) throw new Error('At least one master key is required');
+  return keys;
+}
 
 const intFrom = (min: number, def: number) => z.coerce.number().int().min(min).default(def);
 
@@ -62,10 +82,42 @@ export const envSchema = z
       .string()
       .refine((v) => Buffer.from(v, 'base64').length === 32, 'Must be 32 bytes, base64')
       .optional(),
+
+    // --- Secret management (core/secrets) ---------------------------------------------
+    /** Key provider wrapping per-secret data keys. `local` = master keys from env. */
+    SECRETS_KEY_PROVIDER: z.enum(['local']).default('local'),
+    /** `<version>:<base64 32-byte key>` entries, comma separated (old versions kept for unwrap). */
+    SECRETS_MASTER_KEYS: z
+      .string()
+      .superRefine((v, ctx) => {
+        try {
+          parseMasterKeys(v);
+        } catch (err) {
+          ctx.addIssue({ code: z.ZodIssueCode.custom, message: (err as Error).message });
+        }
+      })
+      .optional(),
+    /** Version used to wrap NEW data keys. Defaults to the highest configured version. */
+    SECRETS_ACTIVE_KEY_VERSION: z.coerce.number().int().min(1).optional(),
   })
   .superRefine((value, ctx) => {
+    const masterKeys = value.SECRETS_MASTER_KEYS ?? DEV_SECRETS_MASTER_KEYS;
+    if (
+      value.SECRETS_ACTIVE_KEY_VERSION !== undefined &&
+      !safeParseMasterKeys(masterKeys)?.has(value.SECRETS_ACTIVE_KEY_VERSION)
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['SECRETS_ACTIVE_KEY_VERSION'],
+        message: 'No master key with this version in SECRETS_MASTER_KEYS',
+      });
+    }
     if (value.NODE_ENV === 'production') {
-      for (const key of ['JWT_ACCESS_SECRET', 'DATA_ENCRYPTION_KEY'] as const) {
+      for (const key of [
+        'JWT_ACCESS_SECRET',
+        'DATA_ENCRYPTION_KEY',
+        'SECRETS_MASTER_KEYS',
+      ] as const) {
         if (!value[key]) {
           ctx.addIssue({
             code: z.ZodIssueCode.custom,
@@ -84,8 +136,21 @@ export const envSchema = z
     }
   });
 
+function safeParseMasterKeys(value: string): Map<number, Buffer> | null {
+  try {
+    return parseMasterKeys(value);
+  } catch {
+    return null;
+  }
+}
+
 type ParsedEnv = z.infer<typeof envSchema>;
-export type Env = ParsedEnv & { JWT_ACCESS_SECRET: string; DATA_ENCRYPTION_KEY: string };
+export type Env = ParsedEnv & {
+  JWT_ACCESS_SECRET: string;
+  DATA_ENCRYPTION_KEY: string;
+  SECRETS_MASTER_KEYS: string;
+  SECRETS_ACTIVE_KEY_VERSION: number;
+};
 
 export function parseEnv(source: Record<string, string | undefined>): Env {
   const result = envSchema.safeParse(source);
@@ -95,10 +160,14 @@ export function parseEnv(source: Record<string, string | undefined>): Env {
       .join('\n');
     throw new Error(`Invalid environment configuration:\n${issues}`);
   }
+  const masterKeys = result.data.SECRETS_MASTER_KEYS ?? DEV_SECRETS_MASTER_KEYS;
   return {
     ...result.data,
     JWT_ACCESS_SECRET: result.data.JWT_ACCESS_SECRET ?? DEV_JWT_SECRET,
     DATA_ENCRYPTION_KEY: result.data.DATA_ENCRYPTION_KEY ?? DEV_DATA_ENCRYPTION_KEY,
+    SECRETS_MASTER_KEYS: masterKeys,
+    SECRETS_ACTIVE_KEY_VERSION:
+      result.data.SECRETS_ACTIVE_KEY_VERSION ?? Math.max(...parseMasterKeys(masterKeys).keys()),
   };
 }
 

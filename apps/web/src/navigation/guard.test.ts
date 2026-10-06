@@ -41,4 +41,11 @@ describe('guardDecision', () => {
     expect(guardDecision(to, user(['group.view', 'user.view']))).toBe(true);
     expect(guardDecision(to, user(['group.view']))).toEqual({ name: 'forbidden' });
   });
+
+  it('redirects to module-disabled when the module is not enabled', () => {
+    const to = route('payroll', '/institution/payroll', [{}, { feature: 'payroll' }]);
+    const state = { ...user([]), hasFeature: (f?: string) => !f || f === 'education' };
+    expect(guardDecision(to, state)).toEqual({ name: 'module-disabled' });
+    expect(guardDecision(to, { ...user([]), hasFeature: () => true })).toBe(true);
+  });
 });

@@ -1,5 +1,6 @@
 import type { CreateInstitutionInput, PaginationQuery, UpdateInstitutionInput } from '@erp/shared';
 import { audit } from '../../core/audit';
+import { releaseLimit, withLimit } from '../../core/features';
 import { authorize, can, currentPrincipal, hierarchyResource, scopeWhere } from '../../core/authz';
 import { ConflictError, InvalidReferenceError, NotFoundError } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
@@ -40,7 +41,10 @@ export const institutionService = {
   async create(input: CreateInstitutionInput) {
     await assertGroupExists(input.groupId);
     await authorize(currentPrincipal(), 'institution.create', { groupId: input.groupId ?? null });
-    const institution = await institutionRepository.create(input);
+    // Plan limit (spec §63): reserve atomically, released again if the insert fails.
+    const institution = await withLimit('institutions', 1, () =>
+      institutionRepository.create(input),
+    );
     await audit.record({
       action: 'institution.create',
       entityType: 'institution',
@@ -81,6 +85,7 @@ export const institutionService = {
       throw new ConflictError('Institution still has campuses or departments');
     }
     await institutionRepository.softDelete(id);
+    await releaseLimit('institutions', 1);
     await audit.record({
       action: 'institution.delete',
       entityType: 'institution',

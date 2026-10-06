@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { MENUS, WORKSPACES, visibleMenu } from './menus';
+import { MENUS, WORKSPACES, visibleMenu, type MenuItem } from './menus';
 
 describe('visibleMenu', () => {
   it('hides items the user lacks permission for', () => {
@@ -19,5 +19,20 @@ describe('visibleMenu', () => {
       'Departments',
     ]);
     expect(visibleMenu(WORKSPACES, can).map((w) => w.layout)).toEqual(['institution', 'employee']);
+  });
+
+  it('hides modules that are not enabled for the organization', () => {
+    const items: MenuItem[] = [
+      { title: 'Dashboard', icon: 'x', to: '/' },
+      { title: 'Payroll', icon: 'x', to: '/p', permission: 'payroll.view', feature: 'payroll' },
+      { title: 'Students', icon: 'x', to: '/s', feature: 'education' },
+    ];
+    const features = new Set(['education']);
+    const visible = visibleMenu(
+      items,
+      () => true,
+      (f) => !f || features.has(f),
+    );
+    expect(visible.map((i) => i.title)).toEqual(['Dashboard', 'Students']);
   });
 });

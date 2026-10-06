@@ -19,6 +19,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'RolePermission',
   'UserRole',
   'UserScope',
+  // Licensing, branding, secrets (core/features, core/branding, core/secrets)
+  'OrganizationSubscription',
+  'Invoice',
+  'FeatureOverride',
+  'UsageCounter',
+  'BrandingProfile',
+  'TenantSecret',
 ]);
 
 /**
@@ -60,4 +67,6 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   'MfaRecoveryCode',
   // Permission catalog (synced from @erp/shared); readable by everyone, written by core only.
   'Permission',
+  // Subscription plan catalog (platform-managed).
+  'SubscriptionPlan',
 ]);

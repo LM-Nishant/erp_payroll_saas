@@ -8,7 +8,7 @@ const props = defineProps<{ layout: LayoutKey; title: string; color?: string }>(
 const auth = useAuthStore();
 const router = useRouter();
 const drawer = ref(true);
-const items = computed(() => visibleMenu(MENUS[props.layout], auth.can));
+const items = computed(() => visibleMenu(MENUS[props.layout], auth.can, auth.hasFeature));
 
 async function signOut() {
   await auth.logout();
@@ -18,7 +18,10 @@ async function signOut() {
 
 <template>
   <v-navigation-drawer v-model="drawer">
-    <v-list-item :title="title" :subtitle="auth.me?.organization?.name ?? 'Education ERP'" />
+    <v-list-item
+      :title="title"
+      :subtitle="auth.me?.branding?.displayName ?? auth.me?.organization?.name ?? 'Education ERP'"
+    />
     <v-divider />
     <v-list density="compact" nav>
       <v-list-item

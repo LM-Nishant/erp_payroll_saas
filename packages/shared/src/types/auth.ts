@@ -1,4 +1,6 @@
 import type { ScopeType } from '../auth/permissions';
+import type { FeatureKey } from '../licensing/features';
+import type { ResolvedBrandingDto } from './licensing';
 
 export interface AuthTokens {
   accessToken: string;
@@ -29,4 +31,11 @@ export interface MeResponse {
   roles: Array<{ key: string; name: string; scopes: ScopeSummary[] }>;
   /** Distinct permission codes granted in at least one scope. Drives the frontend menu. */
   permissions: string[];
+  /**
+   * Modules enabled somewhere in the organization (license ∩ overrides). The web app hides
+   * menus for absent features; the API enforces them independently (`requireFeature`).
+   */
+  features: FeatureKey[];
+  /** Branding resolved for the user's home scope (single institution → group → org). */
+  branding: ResolvedBrandingDto | null;
 }
