@@ -59,27 +59,33 @@ model Organization {
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
 
-  groups           Group[]
-  institutions     Institution[]
-  campuses         Campus[]
-  departments      Department[]
-  programs         Program[]
-  classSections    ClassSection[]
-  memberships      OrganizationMembership[]
-  roles            Role[]
-  rolePermissions  RolePermission[]
-  userRoles        UserRole[]
-  userScopes       UserScope[]
-  authSessions     AuthSession[]
-  loginEvents      LoginEvent[]
-  userTokens       UserToken[]
-  auditLogs        AuditLog[]
-  subscription     OrganizationSubscription?
-  invoices         Invoice[]
-  featureOverrides FeatureOverride[]
-  usageCounters    UsageCounter[]
-  brandingProfiles BrandingProfile[]
-  secrets          TenantSecret[]
+  groups             Group[]
+  institutions       Institution[]
+  campuses           Campus[]
+  departments        Department[]
+  programs           Program[]
+  classSections      ClassSection[]
+  memberships        OrganizationMembership[]
+  roles              Role[]
+  rolePermissions    RolePermission[]
+  userRoles          UserRole[]
+  userScopes         UserScope[]
+  authSessions       AuthSession[]
+  loginEvents        LoginEvent[]
+  userTokens         UserToken[]
+  auditLogs          AuditLog[]
+  subscription       OrganizationSubscription?
+  invoices           Invoice[]
+  featureOverrides   FeatureOverride[]
+  usageCounters      UsageCounter[]
+  brandingProfiles   BrandingProfile[]
+  secrets            TenantSecret[]
+  documents          Document[]
+  documentVersions   DocumentVersion[]
+  documentGrants     DocumentPermission[]
+  documentReminders  DocumentExpiryReminder[]
+  documentSignatures DocumentSignature[]
+  storageUploads     StorageUpload[]
 
   @@map("organizations")
 }
@@ -102,6 +108,7 @@ model Group {
   featureOverrides FeatureOverride[]
   brandingProfiles BrandingProfile[]
   secrets          TenantSecret[]
+  documents        Document[]
 
   @@unique([organizationId, code])
   @@index([organizationId, deletedAt])
@@ -134,6 +141,7 @@ model Institution {
   featureOverrides FeatureOverride[]
   brandingProfiles BrandingProfile[]
   secrets          TenantSecret[]
+  documents        Document[]
 
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
@@ -160,6 +168,7 @@ model Campus {
   departments   Department[]
   classSections ClassSection[]
   userScopes    UserScope[]
+  documents     Document[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -186,6 +195,7 @@ model Department {
   programs      Program[]
   classSections ClassSection[]
   userScopes    UserScope[]
+  documents     Document[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -757,9 +767,9 @@ model BrandingProfile {
   institutionId  String?          @map("institution_id") @db.Char(36)
   displayName    String?          @map("display_name") @db.VarChar(200)
   shortName      String?          @map("short_name") @db.VarChar(50)
-  /// Placeholder until the storage engine (Layer 4); see logoFileId.
+  /// Storage key of the logo's current version (kept in sync by the logo upload endpoint).
   logoStorageKey String?          @map("logo_storage_key") @db.VarChar(512)
-  /// Future FK to the file/document table (Layer 4).
+  /// Logo document (module `branding`, category `branding`).
   logoFileId     String?          @map("logo_file_id") @db.Char(36)
   primaryColor   String?          @map("primary_color") @db.Char(7)
   secondaryColor String?          @map("secondary_color") @db.Char(7)
@@ -778,8 +788,10 @@ model BrandingProfile {
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   group        Group?       @relation(fields: [groupId], references: [id], onDelete: Cascade)
   institution  Institution? @relation(fields: [institutionId], references: [id], onDelete: Cascade)
+  logoFile     Document?    @relation(fields: [logoFileId], references: [id], onDelete: SetNull)
 
   @@unique([organizationId, scopeType, targetId])
+  @@index([logoFileId])
   @@index([groupId])
   @@index([institutionId])
   @@map("branding_profiles")
@@ -823,4 +835,256 @@ model TenantSecret {
   @@index([institutionId])
   @@index([keyVersion])
   @@map("tenant_secrets")
+}
+
+// ---------------------------------------------------------------------------------------------
+// File storage & document engine (Layer 4, core/storage + core/documents). Files live in
+// private object storage; these tables hold metadata only (never BLOBs).
+// ---------------------------------------------------------------------------------------------
+
+enum DocumentConfidentiality {
+  PUBLIC
+  INTERNAL
+  CONFIDENTIAL
+  RESTRICTED
+}
+
+enum DocumentStatus {
+  ACTIVE
+  ARCHIVED
+}
+
+enum DocumentScanStatus {
+  PENDING
+  CLEAN
+  INFECTED
+  SKIPPED
+}
+
+enum DocumentGranteeType {
+  USER
+  ROLE
+  SCOPE
+}
+
+enum DocumentReminderStatus {
+  PENDING
+  SENT
+  CANCELLED
+}
+
+enum DocumentSignatureStatus {
+  PENDING
+  SENT
+  SIGNED
+  DECLINED
+  CANCELLED
+}
+
+enum StorageUploadStatus {
+  PENDING
+  COMPLETED
+  EXPIRED
+  FAILED
+}
+
+/// A document attached to an owner entity (`ownerType` / `ownerId`, e.g. employee / institution).
+/// Hierarchy FKs are derived from the owner (never client supplied) and drive scope checks.
+model Document {
+  id               String                  @id @default(uuid()) @db.Char(36)
+  organizationId   String                  @map("organization_id") @db.Char(36)
+  groupId          String?                 @map("group_id") @db.Char(36)
+  institutionId    String?                 @map("institution_id") @db.Char(36)
+  campusId         String?                 @map("campus_id") @db.Char(36)
+  departmentId     String?                 @map("department_id") @db.Char(36)
+  ownerType        String                  @map("owner_type") @db.VarChar(50)
+  ownerId          String                  @map("owner_id") @db.Char(36)
+  /// Module that attached the document (documents, branding, pdf, hr, payroll…).
+  module           String                  @default("documents") @db.VarChar(50)
+  category         String                  @db.VarChar(50)
+  documentType     String?                 @map("document_type") @db.VarChar(64)
+  title            String                  @db.VarChar(255)
+  description      String?                 @db.VarChar(2000)
+  confidentiality  DocumentConfidentiality @default(INTERNAL)
+  status           DocumentStatus          @default(ACTIVE)
+  currentVersionId String?                 @unique @map("current_version_id") @db.Char(36)
+  issueDate        DateTime?               @map("issue_date") @db.Date
+  expiryDate       DateTime?               @map("expiry_date") @db.Date
+  /// Non-sensitive module metadata (e.g. PDF template key/version).
+  metadata         Json?
+  createdById      String?                 @map("created_by_id") @db.Char(36)
+  updatedById      String?                 @map("updated_by_id") @db.Char(36)
+  createdAt        DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt        DateTime?               @map("deleted_at") @db.DateTime(3)
+  deletedById      String?                 @map("deleted_by_id") @db.Char(36)
+  /// Soft-deleted documents' objects are purged after this date (retention).
+  purgeAfter       DateTime?               @map("purge_after") @db.DateTime(3)
+  purgedAt         DateTime?               @map("purged_at") @db.DateTime(3)
+
+  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group            Group?                   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution      Institution?             @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus           Campus?                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department       Department?              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  currentVersion   DocumentVersion?         @relation("DocumentCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
+  versions         DocumentVersion[]        @relation("DocumentVersions")
+  permissions      DocumentPermission[]
+  reminders        DocumentExpiryReminder[]
+  signatures       DocumentSignature[]
+  brandingProfiles BrandingProfile[]
+
+  @@index([organizationId, ownerType, ownerId])
+  @@index([organizationId, institutionId, category])
+  @@index([organizationId, groupId])
+  @@index([organizationId, expiryDate])
+  @@index([organizationId, deletedAt, purgeAfter])
+  @@map("documents")
+}
+
+/// Immutable file version (DB triggers reject content updates and deletes; only scan status /
+/// purge bookkeeping may change). Restoring creates a NEW version copying an older object.
+model DocumentVersion {
+  id                    String             @id @default(uuid()) @db.Char(36)
+  organizationId        String             @map("organization_id") @db.Char(36)
+  documentId            String             @map("document_id") @db.Char(36)
+  versionNumber         Int                @map("version_number")
+  /// Server-generated tenant-prefixed object key (see core/storage/keys.ts).
+  storageKey            String             @unique @map("storage_key") @db.VarChar(512)
+  /// `platform` or `tenant` (per-organization storage secret, see storageSecretId).
+  storageBackend        String             @default("platform") @map("storage_backend") @db.VarChar(16)
+  storageSecretId       String?            @map("storage_secret_id") @db.Char(36)
+  /// Object version id when the bucket is versioned (S3).
+  storageVersionId      String?            @map("storage_version_id") @db.VarChar(1024)
+  fileName              String             @map("file_name") @db.VarChar(255)
+  mimeType              String             @map("mime_type") @db.VarChar(127)
+  sizeBytes             Int                @map("size_bytes")
+  checksumSha256        String             @map("checksum_sha256") @db.Char(64)
+  scanStatus            DocumentScanStatus @default(PENDING) @map("scan_status")
+  scannedAt             DateTime?          @map("scanned_at") @db.DateTime(3)
+  reason                String?            @db.VarChar(500)
+  uploadedById          String?            @map("uploaded_by_id") @db.Char(36)
+  previousVersionId     String?            @map("previous_version_id") @db.Char(36)
+  restoredFromVersionId String?            @map("restored_from_version_id") @db.Char(36)
+  purgedAt              DateTime?          @map("purged_at") @db.DateTime(3)
+  createdAt             DateTime           @default(now()) @map("created_at") @db.DateTime(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  document     Document            @relation("DocumentVersions", fields: [documentId], references: [id], onDelete: Restrict)
+  currentOf    Document?           @relation("DocumentCurrentVersion")
+  signatures   DocumentSignature[]
+
+  @@unique([documentId, versionNumber])
+  @@index([organizationId, documentId])
+  @@map("document_versions")
+}
+
+/// Explicit per-document grant to a user, a role (by key) or a hierarchy scope.
+model DocumentPermission {
+  id               String              @id @default(uuid()) @db.Char(36)
+  organizationId   String              @map("organization_id") @db.Char(36)
+  documentId       String              @map("document_id") @db.Char(36)
+  granteeType      DocumentGranteeType @map("grantee_type")
+  userId           String?             @map("user_id") @db.Char(36)
+  roleKey          String?             @map("role_key") @db.VarChar(64)
+  scopeType        ScopeType?          @map("scope_type")
+  scopeId          String?             @map("scope_id") @db.Char(36)
+  canView          Boolean             @default(true) @map("can_view")
+  canDownload      Boolean             @default(false) @map("can_download")
+  canUploadVersion Boolean             @default(false) @map("can_upload_version")
+  canDelete        Boolean             @default(false) @map("can_delete")
+  canShare         Boolean             @default(false) @map("can_share")
+  expiresAt        DateTime?           @map("expires_at") @db.DateTime(3)
+  createdById      String?             @map("created_by_id") @db.Char(36)
+  createdAt        DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@index([organizationId, documentId])
+  @@index([organizationId, userId])
+  @@index([organizationId, roleKey])
+  @@map("document_permissions")
+}
+
+/// Expiry reminder schedule (spec §34). Sending is done by the notification engine (Layer 5)
+/// through `dueExpiryReminders()` / `markReminderSent()`.
+model DocumentExpiryReminder {
+  id             String                 @id @default(uuid()) @db.Char(36)
+  organizationId String                 @map("organization_id") @db.Char(36)
+  documentId     String                 @map("document_id") @db.Char(36)
+  daysBefore     Int                    @map("days_before")
+  remindAt       DateTime               @map("remind_at") @db.Date
+  status         DocumentReminderStatus @default(PENDING)
+  sentAt         DateTime?              @map("sent_at") @db.DateTime(3)
+  createdAt      DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  document     Document     @relation(fields: [documentId], references: [id], onDelete: Cascade)
+
+  @@unique([documentId, daysBefore])
+  @@index([organizationId, status, remindAt])
+  @@map("document_expiry_reminders")
+}
+
+/// E-signature request placeholder (spec §37): status tracking only, no provider integration.
+model DocumentSignature {
+  id             String                  @id @default(uuid()) @db.Char(36)
+  organizationId String                  @map("organization_id") @db.Char(36)
+  documentId     String                  @map("document_id") @db.Char(36)
+  versionId      String                  @map("version_id") @db.Char(36)
+  signerUserId   String?                 @map("signer_user_id") @db.Char(36)
+  signerName     String                  @map("signer_name") @db.VarChar(200)
+  signerEmail    String?                 @map("signer_email") @db.VarChar(200)
+  signerRole     String?                 @map("signer_role") @db.VarChar(100)
+  signingOrder   Int                     @default(1) @map("signing_order")
+  status         DocumentSignatureStatus @default(PENDING)
+  note           String?                 @db.VarChar(500)
+  /// Future: external provider + envelope id.
+  provider       String?                 @db.VarChar(50)
+  providerRef    String?                 @map("provider_ref") @db.VarChar(255)
+  respondedAt    DateTime?               @map("responded_at") @db.DateTime(3)
+  createdById    String?                 @map("created_by_id") @db.Char(36)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  document     Document        @relation(fields: [documentId], references: [id], onDelete: Cascade)
+  version      DocumentVersion @relation(fields: [versionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, documentId])
+  @@index([organizationId, signerUserId, status])
+  @@map("document_signatures")
+}
+
+/// Pending signed-URL upload session. The object key is server generated; finalize verifies
+/// the stored object (size / checksum) before a document version is recorded.
+model StorageUpload {
+  id                String              @id @default(uuid()) @db.Char(36)
+  organizationId    String              @map("organization_id") @db.Char(36)
+  /// `document.create` or `document.version`.
+  purpose           String              @db.VarChar(32)
+  documentId        String?             @map("document_id") @db.Char(36)
+  storageKey        String              @unique @map("storage_key") @db.VarChar(512)
+  storageBackend    String              @default("platform") @map("storage_backend") @db.VarChar(16)
+  storageSecretId   String?             @map("storage_secret_id") @db.Char(36)
+  fileName          String              @map("file_name") @db.VarChar(255)
+  mimeType          String              @map("mime_type") @db.VarChar(127)
+  declaredSizeBytes Int                 @map("declared_size_bytes")
+  declaredChecksum  String?             @map("declared_checksum") @db.Char(64)
+  /// Validated document metadata / version reason to apply on finalize.
+  payload           Json
+  status            StorageUploadStatus @default(PENDING)
+  expiresAt         DateTime            @map("expires_at") @db.DateTime(3)
+  completedAt       DateTime?           @map("completed_at") @db.DateTime(3)
+  createdById       String?             @map("created_by_id") @db.Char(36)
+  createdAt         DateTime            @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime            @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, status, expiresAt])
+  @@map("storage_uploads")
 }

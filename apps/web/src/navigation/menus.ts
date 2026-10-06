@@ -37,6 +37,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
     {
+      title: 'Documents',
+      icon: 'mdi-file-document-multiple',
+      to: '/group/documents',
+      permission: 'document.view',
+      feature: 'documents',
+    },
+    {
       title: 'Subscription',
       icon: 'mdi-card-account-details-star',
       to: '/group/subscription',
@@ -71,13 +78,29 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'user.view',
     },
     {
+      title: 'Documents',
+      icon: 'mdi-file-document-multiple',
+      to: '/institution/documents',
+      permission: 'document.view',
+      feature: 'documents',
+    },
+    {
       title: 'Branding',
       icon: 'mdi-palette',
       to: '/institution/branding',
       permission: 'branding.view',
     },
   ],
-  employee: [{ title: 'Home', icon: 'mdi-account', to: '/employee' }],
+  employee: [
+    { title: 'Home', icon: 'mdi-account', to: '/employee' },
+    {
+      title: 'Documents',
+      icon: 'mdi-file-document-multiple',
+      to: '/employee/documents',
+      permission: 'document.view_own',
+      feature: 'documents',
+    },
+  ],
 };
 
 /** Workspaces offered on the home page, each gated by the permission of its layout route. */

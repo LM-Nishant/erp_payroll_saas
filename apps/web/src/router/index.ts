@@ -50,6 +50,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/UsersPage.vue'),
       },
       {
+        path: 'documents',
+        name: 'group-documents',
+        meta: { permission: 'document.view', feature: 'documents' },
+        component: () => import('@/pages/DocumentsPage.vue'),
+      },
+      {
         path: 'subscription',
         name: 'group-subscription',
         meta: { permission: 'subscription.view' },
@@ -94,6 +100,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/UsersPage.vue'),
       },
       {
+        path: 'documents',
+        name: 'institution-documents',
+        meta: { permission: 'document.view', feature: 'documents' },
+        component: () => import('@/pages/DocumentsPage.vue'),
+      },
+      {
         path: 'branding',
         name: 'institution-branding',
         meta: { permission: 'branding.view' },
@@ -104,7 +116,15 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/employee',
     component: () => import('@/layouts/EmployeeLayout.vue'),
-    children: [{ path: '', name: 'employee-home', ...placeholder('Employee home') }],
+    children: [
+      { path: '', name: 'employee-home', ...placeholder('Employee home') },
+      {
+        path: 'documents',
+        name: 'employee-documents',
+        meta: { permission: 'document.view_own', feature: 'documents' },
+        component: () => import('@/pages/DocumentsPage.vue'),
+      },
+    ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];

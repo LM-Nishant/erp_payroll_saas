@@ -12,6 +12,7 @@ import { requestContext } from './core/http/request-context';
 import { REQUEST_ID_HEADER, requestId } from './core/http/request-id';
 import { requireFeature } from './core/features';
 import { logger } from './core/logger';
+import { LOCAL_STORAGE_ROUTE, localStorageRouter } from './core/storage';
 import {
   createTenantResolver,
   prismaOrganizationLookup,
@@ -25,6 +26,7 @@ import { authRouter } from './modules/auth/auth.routes';
 import { brandingRouter } from './modules/branding/branding.routes';
 import { campusesRouter } from './modules/campuses/campuses.routes';
 import { classSectionsRouter } from './modules/class-sections/class-sections.routes';
+import { documentsRouter } from './modules/documents/documents.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -32,6 +34,7 @@ import { healthRouter, type ReadinessCheck } from './modules/health/health.route
 import { institutionsRouter } from './modules/institutions/institutions.routes';
 import { meRouter } from './modules/me/me.routes';
 import { organizationRouter } from './modules/organization/organization.routes';
+import { pdfRouter } from './modules/pdf/pdf.routes';
 import { platformRouter } from './modules/platform/platform.routes';
 import { programsRouter } from './modules/programs/programs.routes';
 import { permissionsRouter, rolesRouter } from './modules/roles/roles.routes';
@@ -96,6 +99,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/auth', authRouter({ limit }));
   api.use('/me', authenticate(), principalContext(), meRouter);
   api.use('/platform', authenticate(), principalContext(), platformRouter);
+  // Local/memory storage drivers (dev/test): the HMAC-signed token in the URL is the credential.
+  api.use(LOCAL_STORAGE_ROUTE.replace('/api/v1', ''), localStorageRouter());
 
   // Everything below is tenant-scoped: the tenant comes from the authenticated session (JWT).
   // The dev-header resolver (dev/test only, refused in production) may substitute a header.
@@ -119,6 +124,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/features', featuresRouter);
   api.use('/branding', brandingRouter);
   api.use('/secrets', secretsRouter);
+  api.use('/documents', requireFeature('documents'), documentsRouter);
+  api.use('/pdf', requireFeature('documents'), pdfRouter);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);

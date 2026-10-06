@@ -30,7 +30,10 @@ export function installAuthHooks(h: AuthHooks) {
   hooks = h;
 }
 
-/** Low-level request: JSON in/out, cookies included (refresh cookie), no retry. */
+/**
+ * Low-level request: JSON in/out (or multipart when the body is FormData — the browser sets the
+ * boundary), cookies included (refresh cookie), no retry.
+ */
 export async function rawFetch<T>(
   path: string,
   init: RequestInit = {},
@@ -38,7 +41,8 @@ export async function rawFetch<T>(
 ): Promise<T> {
   const headers = new Headers(init.headers);
   headers.set('Accept', 'application/json');
-  if (init.body) headers.set('Content-Type', 'application/json');
+  if (init.body && !(init.body instanceof FormData))
+    headers.set('Content-Type', 'application/json');
   if (accessToken) headers.set('Authorization', `Bearer ${accessToken}`);
 
   const res = await fetch(`${BASE_URL}${path}`, { ...init, headers, credentials: 'include' });

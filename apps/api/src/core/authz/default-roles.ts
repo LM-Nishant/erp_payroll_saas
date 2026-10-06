@@ -43,6 +43,7 @@ const INSTITUTION_ADMIN = [
   'feature.view',
   'branding.view',
   'branding.manage',
+  'pdf.generate',
 ] as PermissionCode[];
 
 const GROUP_ADMIN = [
@@ -57,6 +58,7 @@ const GROUP_ADMIN = [
 const HR = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('employee', 'document'),
+  'pdf.generate',
   'user.view',
   'salary.view',
   'payroll.view',
@@ -72,6 +74,7 @@ const FINANCE = [
   'salary.view',
   'employee.view',
   'document.view',
+  'document.download',
   'asset.view',
   'audit.view',
   'ai.use',
@@ -85,6 +88,7 @@ const ACADEMIC_LEAD = [
   'employee.view',
   'user.view',
   'document.view',
+  'document.download',
   'document.upload',
   'message.send',
   'message.schedule',
@@ -95,12 +99,17 @@ const TEACHING = [
   ...ACADEMIC_STRUCTURE_VIEW,
   'student.view',
   'document.view',
+  'document.download',
   'document.upload',
   'message.send',
   'ai.use',
 ] as PermissionCode[];
 
-const SELF_SERVICE = ['organization.view', 'document.view', 'ai.use'] as PermissionCode[];
+/**
+ * Self-service users see only documents they OWN (owner self-access, e.g. own payslips) —
+ * never every document of their institution.
+ */
+const SELF_SERVICE = ['organization.view', 'document.view_own', 'ai.use'] as PermissionCode[];
 
 export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
   [
@@ -215,6 +224,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'salary.view',
         'salary.update',
         'document.view',
+        'document.download',
         'ai.use',
       ],
     },
@@ -235,6 +245,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'payroll.view',
         'salary.view',
         'document.view',
+        'document.download',
         'billing.view',
       ],
     },

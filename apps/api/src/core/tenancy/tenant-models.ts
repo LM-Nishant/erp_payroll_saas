@@ -26,6 +26,13 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'UsageCounter',
   'BrandingProfile',
   'TenantSecret',
+  // Storage + documents (core/storage, core/documents)
+  'StorageUpload',
+  'Document',
+  'DocumentVersion',
+  'DocumentPermission',
+  'DocumentExpiryReminder',
+  'DocumentSignature',
 ]);
 
 /**
@@ -52,6 +59,7 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'User',
   'OrganizationMembership',
   'Role',
+  'Document',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */

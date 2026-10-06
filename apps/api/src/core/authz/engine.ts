@@ -154,7 +154,14 @@ export async function authorize(
 
 /** Hierarchy models that can be scope-filtered with `scopeWhere`. */
 export type ScopedModel =
-  'group' | 'institution' | 'campus' | 'department' | 'program' | 'classSection' | 'userScope';
+  | 'group'
+  | 'institution'
+  | 'campus'
+  | 'department'
+  | 'program'
+  | 'classSection'
+  | 'userScope'
+  | 'document';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -171,6 +178,12 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
     departmentIds: 'departmentId',
   },
   userScope: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
+    campusIds: 'campusId',
+    departmentIds: 'departmentId',
+  },
+  document: {
     groupIds: 'groupId',
     institutionIds: 'institutionId',
     campusIds: 'campusId',
