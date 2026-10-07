@@ -7,6 +7,44 @@ const placeholder = (title: string) => ({
   props: { title },
 });
 
+/** Library staff pages (group + institution layouts). */
+const libraryStaffRoutes = (layout: string): RouteRecordRaw[] =>
+  (
+    [
+      ['', 'dashboard', () => import('@/pages/library/LibraryDashboardPage.vue')],
+      ['/catalogue', 'catalogue', () => import('@/pages/library/CataloguePage.vue')],
+      ['/books/:id', 'book', () => import('@/pages/library/BookDetailPage.vue')],
+      ['/copies', 'copies', () => import('@/pages/library/CopiesPage.vue')],
+      ['/desk', 'desk', () => import('@/pages/library/DeskPage.vue')],
+      ['/reservations', 'reservations', () => import('@/pages/library/ReservationsPage.vue')],
+      ['/members', 'members', () => import('@/pages/library/MembersPage.vue')],
+      ['/fines', 'fines', () => import('@/pages/library/FinesPage.vue')],
+      ['/reports', 'reports', () => import('@/pages/library/ReportsPage.vue')],
+      ['/settings', 'settings', () => import('@/pages/library/LibrarySettingsPage.vue')],
+    ] as const
+  ).map(([path, name, component]) => ({
+    path: `library${path}`,
+    name: `${layout}-library-${name}`,
+    meta: { permission: 'library.view', feature: 'library' },
+    component,
+  }));
+
+/** Library self-service pages (portal + employee layouts). */
+const librarySelfRoutes = (layout: string): RouteRecordRaw[] => [
+  {
+    path: 'library',
+    name: `${layout}-library`,
+    meta: { permission: 'library.view_own', feature: 'library' },
+    component: () => import('@/pages/library/MyLibraryPage.vue'),
+  },
+  {
+    path: 'opac',
+    name: `${layout}-opac`,
+    meta: { permission: 'library.view_own', feature: 'library' },
+    component: () => import('@/pages/library/OpacPage.vue'),
+  },
+];
+
 export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -184,6 +222,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'ai.view_usage', feature: 'ai' },
         component: () => import('@/pages/ai/AiUsagePage.vue'),
       },
+      ...libraryStaffRoutes('group'),
     ],
   },
   {
@@ -256,6 +295,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'branding.view' },
         component: () => import('@/pages/settings/BrandingPage.vue'),
       },
+      ...libraryStaffRoutes('institution'),
     ],
   },
   {
@@ -446,6 +486,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'asset.view_own', feature: 'assets' },
         component: () => import('@/pages/assets/MyAssetsPage.vue'),
       },
+      ...librarySelfRoutes('employee'),
     ],
   },
   {
@@ -472,6 +513,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
       },
+      ...librarySelfRoutes('portal'),
     ],
   },
   {

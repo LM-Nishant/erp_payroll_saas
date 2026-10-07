@@ -52,9 +52,16 @@ const INSTITUTION_ADMIN = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('campus', 'department', 'program', 'class_section'),
   'institution.update',
-  ...pick('user', 'student', 'admission', 'guardian', 'employee', 'document', 'message').filter(
-    (c) => c !== 'employee.view_sensitive',
-  ),
+  ...pick(
+    'user',
+    'student',
+    'admission',
+    'guardian',
+    'employee',
+    'document',
+    'message',
+    'library',
+  ).filter((c) => c !== 'employee.view_sensitive'),
   // Assets: admins see and hand out assets; register management sits with asset_manager.
   ...ASSET_CUSTODY,
   'designation.view',
@@ -157,7 +164,12 @@ const TEACHING = [
  * Self-service users see only documents they OWN (owner self-access, e.g. own payslips) —
  * never every document of their institution.
  */
-const SELF_SERVICE = ['organization.view', 'document.view_own', 'ai.use'] as PermissionCode[];
+const SELF_SERVICE = [
+  'organization.view',
+  'document.view_own',
+  'ai.use',
+  'library.view_own',
+] as PermissionCode[];
 const STUDENT_SELF_SERVICE = [...SELF_SERVICE, 'student.view_own'] as PermissionCode[];
 const PARENT_SELF_SERVICE = [...SELF_SERVICE, 'ward.view'] as PermissionCode[];
 
@@ -240,7 +252,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Principal',
       description: 'Academic head of an institution',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view'],
+      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view', 'library.view'],
     },
     {
       key: 'vice_principal',
@@ -366,7 +378,16 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Librarian',
       description: 'Manages the library',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, 'student.view', 'employee.view'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        'student.view',
+        'employee.view',
+        ...pick('library'),
+        'message.send',
+        'pdf.generate',
+        'document.view',
+        'document.upload',
+      ],
     },
     {
       key: 'hostel_manager',

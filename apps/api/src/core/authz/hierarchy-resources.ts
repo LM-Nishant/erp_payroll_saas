@@ -77,4 +77,14 @@ export const hierarchyResource = {
     campusId: a.campusId,
     departmentId: a.departmentId,
   }),
+  /** Library rows (books, copies, loans, reservations, fines) — institution library (+ campus). */
+  library: (l: {
+    groupId: string | null;
+    institutionId: string;
+    campusId: string | null;
+  }): ResourceScope => ({
+    groupId: l.groupId,
+    institutionId: l.institutionId,
+    campusId: l.campusId,
+  }),
 };

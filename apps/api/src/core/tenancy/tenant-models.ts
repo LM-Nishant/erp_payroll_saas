@@ -131,6 +131,14 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiConversation',
   'AiMessage',
   'AiUsageLog',
+  // Library (modules/library)
+  'LibraryBook',
+  'LibraryCopy',
+  'LibraryPolicy',
+  'LibraryLoan',
+  'LibraryReservation',
+  'LibraryFine',
+  'LibraryStockVerification',
 ]);
 
 /**
@@ -172,6 +180,7 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'Asset',
   'AssetAudit',
   'InventoryItem',
+  'LibraryBook',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */

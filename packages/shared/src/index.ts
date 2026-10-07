@@ -31,3 +31,5 @@ export * from './types/payroll';
 export * from './types/students';
 export * from './schemas/ai';
 export * from './types/ai';
+export * from './schemas/library';
+export * from './types/library';

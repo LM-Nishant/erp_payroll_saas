@@ -132,12 +132,14 @@ The foundation was built as an 8-PR stack:
 - branded payslips with employee self-access (16–17);
 - Form 16 publication (18);
 - workflow approvals, notifications, documents, audit, and API/webhooks;
-- student master, guardian/parent login links and admissions pipeline.
+- student master, guardian/parent login links and admissions pipeline;
+- library: catalogue, copies/barcodes, circulation, reservations, fines, OPAC and portal
+  “My library” (demo data: `node scripts/demo/seed-library.mjs`, see ARCHITECTURE §17).
 
 **Remaining (future work per §67):**
 
 - education modules still to expand: academics, fees, exams, timetable, transport,
-  hostel, library, LMS;
+  hostel, LMS;
 - asset management;
 - the AI gateway;
 - the generic reporting/BI engine;
@@ -166,4 +168,4 @@ disposal for ABBS and Logicmines. It also creates these asset-manager logins:
 - `assets@logicmines.in` / `Logicmines@2026`
 
 Logicmines employees (e.g. `lmt.it2@logicmines.in`) see their devices under
-**My assets**. See ARCHITECTURE §17.
+**My assets**. See ARCHITECTURE §18.
