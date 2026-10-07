@@ -7,6 +7,44 @@ const placeholder = (title: string) => ({
   props: { title },
 });
 
+/** Library staff pages (group + institution layouts). */
+const libraryStaffRoutes = (layout: string): RouteRecordRaw[] =>
+  (
+    [
+      ['', 'dashboard', () => import('@/pages/library/LibraryDashboardPage.vue')],
+      ['/catalogue', 'catalogue', () => import('@/pages/library/CataloguePage.vue')],
+      ['/books/:id', 'book', () => import('@/pages/library/BookDetailPage.vue')],
+      ['/copies', 'copies', () => import('@/pages/library/CopiesPage.vue')],
+      ['/desk', 'desk', () => import('@/pages/library/DeskPage.vue')],
+      ['/reservations', 'reservations', () => import('@/pages/library/ReservationsPage.vue')],
+      ['/members', 'members', () => import('@/pages/library/MembersPage.vue')],
+      ['/fines', 'fines', () => import('@/pages/library/FinesPage.vue')],
+      ['/reports', 'reports', () => import('@/pages/library/ReportsPage.vue')],
+      ['/settings', 'settings', () => import('@/pages/library/LibrarySettingsPage.vue')],
+    ] as const
+  ).map(([path, name, component]) => ({
+    path: `library${path}`,
+    name: `${layout}-library-${name}`,
+    meta: { permission: 'library.view', feature: 'library' },
+    component,
+  }));
+
+/** Library self-service pages (portal + employee layouts). */
+const librarySelfRoutes = (layout: string): RouteRecordRaw[] => [
+  {
+    path: 'library',
+    name: `${layout}-library`,
+    meta: { permission: 'library.view_own', feature: 'library' },
+    component: () => import('@/pages/library/MyLibraryPage.vue'),
+  },
+  {
+    path: 'opac',
+    name: `${layout}-opac`,
+    meta: { permission: 'library.view_own', feature: 'library' },
+    component: () => import('@/pages/library/OpacPage.vue'),
+  },
+];
+
 export const routes: RouteRecordRaw[] = [
   {
     path: '/login',
@@ -228,6 +266,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'ai.view_usage', feature: 'ai' },
         component: () => import('@/pages/ai/AiUsagePage.vue'),
       },
+      ...libraryStaffRoutes('group'),
     ],
   },
   {
@@ -356,6 +395,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'branding.view' },
         component: () => import('@/pages/settings/BrandingPage.vue'),
       },
+      ...libraryStaffRoutes('institution'),
     ],
   },
   {
@@ -535,11 +575,24 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/payroll/MyPayslipsPage.vue'),
       },
       {
+        path: 'salary',
+        name: 'employee-salary',
+        meta: { permission: 'payroll.view_own', feature: 'payroll' },
+        component: () => import('@/pages/payroll/MySalaryPage.vue'),
+      },
+      {
         path: 'documents',
         name: 'employee-documents',
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
       },
+      {
+        path: 'assets',
+        name: 'employee-assets',
+        meta: { permission: 'asset.view_own', feature: 'assets' },
+        component: () => import('@/pages/assets/MyAssetsPage.vue'),
+      },
+      ...librarySelfRoutes('employee'),
     ],
   },
   {
@@ -583,6 +636,76 @@ export const routes: RouteRecordRaw[] = [
         name: 'portal-documents',
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
+      },
+      ...librarySelfRoutes('portal'),
+    ],
+  },
+  {
+    path: '/assets',
+    component: () => import('@/layouts/AssetsLayout.vue'),
+    meta: { permission: 'asset.view', feature: 'assets', tenant: true },
+    children: [
+      {
+        path: '',
+        name: 'assets-dashboard',
+        component: () => import('@/pages/assets/AssetDashboardPage.vue'),
+      },
+      {
+        path: 'register',
+        name: 'assets-register',
+        component: () => import('@/pages/assets/AssetsPage.vue'),
+      },
+      {
+        path: 'register/:id',
+        name: 'assets-detail',
+        props: true,
+        component: () => import('@/pages/assets/AssetDetailPage.vue'),
+      },
+      {
+        path: 'categories',
+        name: 'assets-categories',
+        component: () => import('@/pages/assets/AssetCategoriesPage.vue'),
+      },
+      {
+        path: 'assignments',
+        name: 'assets-assignments',
+        component: () => import('@/pages/assets/AssetAssignmentsPage.vue'),
+      },
+      {
+        path: 'maintenance',
+        name: 'assets-maintenance',
+        component: () => import('@/pages/assets/AssetMaintenancePage.vue'),
+      },
+      {
+        path: 'inventory',
+        name: 'assets-inventory',
+        component: () => import('@/pages/assets/AssetInventoryPage.vue'),
+      },
+      {
+        path: 'audit',
+        name: 'assets-audit',
+        meta: { permission: 'asset.audit' },
+        component: () => import('@/pages/assets/AssetAuditPage.vue'),
+      },
+      {
+        path: 'disposal',
+        name: 'assets-disposal',
+        component: () => import('@/pages/assets/AssetDisposalPage.vue'),
+      },
+      {
+        path: 'reports',
+        name: 'assets-reports',
+        component: () => import('@/pages/assets/AssetReportsPage.vue'),
+      },
+      {
+        path: 'notifications',
+        name: 'assets-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+      {
+        path: 'approvals',
+        name: 'assets-approvals',
+        component: () => import('@/pages/ApprovalsPage.vue'),
       },
     ],
   },

@@ -165,6 +165,9 @@ export type ScopedModel =
   | 'employee'
   | 'student'
   | 'admission'
+  | 'asset'
+  | 'assetCategory'
+  | 'library'
   | 'academicUnit';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
@@ -210,6 +213,15 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
     institutionIds: 'institutionId',
     departmentIds: 'departmentId',
   },
+  // Also used for asset child tables (assignments, maintenance…) that copy the same columns.
+  asset: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
+    campusIds: 'campusId',
+    departmentIds: 'departmentId',
+  },
+  assetCategory: { groupIds: 'groupId', institutionIds: 'institutionId' },
+  library: { groupIds: 'groupId', institutionIds: 'institutionId', campusIds: 'campusId' },
   /** Academics rows carrying group/institution/campus/department (subjects, timetable, exams…). */
   academicUnit: {
     groupIds: 'groupId',

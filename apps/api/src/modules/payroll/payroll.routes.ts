@@ -35,6 +35,7 @@ import {
   updateSalaryComponentSchema,
   updateSalaryStructureSchema,
   upsertPayrollSettingsSchema,
+  salaryStatementQuerySchema,
 } from '@erp/shared';
 import { Router, type Request, type Response } from 'express';
 import { z } from 'zod';
@@ -53,6 +54,7 @@ import { form16Service, payslipService } from './payroll.payslips';
 import { exportReport, reportService, type TabularReport } from './payroll.reports';
 import { adjustmentService, batchService, paymentService, runService } from './payroll.runs';
 import { revisionService, salaryService } from './payroll.salary';
+import { selfSalaryService } from './payroll.self';
 
 /**
  * /api/v1/payroll — salary components, rules, structures, statutory packs, employee salary &
@@ -110,6 +112,13 @@ payrollRouter.get('/me/form16', async (_req, res) => {
 });
 payrollRouter.post('/me/form16/:id/download-url', async (req, res) => {
   res.status(201).json({ data: await form16Service.download(idOf(req)) });
+});
+payrollRouter.get('/me/salary', async (_req, res) => {
+  res.json({ data: await selfSalaryService.mySalary() });
+});
+payrollRouter.get('/me/salary-statement', async (req, res) => {
+  const query = parseInput(salaryStatementQuerySchema, req.query);
+  res.json({ data: await selfSalaryService.statement(query.fy) });
 });
 payrollRouter.get('/me/loans', async (_req, res) => {
   res.json({ data: await loanService.mine() });

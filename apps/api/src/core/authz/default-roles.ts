@@ -44,6 +44,8 @@ const TIME_SELF_SERVICE = [
 /** Read access used by payroll / finance (attendance summary = payroll feed). */
 const TIME_VIEW = views('holiday', 'shift', 'attendance', 'leave');
 
+/** Asset custody (view / check-out / check-in) for institution admins and HR. */
+const ASSET_CUSTODY = ['asset.view', 'asset.assign', 'asset.return'] as PermissionCode[];
 /** Academics, timetable, student attendance & exams. */
 const ACADEMICS_MANAGE = pick('subject', 'timetable', 'student_attendance', 'exam').filter(
   (c) => !c.endsWith('.view_own'),
@@ -74,10 +76,12 @@ const INSTITUTION_ADMIN = [
     'admission',
     'guardian',
     'employee',
-    'asset',
     'document',
     'message',
+    'library',
   ).filter((c) => c !== 'employee.view_sensitive'),
+  // Assets: admins see and hand out assets; register management sits with asset_manager.
+  ...ASSET_CUSTODY,
   'designation.view',
   ...TIME_OFFICE,
   'role.view',
@@ -123,6 +127,7 @@ const HR = [
   'payroll.report',
   'message.send',
   'ai.use',
+  ...ASSET_CUSTODY,
 ] as PermissionCode[];
 
 const FINANCE = [
@@ -180,7 +185,12 @@ const TEACHING = [
  * Self-service users see only documents they OWN (owner self-access, e.g. own payslips) —
  * never every document of their institution.
  */
-const SELF_SERVICE = ['organization.view', 'document.view_own', 'ai.use'] as PermissionCode[];
+const SELF_SERVICE = [
+  'organization.view',
+  'document.view_own',
+  'ai.use',
+  'library.view_own',
+] as PermissionCode[];
 const STUDENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'student.view_own',
@@ -200,6 +210,7 @@ const EMPLOYEE_SELF_SERVICE = [
   ...TIME_SELF_SERVICE,
   'payroll.view_own',
   'reimbursement.claim_own',
+  'asset.view_own',
 ] as PermissionCode[];
 
 /** Payroll preparation (Layer 8): masters, runs, loans, Form 16; never approves its own runs. */
@@ -270,7 +281,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Principal',
       description: 'Academic head of an institution',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view'],
+      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view', 'library.view'],
     },
     {
       key: 'vice_principal',
@@ -380,7 +391,16 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Asset Manager',
       description: 'Manages assets',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, ...pick('asset'), 'employee.view'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        ...pick('asset').filter((c) => c !== 'asset.view_own'),
+        'employee.view',
+        'document.view',
+        'document.upload',
+        'document.download',
+        'pdf.generate',
+        'workflow.view',
+      ],
     },
     {
       key: 'transport_manager',
@@ -394,7 +414,16 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Librarian',
       description: 'Manages the library',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, 'student.view', 'employee.view'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        'student.view',
+        'employee.view',
+        ...pick('library'),
+        'message.send',
+        'pdf.generate',
+        'document.view',
+        'document.upload',
+      ],
     },
     {
       key: 'hostel_manager',

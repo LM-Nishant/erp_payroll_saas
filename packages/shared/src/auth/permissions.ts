@@ -135,6 +135,11 @@ export const PERMISSIONS = {
   'asset.view': 'View assets',
   'asset.assign': 'Assign assets',
   'asset.return': 'Return assets',
+  'asset.manage': 'Manage asset categories, the asset register, inventory and transfers',
+  'asset.dispose': 'Request and approve asset disposal / write-off',
+  'asset.maintain': 'Raise and manage asset maintenance tickets, AMC and service schedules',
+  'asset.audit': 'Run physical asset verification audits',
+  'asset.view_own': 'View, acknowledge and report issues on assets in own custody',
   'document.view': 'View documents',
   'document.upload': 'Upload documents',
   'document.delete': 'Delete documents',
@@ -152,6 +157,11 @@ export const PERMISSIONS = {
   // ===== AI =====
   'ai.manage': 'Manage organization AI settings (provider, model, enabled features, limits)',
   'ai.view_usage': 'View AI usage dashboards (tokens by feature / user / day)',
+  'library.view': 'View library catalogue, copies, circulation and reports',
+  'library.manage': 'Manage library catalogue, copies, policies, imports and stock verification',
+  'library.circulate': 'Issue, return, renew books and manage reservations',
+  'library.fine': 'Collect or waive library fines',
+  'library.view_own': 'Self-service library: own loans, fines, OPAC search and reservations',
 
   // Academics, timetable, student attendance & exams
   'subject.view': 'View subjects and teacher allocations',

@@ -1174,7 +1174,90 @@ To use a real model:
 2. Optionally add metadata `{"model":"gpt-4o-mini","baseUrl":"https://…/v1","apiVersion":"…"}`.
 3. In AI settings, set provider `openai` and turn on data sharing.
 
-## 17. Academics, timetable, student attendance and exams
+## 17. Library
+
+Module `apps/api/src/modules/library` is mounted under `/api/v1/library` with `requireFeature('library')`. Every row carries `organizationId` plus `groupId`/`institutionId` (and optional `campusId`) derived server-side from the owning institution library; services use only `tenantDb()` / `withTenant()` and audit every mutation (`library_book.created`, `library_loan.issued|returned|renewed`, `library_fine.collected|waived`, …).
+
+Data model (`// ===== Library =====` block in `schema.prisma`, migration `20261007120300_library`): `LibraryBook` (title/ISBN/authors/publisher/category/tags; item types BOOK, JOURNAL, MAGAZINE, E_RESOURCE, …; cover via the `library_book` document owner type), `LibraryCopy` (accession number `<INSTCODE>-000001` doubling as barcode, shelf/rack, status AVAILABLE/ISSUED/RESERVED/LOST/DAMAGED/WITHDRAWN), `LibraryPolicy` (per institution × member type STUDENT/EMPLOYEE: max loans, loan days, renewals, fine per day, max fine, hold days), `LibraryLoan`, `LibraryReservation` (FIFO queue per book; WAITING → READY when a copy returns, copy held as RESERVED until `expiresAt`), `LibraryFine` and `LibraryStockVerification`. Students and employees are members automatically through their enrollment / assignment institution — there is no membership table.
+
+Circulation: `POST /issue`, `POST /return`, `POST /loans/:id/renew`, `/reservations`; fines are calculated on return (`min(daysLate × finePerDay, maxFine)`). Backdated `issuedAt`/`returnedAt` require `library.manage`. Errors: `NOT_A_MEMBER`, `LOAN_LIMIT`, `RENEWAL_LIMIT`, `LOAN_OVERDUE`, `BOOK_RESERVED` (422), `COPY_NOT_AVAILABLE`, `COPY_RESERVED` (409).
+
+Registrations (`library.registrations.ts`): domain events `library.*`; notification events `library.due_reminder`, `library.overdue`, `library.reservation_ready`, `library.fine_assessed` published to the member (students: also guardians); recurring job `library.daily.schedule` → `library.daily_circulation` per active organization (due/overdue reminders, expiry of uncollected holds); PDF templates `library_labels` (QR barcode labels) and `library_report`.
+
+Fees integration hook: fines live in `library_fines` with collect / waive actions. When a fees module provides student charges, it calls `registerLibraryFinePoster(poster)` (from `library.constants.ts`); new student fines are then posted to the fee account and the returned `externalChargeId` is stored on the fine.
+
+Other endpoints: `/opac` (search, `library.view` or `library.view_own`), `/me`, `/me/reservations`, `/me/loans/:id/renew` (self-service), `/books/import` (CSV/XLSX), `/labels` (PDF), `/stock-verifications`, `/reports/:key` (`issued|overdue|most_borrowed|fines`, JSON/CSV/XLSX), `/dashboard`, `/members`.
+
+Permissions: `library.view|manage|circulate|fine|view_own`. New default role `librarian` (library.* plus student/employee view); `institution_admin` gets library.*; `principal` gets `library.view`; student, parent and employee self-service roles get `library.view_own`. Web pages live in `apps/web/src/pages/library` (Library menu in group / institution layouts, “My library” + “Library catalogue” in `/portal` and `/employee`).
+
+## 18. Asset management (feature `assets`)
+
+Module: `apps/api/src/modules/assets` (routes under `/api/v1/assets`, behind
+`requireFeature('assets')`). It works the same for education institutions and `COMPANY`
+institutions (HR/payroll-only orgs).
+
+**Models** (one `// ===== Assets =====` block in `schema.prisma`, migration
+`20261007120500_assets`):
+
+- `AssetCategory`: organization- or institution-scoped. Holds a kind (IT, furniture,
+  lab, vehicle, AV, sports…), custom attribute definitions, depreciation (SLM/WDV,
+  rate, useful life, residual %) and a tag series (prefix + next number).
+- `Asset`: tag (unique per org), make/model/serial, purchase data (vendor, invoice,
+  date, cost, warranty and AMC expiry), invoice document (`registerDocumentOwnerType`),
+  placement (institution/campus/department + room text), condition and status
+  (`IN_STOCK | ASSIGNED | UNDER_REPAIR | LOST | DISPOSED`), and service schedule.
+- `AssetAssignment`: custody to an `EMPLOYEE`, `DEPARTMENT` or `LOCATION`, with an
+  acknowledgement timestamp and the return condition.
+- `AssetTransfer`: moves between institutions/departments through the workflow engine
+  (`registerWorkflowEntity('asset_transfer')`).
+- `AssetMaintenance`: repair, preventive, AMC and warranty tickets with cost and vendor.
+  `IN_PROGRESS` sets the asset to `UNDER_REPAIR`; completing the ticket restores the
+  previous status.
+- `AssetDisposal`: write-off, sale, scrap, donation or loss, approved through the
+  `asset_disposal` workflow. Approval sets the asset to `DISPOSED` or `LOST`.
+- `AssetAudit` / `AssetAuditItem`: a verification snapshot. Items are scanned by tag and
+  marked verified, missing or condition-mismatched. Completing the audit reports
+  discrepancies.
+- `InventoryItem` / `InventoryTransaction`: consumables with stock in/out/adjust and a
+  reorder-level alert.
+
+**Permissions:** `asset.view`, `asset.manage`, `asset.assign`, `asset.return`,
+`asset.maintain`, `asset.dispose`, `asset.audit` and `asset.view_own`.
+
+**Roles:**
+
+- New system role `asset_manager` gets every `asset.*` permission except `view_own`.
+- `institution_admin`, `group_admin` and `hr_manager` get view, assign and return.
+- `employee` gets `asset.view_own`, for `/assets/my`: list, acknowledge and report an
+  issue.
+
+**Engine registrations** (`assets.registrations.ts`):
+
+- Event types `asset.*` (webhook-enabled).
+- Notification events: assigned, issue reported, ticket closed, transfer/disposal
+  decided, audit discrepancies, inventory low, reminders.
+- PDF templates: `asset_labels` (QR + barcode labels), `asset_handover`
+  (acknowledgement slip) and `asset_report`.
+- The `EXIT` checklist hook `asset_recovery` ("Return assigned assets") completes once
+  the employee holds no open assignments.
+- Recurring job `assets.reminders`: fanned out per active org, it publishes warranty, AMC
+  and service-due reminders to `asset.maintain` holders.
+
+**Reports:** `GET /assets/reports?type=register|depreciation|assignments|maintenance|disposals&format=json|csv|xlsx|pdf`.
+Depreciation is computed on the fly from category settings (SLM straight-line on cost
+less residual value; WDV declining balance), so there is no stored schedule.
+
+**Web:**
+
+- The `/assets` workspace (`AssetsLayout`) has Dashboard, Assets, Categories,
+  Assignments, Maintenance, Inventory, Audit, Disposal and Reports.
+- An "Assets" entry appears in the group, institution and HR menus.
+- Employees get "My assets" in the employee workspace (`/employee/assets`).
+
+**Demo:** `scripts/demo/seed-assets.mjs` (HTTP, idempotent by tag/code/SKU) seeds ABBS and
+Logicmines.
+
+## 19. Academics, timetable, student attendance and exams
 
 Three API modules behind `requireFeature('education')`:
 

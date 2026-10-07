@@ -449,6 +449,8 @@ export const form16FieldsSchema = z
   .strict();
 export type Form16FieldsInput = z.infer<typeof form16FieldsSchema>;
 
+export const salaryStatementQuerySchema = z.object({ fy: financialYearSchema.optional() }).strict();
+
 export const listForm16QuerySchema = paginationQuerySchema
   .extend({
     employeeId: idSchema.optional(),
