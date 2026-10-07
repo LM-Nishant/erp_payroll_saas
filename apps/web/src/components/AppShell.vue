@@ -41,7 +41,10 @@ async function signOut() {
       platform access
     </v-chip>
     <v-chip class="mr-2" variant="outlined" size="small">{{ auth.me?.user.name }}</v-chip>
-    <NotificationBell :base="`/${layout === 'platform' ? 'platform' : layout}`" />
+    <NotificationBell
+      v-if="auth.me?.organization"
+      :base="`/${layout === 'platform' ? 'platform' : layout}`"
+    />
     <v-btn to="/" icon="mdi-swap-horizontal" title="Switch workspace" />
     <v-btn icon="mdi-logout" title="Sign out" @click="signOut" />
   </v-app-bar>

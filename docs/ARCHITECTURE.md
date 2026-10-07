@@ -222,6 +222,25 @@ await authorize(principal, 'department.update', hierarchyResource.department(bef
 - Background/system code that must act inside a tenant with platform authority uses
   `runAsPlatform({ organizationId, reason }, fn)` — always audited (`platform.run_as`).
 
+#### Organization onboarding & lifecycle (`core/platform/organizations.ts`)
+
+Platform admins manage tenants under `/api/v1/platform/organizations` (`platform.organization.view`
+to read, `platform.organization.manage` to write; UI: Platform → Organizations):
+
+- `POST /` `{ name, slug, planId, subscriptionStatus: TRIAL|ACTIVE, owner: { name, email, role } }`:
+  creates the organization, provisions default roles (`provisionOrganizationRoles`) and the plan
+  subscription (`provisionOrganizationSubscription`), then invites the first owner
+  (`group_owner` or `institution_owner`, organization scope) via `runAsPlatform` +
+  `userService.create`. The invite token goes by e-mail and is never returned. The slug must be
+  unique (409), and the plan must be ACTIVE (422).
+- `GET /`, `GET /:id` (counts and owners), `PATCH /:id` `{ name, reason }`,
+  `POST /:id/owners` (invite another owner).
+- `POST /:id/status` `{ status: ACTIVE|SUSPENDED|ARCHIVED, reason }`. A non-ACTIVE status revokes
+  every session of the org, and tenant requests then get 403 `TENANT_INACTIVE`.
+- Every change is audited in the target org with `actorType: 'platform'`
+  (`organization.create|update|suspend|activate|archive`). Subscription, add-ons and limit
+  overrides use the existing `/platform/organizations/:id/subscription` endpoints.
+
 ### 5.5 Rules for later layers
 
 1. Declare permissions in `@erp/shared` and add them to default roles; guard every route with

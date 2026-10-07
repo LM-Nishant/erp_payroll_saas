@@ -14,6 +14,7 @@ export * from './schemas/licensing';
 export * from './schemas/notifications';
 export * from './schemas/payroll';
 export * from './schemas/pdf';
+export * from './schemas/platform';
 export * from './schemas/secrets';
 export * from './schemas/workflow';
 export * from './types/api';

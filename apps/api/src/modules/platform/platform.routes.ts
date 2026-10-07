@@ -1,11 +1,15 @@
 import {
   createInvoiceSchema,
+  createOrganizationSchema,
+  inviteOrganizationOwnerSchema,
+  listOrganizationsQuerySchema,
+  setOrganizationStatusSchema,
+  updateOrganizationSchema,
   createPlanSchema,
   idParamSchema,
   idSchema,
   listInvoicesQuerySchema,
   listPlatformAuditLogsQuerySchema,
-  paginationQuerySchema,
   platformAccessSchema,
   platformReasonSchema,
   setSubscriptionSchema,
@@ -17,7 +21,15 @@ import { Router } from 'express';
 import { listAuditLogs } from '../../core/audit';
 import { currentPrincipal, requirePlatformPermission } from '../../core/authz';
 import { parseInput } from '../../core/http/validation';
-import { listOrganizations, openTenantAccess, resolveOrganizationSlug } from '../../core/platform';
+import {
+  getPlatformOrganization,
+  listPlatformOrganizations,
+  openTenantAccess,
+  resolveOrganizationSlug,
+  setOrganizationStatus,
+  updateOrganizationRecord,
+} from '../../core/platform';
+import { createOrganization, inviteOrganizationOwner } from './organizations.service';
 import { platformBillingService } from '../../core/features';
 
 const invoiceParamsSchema = z.object({ id: idSchema, invoiceId: idSchema });
@@ -30,7 +42,58 @@ platformRouter.get(
   '/organizations',
   requirePlatformPermission('platform.organization.view'),
   async (req, res) => {
-    res.json(await listOrganizations(parseInput(paginationQuerySchema, req.query)));
+    res.json(await listPlatformOrganizations(parseInput(listOrganizationsQuerySchema, req.query)));
+  },
+);
+
+/** Onboard a tenant: organization, default roles, subscription and first owner invite. */
+platformRouter.post(
+  '/organizations',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const input = parseInput(createOrganizationSchema, req.body);
+    res.status(201).json({ data: await createOrganization(actor().userId, input) });
+  },
+);
+
+platformRouter.get(
+  '/organizations/:id',
+  requirePlatformPermission('platform.organization.view'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    res.json({ data: await getPlatformOrganization(id) });
+  },
+);
+
+platformRouter.patch(
+  '/organizations/:id',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    const input = parseInput(updateOrganizationSchema, req.body);
+    res.json({ data: await updateOrganizationRecord(actor().userId, id, input) });
+  },
+);
+
+/** Suspend / archive / re-activate. Non-active tenants get 403 TENANT_INACTIVE. */
+platformRouter.post(
+  '/organizations/:id/status',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    const input = parseInput(setOrganizationStatusSchema, req.body);
+    res.json({ data: await setOrganizationStatus(actor().userId, id, input) });
+  },
+);
+
+/** Invite an additional organization-wide owner (or retry a failed onboarding invite). */
+platformRouter.post(
+  '/organizations/:id/owners',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    const input = parseInput(inviteOrganizationOwnerSchema, req.body);
+    res.status(201).json({ data: await inviteOrganizationOwner(actor().userId, id, input) });
   },
 );
 

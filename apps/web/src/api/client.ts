@@ -60,14 +60,17 @@ export async function rawFetch<T>(
 
 /**
  * Authenticated API call. On 401 TOKEN_EXPIRED the access token is refreshed once and the
- * request retried; any other 401 ends the session. The tenant is never sent by the client —
- * the server derives it from the session.
+ * request retried; any other 401 ends the session — except TENANT_UNRESOLVED with a valid
+ * token, which means the principal (e.g. a platform admin) has no organization for a
+ * tenant-scoped endpoint, not that the session is gone. The tenant is never sent by the
+ * client — the server derives it from the session.
  */
 export async function apiFetch<T>(path: string, init: RequestInit = {}): Promise<T> {
   try {
     return await rawFetch<T>(path, init, hooks?.accessToken());
   } catch (err) {
     if (!(err instanceof ApiError) || err.status !== 401 || !hooks) throw err;
+    if (err.code === 'TENANT_UNRESOLVED' && hooks.accessToken()) throw err;
     if (err.code === 'TOKEN_EXPIRED' && (await hooks.refresh())) {
       return rawFetch<T>(path, init, hooks.accessToken());
     }
