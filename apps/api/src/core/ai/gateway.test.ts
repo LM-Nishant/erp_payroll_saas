@@ -10,9 +10,16 @@ import { mockAiProvider } from './mock-provider';
 import { registerAiPrompt } from './prompts';
 import { availableAiTools, executeAiTool, registerAiTool } from './tools';
 import type { AiCompletionRequest, AiProvider } from './types';
+import type * as FeaturesModuleNs from '../features';
+import type * as TenancyModuleNs from '../tenancy';
+import type * as SettingsModuleNs from './settings';
+
+type FeaturesModule = typeof FeaturesModuleNs;
+type TenancyModule = typeof TenancyModuleNs;
+type SettingsModule = typeof SettingsModuleNs;
 
 vi.mock('../features', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../features')>()),
+  ...(await importOriginal<FeaturesModule>()),
   consumeLimit: vi.fn(async () => 0),
   releaseLimit: vi.fn(async () => undefined),
   enabledFeaturesAnywhere: vi.fn(async () => ['hr', 'ai']),
@@ -20,7 +27,7 @@ vi.mock('../features', async (importOriginal) => ({
 }));
 const usageCreate = vi.fn(async (_args: { data: Record<string, unknown> }) => ({}));
 vi.mock('../tenancy', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('../tenancy')>()),
+  ...(await importOriginal<TenancyModule>()),
   tenantDb: vi.fn(() => ({
     aiUsageLog: { create: usageCreate },
     tenantSecret: { count: vi.fn(async () => 0) },
@@ -28,7 +35,7 @@ vi.mock('../tenancy', async (importOriginal) => ({
   withTenant: (data: Record<string, unknown>) => ({ ...data, organizationId: 'org-1' }),
 }));
 vi.mock('./settings', async (importOriginal) => ({
-  ...(await importOriginal<typeof import('./settings')>()),
+  ...(await importOriginal<SettingsModule>()),
   loadAiSettings: vi.fn(),
 }));
 
