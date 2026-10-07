@@ -20,6 +20,7 @@ import {
   scopeWhere,
 } from '../../core/authz';
 import { isUniqueViolation } from '../../core/db/helpers';
+import { documentEngine } from '../../core/documents';
 import { emit } from '../../core/events';
 import {
   AppError,
@@ -28,9 +29,11 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../core/http/errors';
+import type { MultipartFile } from '../../core/http/multipart';
 import { toPageWindow } from '../../core/http/pagination';
 import { tenantDb, withTenant } from '../../core/tenancy';
 import { parseCsv } from '../employees/employees.import';
+import { faceDistance, imageUploadPolicy, storedDescriptor } from '../employees/employees.photo';
 import { resolveDaysForEmployee } from '../holidays/holidays.service';
 import {
   assertActionable,
@@ -90,6 +93,61 @@ export async function punchDay(
   return final ? { date, institutionId: final.institutionId } : null;
 }
 
+/** Max euclidean distance (face-api.js descriptors) accepted as the same person. */
+export const FACE_MATCH_THRESHOLD = 0.5;
+
+/**
+ * Selfie punch check: the browser sends the selfie and its descriptor; the server compares the
+ * descriptor with the one stored from the profile photo and keeps the selfie as evidence.
+ * (Descriptors are computed client-side, so this deters casual proxy punching; it is not
+ * liveness detection.)
+ */
+async function verifySelfie(
+  employee: Employee,
+  descriptor: number[] | undefined,
+  selfie: MultipartFile | undefined,
+) {
+  const stored = storedDescriptor(employee);
+  if (!stored) {
+    throw new AppError(
+      409,
+      'PROFILE_PHOTO_REQUIRED',
+      'Upload a clear profile photo before punching with a selfie',
+    );
+  }
+  if (!descriptor || !selfie) {
+    throw new AppError(400, 'SELFIE_REQUIRED', 'A selfie is required to punch');
+  }
+  const distance = Math.round(faceDistance(stored, descriptor) * 10_000) / 10_000;
+  if (distance > FACE_MATCH_THRESHOLD) {
+    await audit.record({
+      action: 'attendance.face_mismatch',
+      entityType: 'employee',
+      entityId: employee.id,
+      metadata: { distance },
+    });
+    throw new AppError(422, 'FACE_MISMATCH', 'The selfie does not match your profile photo', {
+      distance,
+      threshold: FACE_MATCH_THRESHOLD,
+    });
+  }
+  const doc = await documentEngine.attach({
+    ownerType: 'employee',
+    ownerId: employee.id,
+    module: 'attendance',
+    metadata: {
+      title: `Punch selfie ${new Date().toISOString()}`,
+      category: 'employment',
+      documentType: 'attendance_selfie',
+      confidentiality: 'CONFIDENTIAL',
+    },
+    file: selfie,
+    policy: imageUploadPolicy(3 * 1024 * 1024),
+    authorization: 'caller',
+  });
+  return { documentId: doc.id, distance };
+}
+
 async function insertPunch(
   employee: Employee,
   instant: Date,
@@ -98,6 +156,8 @@ async function insertPunch(
     source: 'WEB' | 'MOBILE' | 'BIOMETRIC' | 'API' | 'MANUAL';
     direction: 'IN' | 'OUT' | 'UNKNOWN';
     importJobId?: string | null;
+    selfieDocumentId?: string | null;
+    faceDistance?: number | null;
   } & Geo,
 ) {
   try {
@@ -113,6 +173,8 @@ async function insertPunch(
         longitude: data.longitude ?? null,
         accuracyMeters: data.accuracyMeters ?? null,
         importJobId: data.importJobId ?? null,
+        selfieDocumentId: data.selfieDocumentId ?? null,
+        faceDistance: data.faceDistance ?? null,
         createdByUserId: currentPrincipal().userId,
       }),
     });
@@ -252,7 +314,7 @@ async function assertNotFuture(ctx: AttendanceContext, institutionId: string, da
 export const attendanceService = {
   /* ---- punches ---- */
 
-  async selfPunch(input: SelfPunchInput) {
+  async selfPunch(input: SelfPunchInput, selfie?: MultipartFile) {
     const employee = await ownEmployee('attendance.punch_own');
     assertActionable(employee);
     const ctx = new AttendanceContext();
@@ -267,14 +329,26 @@ export const attendanceService = {
       throw new ForbiddenError(`${input.source} punches are disabled`, 'PUNCH_SOURCE_DISABLED');
     }
     await ctx.assertUnlocked(day.institutionId, day.date);
-    const punch = await insertPunch(employee, instant, day.date, input);
+    const face = policy.requireFaceMatch
+      ? await verifySelfie(employee, input.faceDescriptor, selfie)
+      : null;
+    const punch = await insertPunch(employee, instant, day.date, {
+      ...input,
+      selfieDocumentId: face?.documentId ?? null,
+      faceDistance: face?.distance ?? null,
+    });
     if (!punch) throw new ConflictError('Punch already recorded');
     await computeAttendance([employee.id], day.date, day.date, ctx);
     await audit.record({
       action: 'attendance.punch',
       entityType: 'employee',
       entityId: employee.id,
-      after: { punchedAt: instant.toISOString(), date: day.date, source: input.source },
+      after: {
+        punchedAt: instant.toISOString(),
+        date: day.date,
+        source: input.source,
+        ...(face ? { faceDistance: face.distance } : {}),
+      },
     });
     const record = await tenantDb().attendanceRecord.findFirst({
       where: { employeeId: employee.id, date: strToDate(day.date) },
@@ -575,6 +649,7 @@ export const attendanceService = {
       absentIsLop: input.absentIsLop,
       allowWebPunch: input.allowWebPunch,
       allowMobilePunch: input.allowMobilePunch,
+      requireFaceMatch: input.requireFaceMatch,
     };
     const after = before
       ? await db.attendancePolicy.update({ where: { id: before.id }, data })
@@ -614,10 +689,12 @@ export const attendanceService = {
     for (const r of records) {
       items.push(toRecordDto(r, !!(await ctx.lockFor(r.institutionId, dateToStr(r.date)))));
     }
+    const today = await punchDay(ctx, employee, new Date());
     return {
       employeeId: employee.id,
       from,
       to,
+      faceMatchRequired: today ? (await ctx.policy(today.institutionId)).requireFaceMatch : false,
       records: items,
       punches: punches.map(toPunchDto),
       days: await resolveDaysForEmployee(employee.id, from, to, ctx),

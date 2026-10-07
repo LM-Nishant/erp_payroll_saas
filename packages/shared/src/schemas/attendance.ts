@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { codeSchema, idSchema, nameSchema, paginationQuerySchema } from './common';
-import { employmentTypeSchema, isoDateSchema } from './hr';
+import { employmentTypeSchema, faceDescriptorSchema, isoDateSchema } from './hr';
 
 /*
  * Attendance / leave / holiday / shift foundation (Layer 7). All request schemas are `.strict()`.
@@ -227,6 +227,8 @@ export const selfPunchSchema = z
     source: z.enum(['WEB', 'MOBILE']).default('WEB'),
     direction: punchDirectionSchema.default('UNKNOWN'),
     ...geoFields,
+    /** Descriptor of the selfie (sent with the selfie image when face match is required). */
+    faceDescriptor: faceDescriptorSchema.optional(),
   })
   .strict();
 export type SelfPunchInput = z.infer<typeof selfPunchSchema>;
@@ -356,6 +358,8 @@ export const upsertAttendancePolicySchema = z
     absentIsLop: z.boolean().default(true),
     allowWebPunch: z.boolean().default(true),
     allowMobilePunch: z.boolean().default(true),
+    /** Self punches need a selfie matching the employee's profile photo. */
+    requireFaceMatch: z.boolean().default(false),
   })
   .strict();
 export type UpsertAttendancePolicyInput = z.infer<typeof upsertAttendancePolicySchema>;
@@ -414,7 +418,7 @@ export const createLeaveTypeSchema = z
     allowHalfDay: z.boolean().default(true),
     /** null = all genders / employment types eligible. */
     genders: genderList.nullish(),
-    employmentTypes: z.array(employmentTypeSchema).min(1).max(4).nullish(),
+    employmentTypes: z.array(employmentTypeSchema).min(1).max(7).nullish(),
     requiresDocument: z.boolean().default(false),
     /** A document is required only when the request exceeds this many days (0 = always). */
     documentAfterDays: z.number().min(0).max(366).default(0),
@@ -434,7 +438,7 @@ export const updateLeaveTypeSchema = z
     name: nameSchema.optional(),
     allowHalfDay: z.boolean().optional(),
     genders: genderList.nullish(),
-    employmentTypes: z.array(employmentTypeSchema).min(1).max(4).nullish(),
+    employmentTypes: z.array(employmentTypeSchema).min(1).max(7).nullish(),
     requiresDocument: z.boolean().optional(),
     documentAfterDays: z.number().min(0).max(366).optional(),
     sandwichRule: z.boolean().optional(),

@@ -46,9 +46,19 @@ describe('visibleMenu', () => {
     expect(visibleMenu(WORKSPACES, can, (f) => !f).map((w) => w.layout)).not.toContain('hr');
     expect(visibleMenu(MENUS.hr, can, withHr).map((i) => i.title)).toEqual([
       'Employees',
+      'Employee types',
       'Designations',
       'Approvals',
     ]);
+  });
+
+  it('relabels and hides education-only items for company organizations', () => {
+    const can = () => true;
+    const all = () => true;
+    const titles = (kind?: 'EDUCATION' | 'COMPANY') =>
+      visibleMenu(WORKSPACES, can, all, kind).map((w) => w.title);
+    expect(titles('COMPANY')).toEqual(expect.arrayContaining(['Head office', 'Company']));
+    expect(titles('EDUCATION')).not.toContain('Head office');
   });
 
   it('shows time-office pages by their own permissions', () => {

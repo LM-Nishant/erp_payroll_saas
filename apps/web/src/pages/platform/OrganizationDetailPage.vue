@@ -80,17 +80,25 @@ const statusColor = (s: OrganizationStatus) =>
 
 // --- Rename ------------------------------------------------------------------------------
 
+const kinds = [
+  { value: 'EDUCATION', title: 'Education (school / college / group)' },
+  { value: 'COMPANY', title: 'Company (HRMS & payroll)' },
+];
 const renameDialog = ref(false);
-const rename = reactive({ name: '', reason: '' });
+const rename = reactive({ name: '', kind: 'EDUCATION' as 'EDUCATION' | 'COMPANY', reason: '' });
 function openRename() {
-  Object.assign(rename, { name: org.value?.name ?? '', reason: '' });
+  Object.assign(rename, {
+    name: org.value?.name ?? '',
+    kind: org.value?.kind ?? 'EDUCATION',
+    reason: '',
+  });
   renameDialog.value = true;
 }
 async function saveRename() {
   const ok = await run(async () => {
     await apiFetch(base.value, { method: 'PATCH', body: JSON.stringify(rename) });
     await loadOrg();
-  }, 'Organization renamed');
+  }, 'Organization updated');
   if (ok) renameDialog.value = false;
 }
 
@@ -224,7 +232,7 @@ const downloadInvoice = (inv: InvoiceDto) =>
     <v-chip v-if="org" size="small" :color="statusColor(org.status)">{{ org.status }}</v-chip>
     <v-spacer />
     <template v-if="org && canManage">
-      <v-btn variant="tonal" prepend-icon="mdi-pencil" @click="openRename">Rename</v-btn>
+      <v-btn variant="tonal" prepend-icon="mdi-pencil" @click="openRename">Edit</v-btn>
       <v-btn
         v-if="org.status !== 'ACTIVE'"
         color="success"
@@ -264,6 +272,7 @@ const downloadInvoice = (inv: InvoiceDto) =>
         <v-card title="Overview" class="mb-4">
           <v-card-text>
             <div><strong>Slug:</strong> {{ org.slug }}</div>
+            <div><strong>Type:</strong> {{ org.kind === 'COMPANY' ? 'Company' : 'Education' }}</div>
             <div><strong>Created:</strong> {{ date(org.createdAt) }}</div>
             <div class="d-flex ga-2 mt-3 flex-wrap">
               <v-chip>{{ org.counts.groups }} groups</v-chip>
@@ -420,10 +429,18 @@ const downloadInvoice = (inv: InvoiceDto) =>
   />
 
   <v-dialog v-model="renameDialog" max-width="520">
-    <v-card title="Rename organization">
+    <v-card title="Edit organization">
       <v-form @submit.prevent="saveRename">
         <v-card-text>
           <v-text-field v-model="rename.name" label="Name" :rules="[required]" />
+          <v-select
+            v-model="rename.kind"
+            :items="kinds"
+            label="Organization type"
+            hint="Company hides education wording (institutions, campuses, teaching staff)"
+            persistent-hint
+            class="mb-2"
+          />
           <v-text-field v-model="rename.reason" label="Reason" :rules="[reasonRule]" />
         </v-card-text>
         <v-card-actions>

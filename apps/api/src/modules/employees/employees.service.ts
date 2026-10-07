@@ -24,7 +24,14 @@ import {
 } from '../../core/authz';
 import { emit } from '../../core/events';
 import { releaseLimit, withLimit } from '../../core/features';
-import { AppError, ConflictError, ForbiddenError, NotFoundError } from '../../core/http/errors';
+import {
+  AppError,
+  ConflictError,
+  ForbiddenError,
+  InvalidReferenceError,
+  NotFoundError,
+  ValidationError,
+} from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
 import { publish } from '../../core/notifications';
 import { currentOrganizationId, tenantDb, withTenant } from '../../core/tenancy';
@@ -319,6 +326,14 @@ async function resetDraftHistory(
 
 /* --------------------------------- Service ---------------------------------------------- */
 
+/** Active custom employee type (422 when missing / inactive / another tenant's). */
+async function resolveEmployeeType(id: string | null | undefined) {
+  if (!id) return null;
+  const type = await tenantDb().employeeType.findFirst({ where: { id, status: 'ACTIVE' } });
+  if (!type) throw new InvalidReferenceError('employeeTypeId', 'Employee type');
+  return type;
+}
+
 export const employeeService = {
   async list(query: ListEmployeesQuery) {
     const principal = currentPrincipal();
@@ -341,6 +356,7 @@ export const employeeService = {
         ...(query.designationId ? { designationId: query.designationId } : {}),
         ...(query.status ? { status: query.status } : {}),
         ...(query.employmentType ? { employmentType: query.employmentType } : {}),
+        ...(query.employeeTypeId ? { employeeTypeId: query.employeeTypeId } : {}),
       } satisfies Prisma.EmployeeWhereInput,
       await scopeWhere(principal, 'employee.view', 'employee'),
     ) as Prisma.EmployeeWhereInput;
@@ -362,7 +378,15 @@ export const employeeService = {
     return employeeDetail(await loadVisibleEmployee(id));
   },
 
-  async create(input: CreateEmployeeInput) {
+  async create(rawInput: CreateEmployeeInput) {
+    const typed = await resolveEmployeeType(rawInput.employeeTypeId);
+    const employmentType = typed?.category ?? rawInput.employmentType;
+    if (!employmentType) {
+      throw new ValidationError('Select an employee type or employment type', {
+        fields: [{ path: 'employmentType', message: 'Required' }],
+      });
+    }
+    const input = { ...rawInput, employmentType };
     const principal = currentPrincipal();
     const assignment = await resolveAssignment(input);
     await authorize(principal, 'employee.create', assignmentResource(assignment));
@@ -397,6 +421,7 @@ export const employeeService = {
             userId: input.userId ?? null,
             ...assignment,
             employmentType: input.employmentType,
+            employeeTypeId: typed?.id ?? null,
             status: input.status,
             firstName: input.firstName,
             middleName: input.middleName ?? null,
@@ -455,8 +480,18 @@ export const employeeService = {
     return employeeService.get(id);
   },
 
-  async update(id: string, input: UpdateEmployeeInput) {
+  async update(id: string, rawInput: UpdateEmployeeInput) {
     const before = await loadEmployeeFor(id, 'employee.update');
+    const typed = rawInput.employeeTypeId
+      ? await resolveEmployeeType(rawInput.employeeTypeId)
+      : null;
+    const input = typed
+      ? {
+          ...rawInput,
+          employmentType:
+            typed.category !== before.employmentType ? typed.category : rawInput.employmentType,
+        }
+      : rawInput;
     const principal = currentPrincipal();
     const assignmentKeys = [
       'institutionId',
@@ -518,6 +553,7 @@ export const employeeService = {
       ...(input.employeeCode !== undefined ? { employeeCode: input.employeeCode } : {}),
       ...(input.userId !== undefined ? { userId: input.userId } : {}),
       ...(input.employmentType !== undefined ? { employmentType: input.employmentType } : {}),
+      ...(input.employeeTypeId !== undefined ? { employeeTypeId: input.employeeTypeId } : {}),
       ...(input.firstName !== undefined ? { firstName: input.firstName } : {}),
       ...(input.middleName !== undefined ? { middleName: input.middleName } : {}),
       ...(input.lastName !== undefined ? { lastName: input.lastName } : {}),

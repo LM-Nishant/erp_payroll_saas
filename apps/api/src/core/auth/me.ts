@@ -131,7 +131,7 @@ export async function getMe(principal: Principal): Promise<MeResponse> {
 function organizationSummary(id: string) {
   return prisma.organization.findFirst({
     where: { id, deletedAt: null },
-    select: { id: true, slug: true, name: true },
+    select: { id: true, slug: true, name: true, kind: true },
   });
 }
 

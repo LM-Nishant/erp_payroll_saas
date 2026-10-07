@@ -22,6 +22,11 @@ enum EntityStatus {
   INACTIVE
 }
 
+enum OrganizationKind {
+  EDUCATION
+  COMPANY
+}
+
 enum OrganizationStatus {
   ACTIVE
   SUSPENDED
@@ -33,6 +38,8 @@ enum InstitutionType {
   COLLEGE
   UNIVERSITY
   INSTITUTE
+  COMPANY
+  BRANCH
 }
 
 enum ProgramLevel {
@@ -55,6 +62,8 @@ model Organization {
   name      String             @db.VarChar(200)
   slug      String             @unique @db.VarChar(64)
   status    OrganizationStatus @default(ACTIVE)
+  /// EDUCATION shows school/college terminology; COMPANY hides education menus and labels.
+  kind      OrganizationKind   @default(EDUCATION)
   createdAt DateTime           @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
@@ -80,6 +89,7 @@ model Organization {
   usageCounters             UsageCounter[]
   brandingProfiles          BrandingProfile[]
   secrets                   TenantSecret[]
+  employeeTypes             EmployeeType[]
   documents                 Document[]
   documentVersions          DocumentVersion[]
   documentGrants            DocumentPermission[]
@@ -281,7 +291,8 @@ model Department {
   userScopes    UserScope[]
   documents     Document[]
 
-  employees Employee[]
+  employees    Employee[]
+  designations Designation[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -1845,6 +1856,30 @@ enum EmploymentType {
   NON_TEACHING
   CONTRACT
   VISITING
+  FULL_TIME
+  PART_TIME
+  INTERN
+}
+
+/// Org-defined employee type (e.g. "Consultant", "Trainee"); `category` keeps payroll / leave rules working.
+model EmployeeType {
+  id             String         @id @default(uuid()) @db.Char(36)
+  organizationId String         @map("organization_id") @db.Char(36)
+  code           String         @db.VarChar(32)
+  name           String         @db.VarChar(200)
+  category       EmploymentType
+  description    String?        @db.VarChar(1000)
+  status         EntityStatus   @default(ACTIVE)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?      @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  employees    Employee[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, deletedAt])
+  @@map("employee_types")
 }
 
 /// Lifecycle (SPEC §5): DRAFT → ONBOARDING → ACTIVE → ON_NOTICE → EXITED (→ rehire → ONBOARDING).
@@ -1904,6 +1939,8 @@ model Designation {
   organizationId String          @map("organization_id") @db.Char(36)
   groupId        String?         @map("group_id") @db.Char(36)
   institutionId  String?         @map("institution_id") @db.Char(36)
+  /// Optional department this role belongs to (e.g. IT → Frontend developer).
+  departmentId   String?         @map("department_id") @db.Char(36)
   code           String          @db.VarChar(32)
   name           String          @db.VarChar(200)
   category       EmploymentType?
@@ -1915,11 +1952,13 @@ model Designation {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?       @map("deleted_at") @db.DateTime(3)
 
+  department   Department?        @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   employees    Employee[]
   positions    EmployeePosition[]
 
   @@unique([organizationId, code])
+  @@index([organizationId, departmentId])
   @@index([organizationId, institutionId])
   @@index([organizationId, deletedAt])
   @@map("designations")
@@ -1955,6 +1994,10 @@ model Employee {
   designationId      String?        @map("designation_id") @db.Char(36)
   reportingManagerId String?        @map("reporting_manager_id") @db.Char(36)
   employmentType     EmploymentType @map("employment_type")
+  employeeTypeId     String?        @map("employee_type_id") @db.Char(36)
+  /// Profile photo (document id) and its face descriptor (128 floats) used for selfie punches.
+  photoDocumentId    String?        @map("photo_document_id") @db.Char(36)
+  faceDescriptor     Json?          @map("face_descriptor")
   status             EmployeeStatus @default(DRAFT)
   firstName          String         @map("first_name") @db.VarChar(100)
   middleName         String?        @map("middle_name") @db.VarChar(100)
@@ -1983,6 +2026,7 @@ model Employee {
   campus           Campus?                        @relation(fields: [campusId], references: [id], onDelete: Restrict)
   department       Department?                    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
   designation      Designation?                   @relation(fields: [designationId], references: [id], onDelete: Restrict)
+  employeeType     EmployeeType?                  @relation(fields: [employeeTypeId], references: [id], onDelete: Restrict)
   reportingManager Employee?                      @relation("EmployeeReportingManager", fields: [reportingManagerId], references: [id], onDelete: Restrict)
   directReports    Employee[]                     @relation("EmployeeReportingManager")
   profile          EmployeeProfile?
@@ -2003,6 +2047,7 @@ model Employee {
 
   @@unique([organizationId, employeeCode])
   @@unique([organizationId, userId])
+  @@index([organizationId, employeeTypeId])
   @@index([organizationId, institutionId, status])
   @@index([organizationId, groupId])
   @@index([organizationId, departmentId])
@@ -2399,20 +2444,22 @@ enum PunchDirection {
 
 /// Raw punch (append-only). `attendanceDate` is the local shift day the punch belongs to.
 model AttendancePunch {
-  id              String         @id @default(uuid()) @db.Char(36)
-  organizationId  String         @map("organization_id") @db.Char(36)
-  employeeId      String         @map("employee_id") @db.Char(36)
-  punchedAt       DateTime       @map("punched_at") @db.DateTime(3)
-  attendanceDate  DateTime       @map("attendance_date") @db.Date
-  direction       PunchDirection @default(UNKNOWN)
-  source          PunchSource
-  deviceId        String?        @map("device_id") @db.VarChar(100)
-  latitude        Decimal?       @db.Decimal(9, 6)
-  longitude       Decimal?       @db.Decimal(9, 6)
-  accuracyMeters  Decimal?       @map("accuracy_meters") @db.Decimal(10, 2)
-  importJobId     String?        @map("import_job_id") @db.Char(36)
-  createdByUserId String?        @map("created_by_user_id") @db.Char(36)
-  createdAt       DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  id               String         @id @default(uuid()) @db.Char(36)
+  organizationId   String         @map("organization_id") @db.Char(36)
+  employeeId       String         @map("employee_id") @db.Char(36)
+  punchedAt        DateTime       @map("punched_at") @db.DateTime(3)
+  attendanceDate   DateTime       @map("attendance_date") @db.Date
+  direction        PunchDirection @default(UNKNOWN)
+  source           PunchSource
+  deviceId         String?        @map("device_id") @db.VarChar(100)
+  latitude         Decimal?       @db.Decimal(9, 6)
+  longitude        Decimal?       @db.Decimal(9, 6)
+  accuracyMeters   Decimal?       @map("accuracy_meters") @db.Decimal(10, 2)
+  importJobId      String?        @map("import_job_id") @db.Char(36)
+  selfieDocumentId String?        @map("selfie_document_id") @db.Char(36)
+  faceDistance     Decimal?       @map("face_distance") @db.Decimal(6, 4)
+  createdByUserId  String?        @map("created_by_user_id") @db.Char(36)
+  createdAt        DateTime       @default(now()) @map("created_at") @db.DateTime(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   employee     Employee     @relation(fields: [employeeId], references: [id], onDelete: Restrict)
@@ -2556,6 +2603,8 @@ model AttendancePolicy {
   absentIsLop         Boolean  @default(true) @map("absent_is_lop")
   allowWebPunch       Boolean  @default(true) @map("allow_web_punch")
   allowMobilePunch    Boolean  @default(true) @map("allow_mobile_punch")
+  /// Self punches must include a selfie that matches the employee's profile photo.
+  requireFaceMatch    Boolean  @default(false) @map("require_face_match")
   createdAt           DateTime @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt           DateTime @updatedAt @map("updated_at") @db.DateTime(3)
 

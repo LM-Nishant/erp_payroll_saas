@@ -8,7 +8,13 @@ export interface MenuItem {
   permission?: string;
   /** Licensed module required to see the item (`/me.features`; backend: requireFeature). */
   feature?: FeatureKey;
+  /** Label used for company (non-education) organizations. */
+  companyTitle?: string;
+  /** Hidden for company organizations (students, campuses, academics…). */
+  educationOnly?: boolean;
 }
+
+export type OrgKind = 'EDUCATION' | 'COMPANY';
 
 export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee';
 
@@ -48,6 +54,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/group' },
     {
       title: 'Institutions',
+      companyTitle: 'Companies / branches',
       icon: 'mdi-school',
       to: '/group/institutions',
       permission: 'institution.view',
@@ -143,6 +150,20 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       icon: 'mdi-badge-account',
       to: '/hr/employees',
       permission: 'employee.view',
+      feature: 'hr',
+    },
+    {
+      title: 'Departments',
+      icon: 'mdi-sitemap',
+      to: '/hr/departments',
+      permission: 'department.view',
+      feature: 'hr',
+    },
+    {
+      title: 'Employee types',
+      icon: 'mdi-account-tie',
+      to: '/hr/employee-types',
+      permission: 'designation.view',
       feature: 'hr',
     },
     {
@@ -281,10 +302,18 @@ export const WORKSPACES: Array<MenuItem & { layout: LayoutKey }> = [
     icon: 'mdi-shield-crown',
     permission: 'platform.organization.view',
   },
-  { layout: 'group', title: 'Group', to: '/group', icon: 'mdi-domain', permission: 'group.view' },
+  {
+    layout: 'group',
+    title: 'Group',
+    companyTitle: 'Head office',
+    to: '/group',
+    icon: 'mdi-domain',
+    permission: 'group.view',
+  },
   {
     layout: 'institution',
     title: 'Institution',
+    companyTitle: 'Company',
     to: '/institution',
     icon: 'mdi-school',
     permission: 'institution.view',
@@ -304,6 +333,16 @@ export function visibleMenu<T extends MenuItem>(
   items: T[],
   can: (permission?: string) => boolean,
   hasFeature: (feature?: FeatureKey) => boolean = () => true,
+  kind: OrgKind = 'EDUCATION',
 ): T[] {
-  return items.filter((item) => can(item.permission) && hasFeature(item.feature));
+  return items
+    .filter(
+      (item) =>
+        can(item.permission) &&
+        hasFeature(item.feature) &&
+        !(kind === 'COMPANY' && item.educationOnly),
+    )
+    .map((item) =>
+      kind === 'COMPANY' && item.companyTitle ? { ...item, title: item.companyTitle } : item,
+    );
 }

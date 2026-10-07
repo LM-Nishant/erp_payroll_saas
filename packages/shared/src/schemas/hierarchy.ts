@@ -6,7 +6,14 @@ import { codeSchema, idSchema, nameSchema, paginationQuerySchema } from './commo
  * are rejected with a 400 so clients can never smuggle tenant identifiers into writes.
  */
 
-export const institutionTypeSchema = z.enum(['SCHOOL', 'COLLEGE', 'UNIVERSITY', 'INSTITUTE']);
+export const institutionTypeSchema = z.enum([
+  'SCHOOL',
+  'COLLEGE',
+  'UNIVERSITY',
+  'INSTITUTE',
+  'COMPANY',
+  'BRANCH',
+]);
 export type InstitutionType = z.infer<typeof institutionTypeSchema>;
 
 export const statusSchema = z.enum(['ACTIVE', 'INACTIVE']);

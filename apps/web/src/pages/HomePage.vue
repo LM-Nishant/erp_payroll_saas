@@ -2,11 +2,15 @@
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
 import { WORKSPACES, visibleMenu } from '@/navigation/menus';
+import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
-const workspaces = computed(() => visibleMenu(WORKSPACES, auth.can, auth.hasFeature));
+const workspaces = computed(() =>
+  visibleMenu(WORKSPACES, auth.can, auth.hasFeature, auth.me?.organization?.kind),
+);
+const terms = useTerms();
 
 async function signOut() {
   await auth.logout();
@@ -18,7 +22,7 @@ async function signOut() {
   <v-main>
     <v-container class="py-12" max-width="900">
       <div class="d-flex align-center mb-2">
-        <h1 class="text-h4">Education ERP</h1>
+        <h1 class="text-h4">{{ terms.appName }}</h1>
         <v-spacer />
         <v-btn variant="text" prepend-icon="mdi-logout" @click="signOut">Sign out</v-btn>
       </div>

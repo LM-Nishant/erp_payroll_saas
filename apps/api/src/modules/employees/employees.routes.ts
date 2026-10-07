@@ -3,6 +3,7 @@ import {
   confirmEmployeeSchema,
   createChecklistItemSchema,
   createDesignationSchema,
+  createEmployeeTypeSchema,
   createEmployeeMovementSchema,
   createEmployeeSchema,
   createProfileChangeRequestSchema,
@@ -16,6 +17,7 @@ import {
   exportEmployeesQuerySchema,
   idParamSchema,
   listDesignationsQuerySchema,
+  listEmployeeTypesQuerySchema,
   listEmployeesQuerySchema,
   onboardEmployeeSchema,
   rehireEmployeeSchema,
@@ -23,6 +25,7 @@ import {
   revealEmployeeSensitiveSchema,
   updateChecklistItemSchema,
   updateDesignationSchema,
+  updateEmployeeTypeSchema,
   updateEmployeeProfileSchema,
   updateEmployeeSchema,
   upsertEmployeeCodeSequenceSchema,
@@ -35,6 +38,8 @@ import { parseMultipartFile } from '../../core/http/multipart';
 import { toListResponse } from '../../core/http/pagination';
 import { parseInput } from '../../core/http/validation';
 import { designationService } from './designations.service';
+import { employeeTypeService } from './employee-types.service';
+import { parseDescriptorField, PHOTO_MAX_BYTES, photoService } from './employees.photo';
 import { importService } from './employees.import';
 import { generateEmployeeLetter, LETTER_TEMPLATES } from './employees.letters';
 import { lifecycleService } from './employees.lifecycle';
@@ -55,6 +60,20 @@ const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 /* ---- self-service (before /:id) ---- */
 employeesRouter.get('/me', requirePermission('employee.view_own'), async (_req, res) => {
   res.json({ data: await selfService.me() });
+});
+employeesRouter.post('/me/photo', requirePermission('employee.update_own'), async (req, res) => {
+  const { file, fields } = await parseMultipartFile(req, {
+    maxBytes: PHOTO_MAX_BYTES,
+    maxFields: 2,
+  });
+  const descriptor = parseDescriptorField(fields.faceDescriptor);
+  res.status(201).json({ data: await photoService.uploadOwn(file, descriptor) });
+});
+employeesRouter.get('/me/photo-url', requirePermission('employee.view_own'), async (_req, res) => {
+  res.json({ data: await photoService.ownUrl() });
+});
+employeesRouter.get('/me/face', requirePermission('employee.view_own'), async (_req, res) => {
+  res.json({ data: await photoService.ownFace() });
 });
 employeesRouter.post(
   '/me/change-requests',
@@ -234,6 +253,39 @@ employeesRouter.get(
     res.json({ data: await selfService.listFor(idOf(req)) });
   },
 );
+
+employeesRouter.post('/:id/photo', requirePermission('employee.update'), async (req, res) => {
+  const { file, fields } = await parseMultipartFile(req, {
+    maxBytes: PHOTO_MAX_BYTES,
+    maxFields: 2,
+  });
+  const descriptor = parseDescriptorField(fields.faceDescriptor);
+  res.status(201).json({ data: await photoService.upload(idOf(req), file, descriptor) });
+});
+employeesRouter.get('/:id/photo-url', requirePermission('employee.view'), async (req, res) => {
+  res.json({ data: await photoService.url(idOf(req)) });
+});
+
+/** /api/v1/employee-types — organization-defined employee types (HR masters). */
+export const employeeTypesRouter = Router();
+
+employeeTypesRouter.get('/', requirePermission('designation.view'), async (req, res) => {
+  const query = parseInput(listEmployeeTypesQuerySchema, req.query);
+  const { items, total } = await employeeTypeService.list(query);
+  res.json(toListResponse(items, total, query));
+});
+employeeTypesRouter.post('/', requirePermission('designation.manage'), async (req, res) => {
+  const input = parseInput(createEmployeeTypeSchema, req.body);
+  res.status(201).json({ data: await employeeTypeService.create(input) });
+});
+employeeTypesRouter.patch('/:id', requirePermission('designation.manage'), async (req, res) => {
+  const input = parseInput(updateEmployeeTypeSchema, req.body);
+  res.json({ data: await employeeTypeService.update(idOf(req), input) });
+});
+employeeTypesRouter.delete('/:id', requirePermission('designation.manage'), async (req, res) => {
+  await employeeTypeService.remove(idOf(req));
+  res.status(204).end();
+});
 
 /** /api/v1/designations — designation / position master. */
 export const designationsRouter = Router();

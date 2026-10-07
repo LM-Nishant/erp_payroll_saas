@@ -154,7 +154,7 @@ export const routes: RouteRecordRaw[] = [
         path: 'departments',
         name: 'institution-departments',
         meta: { permission: 'department.view' },
-        ...placeholder('Departments'),
+        component: () => import('@/pages/hr/DepartmentsPage.vue'),
       },
       {
         path: 'users',
@@ -208,6 +208,18 @@ export const routes: RouteRecordRaw[] = [
         name: 'hr-employee',
         props: true,
         component: () => import('@/pages/hr/EmployeeDetailPage.vue'),
+      },
+      {
+        path: 'departments',
+        name: 'hr-departments',
+        meta: { permission: 'department.view' },
+        component: () => import('@/pages/hr/DepartmentsPage.vue'),
+      },
+      {
+        path: 'employee-types',
+        name: 'hr-employee-types',
+        meta: { permission: 'designation.view' },
+        component: () => import('@/pages/hr/EmployeeTypesPage.vue'),
       },
       {
         path: 'designations',

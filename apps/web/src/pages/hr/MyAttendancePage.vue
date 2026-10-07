@@ -6,7 +6,8 @@ import type {
   MyAttendanceDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
-import { apiFetch } from '@/api/client';
+import { ApiError, apiFetch } from '@/api/client';
+import SelfieCaptureDialog from '@/components/SelfieCaptureDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { label } from './useHrOptions';
 import {
@@ -57,24 +58,61 @@ const position = () =>
     if (!navigator.geolocation) return resolve(null);
     navigator.geolocation.getCurrentPosition(resolve, () => resolve(null), { timeout: 5000 });
   });
-async function punch(direction: 'IN' | 'OUT') {
-  const pos = await position();
+// Selfie attendance: when the policy requires it, punches carry a selfie matched to the profile photo.
+const selfie = reactive({
+  open: false,
+  direction: 'IN' as 'IN' | 'OUT',
+  reference: null as number[] | null,
+});
+async function startSelfie(direction: 'IN' | 'OUT') {
   await run(async () => {
+    const face = (
+      await apiFetch<{ data: { hasPhoto: boolean; descriptor: number[] | null } }>(
+        '/api/v1/employees/me/face',
+      )
+    ).data;
+    if (!face.descriptor) {
+      error.value =
+        'Selfie attendance is enabled. Upload a clear, front-facing profile photo under My profile first.';
+      return;
+    }
+    Object.assign(selfie, { open: true, direction, reference: face.descriptor });
+  });
+}
+
+async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor: number[] }) {
+  if (!capture && data.value?.faceMatchRequired) return startSelfie(direction);
+  const pos = await position();
+  const fields: Record<string, string | number> = {
+    source: 'WEB',
+    direction,
+    ...(pos ? { latitude: pos.coords.latitude, longitude: pos.coords.longitude } : {}),
+  };
+  let body: string | FormData;
+  if (capture) {
+    const form = new FormData();
+    for (const [k, v] of Object.entries(fields)) form.append(k, String(v));
+    form.append('faceDescriptor', JSON.stringify(capture.descriptor));
+    form.append('file', capture.file, 'selfie.jpg');
+    body = form;
+  } else {
+    body = JSON.stringify(fields);
+  }
+  error.value = null;
+  try {
     const res = await apiFetch<{ data: { punch: AttendancePunchDto } }>(
       '/api/v1/attendance/me/punch',
-      {
-        method: 'POST',
-        body: JSON.stringify({
-          source: 'WEB',
-          direction,
-          ...(pos ? { latitude: pos.coords.latitude, longitude: pos.coords.longitude } : {}),
-        }),
-      },
+      { method: 'POST', body },
     );
     notice.value = `Punched ${direction.toLowerCase()} at ${new Date(res.data.punch.punchedAt).toLocaleTimeString()}`;
     await load();
-  });
+  } catch (e) {
+    if (e instanceof ApiError && e.code === 'SELFIE_REQUIRED') return startSelfie(direction);
+    error.value = (e as Error).message;
+  }
 }
+const onSelfie = (file: Blob, descriptor: number[]) =>
+  punch(selfie.direction, { file, descriptor });
 
 // Calendar grid (Sunday-first weeks)
 const byDate = computed(
@@ -145,6 +183,9 @@ const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
     <template v-if="auth.can('attendance.punch_own')">
       <v-btn color="success" prepend-icon="mdi-login" @click="punch('IN')">Punch in</v-btn>
       <v-btn color="primary" prepend-icon="mdi-logout" @click="punch('OUT')">Punch out</v-btn>
+      <v-chip v-if="data?.faceMatchRequired" size="small" prepend-icon="mdi-face-recognition">
+        Selfie required
+      </v-chip>
     </template>
     <v-text-field
       v-model="month"
@@ -253,6 +294,12 @@ const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
       </v-card-actions>
     </v-card>
   </v-dialog>
+  <SelfieCaptureDialog
+    v-model="selfie.open"
+    :title="`Selfie punch ${selfie.direction.toLowerCase()}`"
+    :reference="selfie.reference"
+    @captured="onSelfie"
+  />
 </template>
 
 <style scoped>

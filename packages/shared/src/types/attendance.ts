@@ -105,6 +105,9 @@ export interface AttendancePunchDto {
   deviceId: string | null;
   latitude: number | null;
   longitude: number | null;
+  /** Selfie evidence (document id) and face distance (lower = closer match) for selfie punches. */
+  selfieDocumentId: string | null;
+  faceDistance: number | null;
   createdAt: string;
 }
 
@@ -178,6 +181,7 @@ export interface AttendancePolicyDto {
   absentIsLop: boolean;
   allowWebPunch: boolean;
   allowMobilePunch: boolean;
+  requireFaceMatch: boolean;
   /** True when no policy row exists and defaults are returned. */
   isDefault: boolean;
 }
@@ -350,6 +354,8 @@ export interface MyAttendanceDto {
   employeeId: string;
   from: string;
   to: string;
+  /** Today's policy requires a selfie matched against the profile photo to punch. */
+  faceMatchRequired: boolean;
   records: AttendanceRecordDto[];
   punches: AttendancePunchDto[];
   days: ResolvedDayDto[];

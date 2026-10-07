@@ -72,6 +72,7 @@ export const policyDto = (
   absentIsLop: p?.absentIsLop ?? true,
   allowWebPunch: p?.allowWebPunch ?? true,
   allowMobilePunch: p?.allowMobilePunch ?? true,
+  requireFaceMatch: p?.requireFaceMatch ?? false,
   isDefault: !p,
 });
 

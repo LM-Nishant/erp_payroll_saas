@@ -793,4 +793,60 @@ describe.skipIf(!hasTestDatabase)('HR employee master', () => {
     expect(emp.employeeCode).toBe(`${prefix}007`);
     expect(emp.designation).toMatchObject({ id: designation.id });
   });
+
+  it('scopes designations to a department', async () => {
+    const dev = (
+      await engHr
+        .post('/api/v1/designations', {
+          code: name('FE').toUpperCase().slice(0, 30),
+          name: 'Frontend Developer',
+          departmentId: engCse,
+        })
+        .expect(201)
+    ).body.data;
+    expect(dev).toMatchObject({ institutionId: eng, departmentId: engCse });
+    expect(dev.department).toMatchObject({ id: engCse });
+    // A department of another institution cannot be attached.
+    await engHr.patch(`/api/v1/designations/${dev.id}`, { departmentId: comCse }).expect(422);
+    const forCse = (
+      await engHr.get(`/api/v1/designations?departmentId=${engCse}&pageSize=100`).expect(200)
+    ).body.data as Array<{ id: string; departmentId: string | null }>;
+    expect(forCse.map((d) => d.id)).toContain(dev.id);
+    expect(forCse.every((d) => d.departmentId === null || d.departmentId === engCse)).toBe(true);
+    const forCom = (
+      await engHr.get(`/api/v1/designations?departmentId=${engCom}&pageSize=100`).expect(200)
+    ).body.data as Array<{ id: string }>;
+    expect(forCom.map((d) => d.id)).not.toContain(dev.id);
+  });
+
+  it('manages organization employee types and derives the employment category', async () => {
+    const code = name('PERM').toUpperCase().slice(0, 30);
+    await engHr
+      .post('/api/v1/employee-types', { code, name: 'X', category: 'FULL_TIME' })
+      .expect(403);
+    const type = (
+      await owner
+        .post('/api/v1/employee-types', { code, name: 'Permanent', category: 'FULL_TIME' })
+        .expect(201)
+    ).body.data;
+    const emp = (
+      await createEmployee(engHr, {
+        institutionId: eng,
+        employmentType: undefined,
+        employeeTypeId: type.id,
+      })
+    ).data;
+    expect(emp).toMatchObject({ employmentType: 'FULL_TIME', employeeTypeId: type.id });
+    expect(emp.employeeType).toMatchObject({ id: type.id, name: 'Permanent' });
+    const listed = (await engHr.get('/api/v1/employee-types').expect(200)).body.data as Array<{
+      id: string;
+      employeeCount: number;
+    }>;
+    expect(listed.find((t) => t.id === type.id)?.employeeCount).toBe(1);
+    // In use: category is frozen and the type cannot be deleted.
+    await owner.patch(`/api/v1/employee-types/${type.id}`, { category: 'INTERN' }).expect(409);
+    await owner.delete(`/api/v1/employee-types/${type.id}`).expect(409);
+    // Neither a type nor a category → 400.
+    await createEmployee(engHr, { institutionId: eng, employmentType: undefined }, 400);
+  });
 });

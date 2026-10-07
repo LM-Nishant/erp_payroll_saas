@@ -22,6 +22,7 @@ import { toListResponse } from '../../core/http/pagination';
 import { parseInput } from '../../core/http/validation';
 import { regularizationService } from './attendance.regularization';
 import { attendanceService } from './attendance.service';
+import { parseDescriptorField } from '../employees/employees.photo';
 import { attendanceSummaryService } from './attendance.summary';
 
 /** /api/v1/attendance — punches, daily records, regularization, locks, policy, payroll feed. */
@@ -29,10 +30,30 @@ export const attendanceRouter = Router();
 const idOf = (req: Request) => parseInput(idParamSchema, req.params).id;
 const institutionParamSchema = z.object({ institutionId: z.string().uuid() }).strict();
 const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
+const SELFIE_MAX_BYTES = 3 * 1024 * 1024;
 
 /* ---- self-service (before parameterised routes) ---- */
 
+/** JSON, or multipart with a `file` selfie + fields (direction, source, geo, faceDescriptor JSON). */
 attendanceRouter.post('/me/punch', async (req, res) => {
+  if (req.is('multipart/form-data')) {
+    const { file, fields } = await parseMultipartFile(req, {
+      maxBytes: SELFIE_MAX_BYTES,
+      maxFields: 8,
+    });
+    const body: Record<string, unknown> = {};
+    for (const [k, v] of Object.entries(fields)) {
+      if (v === '') continue;
+      body[k] = ['latitude', 'longitude', 'accuracyMeters'].includes(k)
+        ? Number(v)
+        : k === 'faceDescriptor'
+          ? parseDescriptorField(v)
+          : v;
+    }
+    const input = parseInput(selfPunchSchema, body);
+    res.status(201).json({ data: await attendanceService.selfPunch(input, file) });
+    return;
+  }
   const input = parseInput(selfPunchSchema, req.body);
   res.status(201).json({ data: await attendanceService.selfPunch(input) });
 });

@@ -39,7 +39,11 @@ import {
 import { classSectionsRouter } from './modules/class-sections/class-sections.routes';
 import { documentsRouter } from './modules/documents/documents.routes';
 import { attendanceRouter } from './modules/attendance/attendance.routes';
-import { designationsRouter, employeesRouter } from './modules/employees/employees.routes';
+import {
+  designationsRouter,
+  employeesRouter,
+  employeeTypesRouter,
+} from './modules/employees/employees.routes';
 import { holidaysRouter } from './modules/holidays/holidays.routes';
 import { leaveRouter } from './modules/leave/leave.routes';
 import { payrollRouter } from './modules/payroll/payroll.routes';
@@ -149,6 +153,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/class-sections', requireFeature('education'), classSectionsRouter);
   api.use('/employees', requireFeature('hr'), employeesRouter);
   api.use('/designations', requireFeature('hr'), designationsRouter);
+  api.use('/employee-types', requireFeature('hr'), employeeTypesRouter);
   api.use('/holidays', requireFeature('hr'), holidaysRouter);
   api.use('/shifts', requireFeature('hr'), shiftsRouter);
   api.use('/attendance', requireFeature('hr'), attendanceRouter);

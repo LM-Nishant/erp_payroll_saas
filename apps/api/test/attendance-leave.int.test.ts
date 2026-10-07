@@ -504,6 +504,67 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
         .get(`/api/v1/attendance/summary?employeeId=${B.id}&from=2025-03-01&to=2025-03-10`)
         .expect((r) => expect([403, 404]).toContain(r.status));
     });
+
+    it('requires a selfie matching the profile photo when the policy says so', async () => {
+      const { accessToken } = await login(app, SELF, DEMO_PASSWORD);
+      const PNG = Buffer.from(
+        'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==',
+        'base64',
+      );
+      const face = Array.from({ length: 128 }, (_, i) => Math.sin(i) / 10);
+      const near = face.map((v) => v + 0.01);
+      const far = face.map((v, i) => v + (i % 2 ? 0.2 : -0.2));
+      const selfiePunch = (descriptor: number[]) =>
+        supertest(app)
+          .post('/api/v1/attendance/me/punch')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .field('source', 'WEB')
+          .field('faceDescriptor', JSON.stringify(descriptor))
+          .attach('file', PNG, { filename: 'selfie.png', contentType: 'image/png' });
+
+      const before = (await engHr.get(`/api/v1/attendance/policies/${eng}`).expect(200)).body.data;
+      const policyBody = (requireFaceMatch: boolean) => ({
+        timezone: before.timezone,
+        lateMarksPerHalfDay: before.lateMarksPerHalfDay,
+        absentIsLop: before.absentIsLop,
+        allowWebPunch: before.allowWebPunch,
+        allowMobilePunch: before.allowMobilePunch,
+        requireFaceMatch,
+      });
+      await owner.put(`/api/v1/attendance/policies/${eng}`, policyBody(true)).expect(200);
+      try {
+        const today = new Date().toISOString().slice(0, 10);
+        expect(
+          (await self.get(`/api/v1/attendance/me?from=${today}&to=${today}`).expect(200)).body.data
+            .faceMatchRequired,
+        ).toBe(true);
+        // No registered face yet.
+        await selfiePunch(face).expect(409, /PROFILE_PHOTO_REQUIRED/);
+
+        await supertest(app)
+          .post('/api/v1/employees/me/photo')
+          .set('Authorization', `Bearer ${accessToken}`)
+          .field('faceDescriptor', JSON.stringify(face))
+          .attach('file', PNG, { filename: 'me.png', contentType: 'image/png' })
+          .expect(201);
+        const stored = (await self.get('/api/v1/employees/me/face').expect(200)).body.data;
+        expect(stored.hasPhoto).toBe(true);
+        expect(stored.descriptor).toHaveLength(128);
+        expect(
+          (await self.get('/api/v1/employees/me/photo-url').expect(200)).body.data.url,
+        ).toBeTruthy();
+
+        await self
+          .post('/api/v1/attendance/me/punch', { source: 'WEB' })
+          .expect(400, /SELFIE_REQUIRED/);
+        await selfiePunch(far).expect(422, /FACE_MISMATCH/);
+        const ok = (await selfiePunch(near).expect(201)).body.data.punch;
+        expect(ok.selfieDocumentId).toBeTruthy();
+        expect(Number(ok.faceDistance)).toBeLessThan(0.5);
+      } finally {
+        await owner.put(`/api/v1/attendance/policies/${eng}`, policyBody(false)).expect(200);
+      }
+    });
   });
 
   describe('leave', () => {

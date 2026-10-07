@@ -1,8 +1,15 @@
 <script setup lang="ts">
-import { EMPLOYMENT_TYPES, type EmployeeDto } from '@erp/shared';
+import {
+  COMPANY_EMPLOYMENT_TYPES,
+  EMPLOYMENT_TYPES,
+  type ApiListResponse,
+  type EmployeeDto,
+  type EmployeeTypeDto,
+} from '@erp/shared';
 import { computed, reactive, ref, watch } from 'vue';
 import { ApiError, apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
+import { useTerms } from '@/lib/terms';
 import { label, useHrOptions } from './useHrOptions';
 
 /** Create / edit an employee. Assignment fields are editable only while the record is DRAFT. */
@@ -12,6 +19,8 @@ const emit = defineEmits<{ saved: [employee: EmployeeDto] }>();
 
 const { institutions, designations, departments, campuses, loadBase, loadForInstitution } =
   useHrOptions();
+const terms = useTerms();
+const employeeTypes = ref<EmployeeTypeDto[]>([]);
 const isEdit = computed(() => Boolean(props.employee));
 const assignmentEditable = computed(() => !props.employee || props.employee.status === 'DRAFT');
 const saving = ref(false);
@@ -28,7 +37,10 @@ const blank = () => ({
   departmentId: null as string | null,
   designationId: null as string | null,
   reportingManagerId: null as string | null,
-  employmentType: 'TEACHING' as (typeof EMPLOYMENT_TYPES)[number],
+  employeeTypeId: null as string | null,
+  employmentType: (terms.value.isCompany
+    ? 'FULL_TIME'
+    : 'TEACHING') as (typeof EMPLOYMENT_TYPES)[number],
   status: 'DRAFT' as 'DRAFT' | 'ONBOARDING' | 'ACTIVE',
   workEmail: '',
   workPhone: '',
@@ -55,6 +67,7 @@ watch(open, async (isOpen) => {
       departmentId: e.departmentId,
       designationId: e.designationId,
       reportingManagerId: e.reportingManagerId,
+      employeeTypeId: e.employeeTypeId,
       employmentType: e.employmentType,
       workEmail: e.workEmail ?? '',
       workPhone: e.workPhone ?? '',
@@ -63,9 +76,47 @@ watch(open, async (isOpen) => {
       noticePeriodDays: e.noticePeriodDays,
     });
   }
-  await loadBase();
+  await Promise.all([loadBase(), loadEmployeeTypes()]);
   await loadForInstitution(form.institutionId);
 });
+
+async function loadEmployeeTypes() {
+  try {
+    employeeTypes.value = (
+      await apiFetch<ApiListResponse<EmployeeTypeDto>>(
+        '/api/v1/employee-types?pageSize=100&status=ACTIVE',
+      )
+    ).data;
+  } catch {
+    employeeTypes.value = [];
+  }
+}
+watch(
+  () => form.employeeTypeId,
+  (id) => {
+    const t = employeeTypes.value.find((x) => x.id === id);
+    if (t) form.employmentType = t.category;
+  },
+);
+watch(
+  () => form.departmentId,
+  () => {
+    if (
+      form.designationId &&
+      !availableDesignations.value.some((d) => d.id === form.designationId)
+    ) {
+      form.designationId = null;
+    }
+  },
+);
+/** Designations of the chosen department plus ones that apply to every department. */
+const availableDesignations = computed(() =>
+  designations.value.filter(
+    (d) =>
+      (!d.institutionId || d.institutionId === form.institutionId) &&
+      (!d.departmentId || d.departmentId === form.departmentId),
+  ),
+);
 watch(
   () => form.institutionId,
   async (id, prev) => {
@@ -88,6 +139,7 @@ async function save() {
     middleName: opt(form.middleName),
     lastName: opt(form.lastName),
     employmentType: form.employmentType,
+    ...(form.employeeTypeId ? { employeeTypeId: form.employeeTypeId } : {}),
     workEmail: opt(form.workEmail),
     workPhone: opt(form.workPhone),
     dateOfJoining: opt(form.dateOfJoining),
@@ -138,7 +190,12 @@ async function save() {
   }
 }
 
-const types = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value) }));
+const types = computed(() =>
+  (terms.value.isCompany ? COMPANY_EMPLOYMENT_TYPES : EMPLOYMENT_TYPES).map((value) => ({
+    value,
+    title: label(value),
+  })),
+);
 const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, title: label(value) }));
 </script>
 
@@ -154,8 +211,8 @@ const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, titl
           variant="tonal"
           class="mb-4"
         >
-          Institution, department and designation changes go through a movement (transfer /
-          promotion) so the history stays intact.
+          {{ terms.institution }}, department and designation changes go through a movement
+          (transfer / promotion) so the history stays intact.
         </v-alert>
         <v-row dense>
           <v-col cols="12" md="4">
@@ -168,7 +225,19 @@ const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, titl
             />
           </v-col>
           <v-col cols="12" md="4">
-            <v-select v-model="form.employmentType" :items="types" label="Employment type" />
+            <v-select
+              v-model="form.employeeTypeId"
+              :items="employeeTypes"
+              item-title="name"
+              item-value="id"
+              label="Employee type"
+              clearable
+              :hint="employeeTypes.length ? '' : 'Define types under HR → Employee types'"
+              persistent-hint
+            />
+          </v-col>
+          <v-col v-if="!form.employeeTypeId" cols="12" md="4">
+            <v-select v-model="form.employmentType" :items="types" label="Employment category" />
           </v-col>
           <v-col v-if="!isEdit" cols="12" md="4">
             <v-select v-model="form.status" :items="statuses" label="Initial status" />
@@ -192,12 +261,12 @@ const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, titl
               :items="institutions"
               item-title="name"
               item-value="id"
-              label="Institution *"
+              :label="`${terms.institution} *`"
               :disabled="!assignmentEditable"
               :error-messages="fieldErrors.institutionId"
             />
           </v-col>
-          <v-col cols="12" md="6">
+          <v-col v-if="!terms.isCompany" cols="12" md="6">
             <v-autocomplete
               v-model="form.campusId"
               :items="campuses"
@@ -222,7 +291,7 @@ const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, titl
           <v-col cols="12" md="6">
             <v-autocomplete
               v-model="form.designationId"
-              :items="designations"
+              :items="availableDesignations"
               item-title="name"
               item-value="id"
               label="Designation"

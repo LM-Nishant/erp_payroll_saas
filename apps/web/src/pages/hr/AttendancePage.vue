@@ -199,6 +199,7 @@ async function savePolicy() {
             absentIsLop: p.absentIsLop,
             allowWebPunch: p.allowWebPunch,
             allowMobilePunch: p.allowMobilePunch,
+            requireFaceMatch: p.requireFaceMatch,
           }),
         },
       )
@@ -461,6 +462,12 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
       <v-checkbox v-model="policy.absentIsLop" label="Absent days are loss of pay" hide-details />
       <v-checkbox v-model="policy.allowWebPunch" label="Allow web punch" hide-details />
       <v-checkbox v-model="policy.allowMobilePunch" label="Allow mobile punch" hide-details />
+      <v-checkbox
+        v-model="policy.requireFaceMatch"
+        label="Require selfie matched to profile photo for self punches"
+        hint="Employees must upload a clear profile photo first"
+        persistent-hint
+      />
     </v-card-text>
     <v-card-actions v-if="auth.can('attendance.manage')">
       <v-spacer />
