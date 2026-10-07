@@ -11,8 +11,9 @@ if (testDatabaseUrl) process.env.TEST_DATABASE_URL = testDatabaseUrl;
 
 const sharedEnv = {
   NODE_ENV: 'test',
-  LOG_LEVEL: 'silent',
+  LOG_LEVEL: process.env.TEST_LOG_LEVEL ?? 'silent',
   TENANT_RESOLVER: 'dev-header',
+  STORAGE_DRIVER: 'memory',
 };
 
 export default defineConfig({

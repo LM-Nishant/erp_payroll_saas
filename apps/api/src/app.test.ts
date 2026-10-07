@@ -55,14 +55,25 @@ describe('HTTP foundation (no database)', () => {
     expect(res.body.error.requestId).toBe(res.headers['x-request-id']);
   });
 
-  it('rejects tenant-scoped routes when the tenant cannot be resolved', async () => {
+  it('requires authentication for tenant-scoped routes', async () => {
     const res = await supertest(app()).get('/api/v1/groups').expect(401);
+    expect(res.body.error.code).toBe('UNAUTHENTICATED');
+    const bad = await supertest(app())
+      .get('/api/v1/groups')
+      .set('Authorization', 'Bearer not-a-jwt')
+      .expect(401);
+    expect(bad.body.error.code).toBe('TOKEN_INVALID');
+  });
+
+  it('rejects requests whose tenant cannot be resolved (dev-header mode)', async () => {
+    const resolver: TenantResolver = { name: 'dev-header', resolve: async () => null };
+    const res = await supertest(app(resolver)).get('/api/v1/groups').expect(401);
     expect(res.body.error.code).toBe('TENANT_UNRESOLVED');
   });
 
   it('rejects organizations that are not active', async () => {
     const resolver: TenantResolver = {
-      name: 'fixed',
+      name: 'dev-header',
       resolve: async () => ({ organizationId: 'suspended' }),
     };
     const res = await supertest(app(resolver)).get('/api/v1/groups').expect(403);

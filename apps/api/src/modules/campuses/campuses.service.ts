@@ -1,4 +1,6 @@
 import type { CreateCampusInput, PaginationQuery, UpdateCampusInput } from '@erp/shared';
+import { audit } from '../../core/audit';
+import { authorize, can, currentPrincipal, hierarchyResource, scopeWhere } from '../../core/authz';
 import { ConflictError, InvalidReferenceError, NotFoundError } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
 import { institutionRepository } from '../institutions/institutions.repository';
@@ -17,16 +19,22 @@ export async function assertCampusInInstitution(
 }
 
 export const campusService = {
-  list: (query: PaginationQuery & { institutionId?: string }) =>
+  list: async (query: PaginationQuery & { institutionId?: string }) =>
     campusRepository.list({
       ...toPageWindow(query),
       search: query.search,
       institutionId: query.institutionId,
+      scope: await scopeWhere(currentPrincipal(), 'campus.view', 'campus'),
     }),
 
   async get(id: string) {
     const campus = await campusRepository.findById(id);
-    if (!campus) throw new NotFoundError('Campus');
+    if (
+      !campus ||
+      !(await can(currentPrincipal(), 'campus.view', hierarchyResource.campus(campus)))
+    ) {
+      throw new NotFoundError('Campus');
+    }
     return campus;
   },
 
@@ -34,19 +42,38 @@ export const campusService = {
     if (!(await institutionRepository.findById(input.institutionId))) {
       throw new InvalidReferenceError('institutionId', 'Institution');
     }
-    return campusRepository.create(input);
+    await authorize(currentPrincipal(), 'campus.create', { institutionId: input.institutionId });
+    const campus = await campusRepository.create(input);
+    await audit.record({
+      action: 'campus.create',
+      entityType: 'campus',
+      entityId: campus.id,
+      after: campus,
+    });
+    return campus;
   },
 
   async update(id: string, input: UpdateCampusInput) {
-    await campusService.get(id);
-    return campusRepository.update(id, input);
+    const before = await campusService.get(id);
+    await authorize(currentPrincipal(), 'campus.update', hierarchyResource.campus(before));
+    const after = await campusRepository.update(id, input);
+    await audit.record({
+      action: 'campus.update',
+      entityType: 'campus',
+      entityId: id,
+      before,
+      after,
+    });
+    return after;
   },
 
   async remove(id: string) {
-    await campusService.get(id);
+    const before = await campusService.get(id);
+    await authorize(currentPrincipal(), 'campus.delete', hierarchyResource.campus(before));
     if ((await campusRepository.countChildren(id)) > 0) {
       throw new ConflictError('Campus is still referenced by departments or class sections');
     }
     await campusRepository.softDelete(id);
+    await audit.record({ action: 'campus.delete', entityType: 'campus', entityId: id, before });
   },
 };

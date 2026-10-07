@@ -1,6 +1,7 @@
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { createApp } from '../src/app';
 import { prisma } from '../src/core/db/prisma';
+import { provisionOrganizationSubscription, syncPlanCatalog } from '../src/core/features';
 import { asTenant, hasTestDatabase } from './helpers';
 
 describe.skipIf(!hasTestDatabase)('hierarchy CRUD', () => {
@@ -8,11 +9,13 @@ describe.skipIf(!hasTestDatabase)('hierarchy CRUD', () => {
   const t = asTenant(app, 'crud-org');
 
   beforeAll(async () => {
-    await prisma.organization.upsert({
+    const org = await prisma.organization.upsert({
       where: { slug: 'crud-org' },
       create: { slug: 'crud-org', name: 'CRUD Org' },
       update: {},
     });
+    await syncPlanCatalog();
+    await provisionOrganizationSubscription(org.id, 'enterprise');
   });
   afterAll(() => prisma.$disconnect());
 

@@ -86,14 +86,14 @@ Program → Class/Section**.
 - An **organization** is the SaaS tenant root: an education group (ABBS, BCC), a society, or
   an independent institution (JP College). Institutions have a nullable `group_id`.
 - Isolation boundary = `organization_id`. Finer-grained scopes (group / institution /
-  department assignments) are enforced by the authorization engine (Layer 2).
+  department assignments) are enforced by the authorization engine (§5).
 
 Components:
 
 | Piece                               | Responsibility                                                                                                                                                                                                                                                                                   |
 | ----------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
 | `TenantContext` (AsyncLocalStorage) | `runWithTenant()`, `getTenantContext()`, `currentOrganizationId()`. Frozen; nested tenant switching throws.                                                                                                                                                                                      |
-| `TenantResolver`                    | Resolves the tenant **server-side** per request. Layer 1: `dev-header` stub (`X-Dev-Organization`, dev/test only, rejected in production) or `none` (deny all). Layer 2 replaces it with a principal (JWT)-based resolver.                                                                       |
+| `TenantResolver`                    | Resolves the tenant **server-side** per request. `jwt` (default): the organization bound to the authenticated session. `dev-header` (dev/test only, rejected in production): jwt, else `X-Dev-Organization`. `none`: deny all.                                                                   |
 | `tenantContext()` middleware        | Runs resolver, verifies org exists & is `ACTIVE`, runs the request inside the context. 401 `TENANT_UNRESOLVED` / 403 `TENANT_INACTIVE`.                                                                                                                                                          |
 | `rejectClientTenantIdentifiers`     | 400 if body/query contain `organizationId`/`tenantId` (defense in depth).                                                                                                                                                                                                                        |
 | `tenantDb()` (Prisma extension)     | Tenant-scoped client: filters all reads/updates/deletes by `organization_id` (+ soft delete), stamps creates, throws `TenantIsolationError` on cross-tenant filters/writes, nested relation writes, raw SQL, or unregistered models. `Organization` is read-only and limited to the current org. |
@@ -112,26 +112,929 @@ Rules for all modules:
 4. Register every new model in `tenant-models.ts` (tenant-scoped or global).
 5. Background jobs carry `organizationId` in their payload and run inside
    `runWithTenant({ organizationId, source: 'system' }, …)`.
-6. Platform-level (cross-tenant) operations live in core/platform code using the base client
-   with explicit authorization and audit logging.
+6. Platform-level (cross-tenant) operations live in `core/platform` using the base client
+   with explicit authorization and audit logging (`runAsPlatform`, §5.4).
 
-## 5. Queues & cache
+## 5. Authentication, authorization & audit
 
-Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires configuration
-(`REDIS_URL`, `QUEUE_PREFIX`, `createQueue()`); connections are lazy.
+### 5.1 Identity & authentication (`src/core/auth`, `src/modules/auth`)
 
-## 6. Frontend (apps/web)
+- **Users are platform-level identities** (`users`, global model, unique email). Tenant access
+  comes from `organization_memberships` (INVITED / ACTIVE / DISABLED). Platform roles
+  (`platform_super_admin`, `platform_support_admin`) are `platform_role_assignments`, defined
+  in code (`core/authz/default-roles.ts`), never per tenant.
+- Passwords: **argon2id** (`core/auth/password.ts`); policy shared with the web in
+  `@erp/shared` (`passwordPolicyViolations`: 12+ chars, 3 character classes, no email name).
+- Login → short-lived **JWT access token** (HS256 via `jose`, `ACCESS_TOKEN_TTL_SECONDS`,
+  claims: `sub`, `sid`, `org`) + opaque **refresh token** stored only as a SHA-256 hash.
+  Each login creates an `auth_sessions` row (device/IP/user agent). Refresh **rotates** the
+  token; presenting a rotated token again is treated as theft → the whole session is revoked
+  (`REFRESH_TOKEN_REUSED`, audited). Every request re-checks the session is not revoked, so
+  logout / revoke / deactivation / password change take effect immediately.
+- The browser uses `tokenDelivery: 'cookie'`: the refresh token is an httpOnly,
+  `SameSite=Strict` cookie scoped to `/api/v1/auth`; the access token lives in memory only.
+- `login_events` records every attempt (ip, user agent, success, failure reason). After
+  `AUTH_MAX_FAILED_LOGINS` failures the account is locked for `AUTH_LOCKOUT_MINUTES` (423).
+  Public auth endpoints are rate limited per IP (429, `RateLimitStore` — in-memory by
+  default; swap for Redis when running several API instances).
+- **MFA (TOTP, RFC 6238)**: enroll → activate with a code → 10 single-use recovery codes
+  (hashed). Login then returns `{ mfaRequired, mfaToken }` to exchange at `/auth/mfa/verify`.
+  TOTP secrets are AES-256-GCM encrypted (`DATA_ENCRYPTION_KEY`); codes cannot be replayed.
+- Invite / password-reset tokens are single-use and hashed (`user_tokens`). **Until the
+  notification engine (Layer 5) exists the API returns them in the response**; Layer 5 must
+  deliver them by email and stop returning them.
+- A session is bound to one organization. Users in several organizations pick one at login
+  (`organization` slug; 409 `ORGANIZATION_SELECTION_REQUIRED` lists the choices).
+
+### 5.2 Authorization: permissions + scopes (`src/core/authz`)
+
+- **Permissions** are declared in `@erp/shared` → `PERMISSIONS` (`<resource>.<action>`, e.g.
+  `payroll.approve`; `platform.*` are platform-only). The catalog is synced into the
+  `permissions` table at startup (`syncPermissionCatalog`). Default tenant roles (spec §3)
+  live in `core/authz/default-roles.ts` and are provisioned per organization by
+  `provisionOrganizationRoles(orgId)` (call it when creating an organization).
+  **Adding a permission in a later layer** = add it to `PERMISSIONS` + to the relevant
+  default roles; existing organizations pick it up on the next provisioning run.
+- **Roles** (`roles`, `role_permissions`) are per tenant; system roles are read-only, custom
+  roles may only contain permissions their editor holds organization-wide.
+- **Assignments**: `user_roles` + `user_scopes`. Each role assignment has ≥1 scope:
+  `ORGANIZATION`, `GROUP`, `INSTITUTION`, `CAMPUS`, `DEPARTMENT` (FKs to the hierarchy;
+  `PLATFORM` is a platform role assignment). A permission applies only within the scopes
+  of the role that grants it. Group scopes cover every institution in the group; campus
+  scopes cover their departments; department scopes do **not** grant their institution.
+- A `Principal` (user, roles, grants, platform permissions, session) is built per request by
+  `principalContext()` and available through `currentPrincipal()`.
+- Assigning roles is checked for **privilege escalation**: the assigner needs
+  `user.role.assign` and every permission of the role, covering each target scope.
+
+**How modules use it** (the hierarchy modules are the reference implementation):
+
+```ts
+// routes: coarse check (permission held in at least one scope)
+router.get('/', requirePermission('department.view'), handler);
+// optional: requirePermission('x.update', (req) => resourceScopeOf(req)) for fixed resources
+
+// service — lists: filter by the caller's scopes
+const scope = await scopeWhere(currentPrincipal(), 'department.view', 'department');
+repo.list({ ...filters, scope }); // repository: where = andScope(where, scope)
+
+// service — reads: out-of-scope looks like not found (no existence leak)
+if (!(await can(principal, 'department.view', hierarchyResource.department(row))))
+  throw new NotFoundError('Department');
+
+// service — writes: authorize against the existing row AND the destination parent
+await authorize(principal, 'department.update', hierarchyResource.department(before));
+```
+
+- Every tenant-owned record of a later layer that belongs to the hierarchy must carry the
+  relevant hierarchy FKs (`institution_id`, `department_id`, …) so it can be scoped. Add the
+  model to `ScopedModel`/`COLUMNS` in `engine.ts` (or build the `where` from
+  `accessFor()`), and a `hierarchyResource` helper.
+- Organization-wide resources (roles, audit logs, settings) use `authorize(p, perm, {})`,
+  which only an `ORGANIZATION`-scoped grant satisfies.
+- The web menu and route guards use `GET /api/v1/me` (`permissions`, `roles[].scopes`);
+  they are convenience only — the API is always authoritative.
+
+### 5.3 Audit engine (`src/core/audit`)
+
+- `audit_logs` is **append-only**: no update/delete API, and DB triggers reject UPDATE and
+  DELETE. Rows hold organization, actor (user + actor type), action, entity type/id,
+  before/after **diff** (changed keys only), reason, metadata, ip, user agent, request id.
+- Sensitive keys (password, hash, secret, token, otp, api key, bank account, …) are
+  redacted automatically (`redact.ts`) — still never pass raw secrets.
+- Call `audit.record({ action: '<entity>.<verb>', entityType, entityId, before, after })` for
+  **every mutation** of business data and every security event. Actor, organization, IP,
+  user agent and request id come from the request context. Audit writes run after the
+  mutation (not in the same transaction) and failures propagate as errors.
+- Already audited automatically: login success and lockout (every attempt, incl. failures,
+  is in `login_events`), MFA changes, refresh-token
+  reuse, password change/reset, user create/update/(de)activate, role & scope changes, role
+  edits, hierarchy create/update/delete, platform tenant access.
+- Read via `GET /api/v1/audit-logs` (organization-wide `audit.view`) and
+  `GET /api/v1/platform/audit-logs` (`platform.audit.view`).
+
+### 5.4 Platform (cross-tenant) access (`src/core/platform`)
+
+- Platform admins have **no tenant access** by default (tenant routes return 401).
+- `POST /api/v1/platform/organizations/:id/access { reason }` opens a short-lived
+  (`PLATFORM_ACCESS_TTL_MINUTES`), non-refreshable tenant session; it is audited in the
+  target organization, and every action in it carries the reason in audit metadata.
+- Background/system code that must act inside a tenant with platform authority uses
+  `runAsPlatform({ organizationId, reason }, fn)` — always audited (`platform.run_as`).
+
+### 5.5 Rules for later layers
+
+1. Declare permissions in `@erp/shared` and add them to default roles; guard every route with
+   `requirePermission` and enforce scope in the service (`scopeWhere` / `can` / `authorize`).
+2. Never trust client-supplied scope or tenant ids; resolve parents through `tenantDb()` and
+   authorize against the resolved resource.
+3. `audit.record()` every mutation; never log secrets.
+4. Tests: use `signIn(app, email, password)` (test/helpers) with the seeded demo users for
+   RBAC/scope tests; `asTenant()` (dev header, all permissions) only for tenant-isolation
+   tests. Call `syncPermissionCatalog()` + `provisionOrganizationRoles()` for new orgs.
+
+## 6. Licensing, branding & secrets (Layer 3)
+
+### 6.1 Plans, subscriptions & billing (`src/core/features`)
+
+- `SubscriptionPlan` (global, platform-managed) holds `features` (module keys) and `limits`
+  (`institutions`, `students`, `employees`, `storage_bytes`, `ai_tokens`,
+  `communication_messages` — `LIMITS` in `@erp/shared`; **missing = 0, `null` = unlimited**). `syncPlanCatalog()` upserts the
+  Starter / Professional / Enterprise defaults (`DEFAULT_PLANS`).
+- `OrganizationSubscription` (one per org): status `TRIAL | ACTIVE | PAST_DUE | CANCELLED`,
+  trial end, period dates, add-on features and limit overrides. A subscription **licenses
+  modules** when ACTIVE, PAST_DUE, or TRIAL with `trialEndsAt` in the future. No subscription ⇒
+  no modules and every limit is 0.
+- `Invoice` models billing minimally (amount, period, status `DRAFT|OPEN|PAID|OVERDUE|
+VOID`, paid-at); no payment gateway.
+- Platform admins manage plans / subscriptions / invoices under `/api/v1/platform/{plans,
+organizations/:id/subscription, organizations/:id/invoices}` (`platform.plan.manage`,
+  `platform.subscription.manage`). Tenant-scoped writes go through `runAsPlatform` and are
+  audited in the tenant. Tenants read `GET /api/v1/subscription` (+ `/invoices`, `billing.view`).
+- **New orgs (incl. test orgs) must call `provisionOrganizationSubscription(orgId, planKey)`**
+  after `provisionOrganizationRoles()`, otherwise all feature-gated routes return 403.
+
+### 6.2 Module licensing (`src/core/features`)
+
+- Feature keys live in `FEATURES` / `FEATURE_KEYS` (`@erp/shared`), with
+  `FEATURE_DEPENDENCIES` (e.g. `payroll` → `hr`, `whatsapp` → `communication`).
+- `FeatureOverride` rows (org / group / institution) can only **disable** or re-enable within
+  the license; enabling an unlicensed module is rejected (422 `FEATURE_NOT_LICENSED`).
+  Effective = licensed ∧ most-specific override (institution ?? group ?? org ?? on) ∧ all
+  dependencies effective. An institution can never exceed its org plan.
+- Gate routes with `requireFeature('payroll')` (mount after tenant context; 403
+  `FEATURE_DISABLED` with `{ feature }` details). Without a resolver it checks "enabled
+  anywhere in the org"; services then call `assertFeatureEnabled(key, { institutionId })`
+  for the concrete resource. `isFeatureEnabled(ctx, key, { institutionId?, groupId? })` is the
+  boolean variant (`currentFeatureContext()` gives `ctx`).
+- `GET /api/v1/me` returns `features` (effective anywhere for the user) and `branding`. Web
+  menus declare `feature` on `MenuItem` and routes declare `meta.feature`; the guard redirects
+  to `module-disabled`.
+- APIs: `/api/v1/features` (`feature.view`), `GET /features/effective`, `PUT /api/v1/features/overrides`,
+  `DELETE /features/overrides/:id`
+  (`feature.manage`, audited `feature_override.*`).
+
+### 6.3 Usage limits (`src/core/features/limits.ts`)
+
+- `UsageCounter(organizationId, limitKey, period)`; gauges use period `total`, monthly limits
+  use `YYYY-MM` (UTC).
+- `assertWithinLimit(key, delta)` checks only; `consumeLimit(key, delta)` atomically reserves;
+  `releaseLimit(key, delta)` frees (e.g. on delete). Prefer
+  `withLimit('employees', 1, () => create())` — reserves first, releases if `fn` throws.
+  Over limit ⇒ 403 `LIMIT_EXCEEDED` with `{ limitKey, limit, used, requested }`.
+- Modules owning a gauge register a recount with `registerUsageSource('employees', orgId =>
+count)`; `reconcileUsage(orgId)` recounts (seed / repair jobs).
+
+### 6.4 Branding (`src/core/branding`, `/api/v1/branding`)
+
+- `BrandingProfile` per org / group / institution: display name, `logoStorageKey` +
+  `logoFileId` (Layer 4 sets `logoFileId` to a document/file id; changing the storage key
+  clears it), primary/secondary/accent colors, letterhead/footer text, address, contact info,
+  custom domain / subdomain placeholders (never inherited).
+- `resolveBranding(orgId, { institutionId? , groupId? })` merges institution → group → org →
+  platform defaults per field and returns `sources`. **PDFs / emails must use it**; it is
+  cached per request and invalidated on writes. `GET /branding/resolved?institutionId=` exposes
+  it; `GET/PUT/DELETE /branding/{organization,groups/:id,institutions/:id}`
+  (`branding.view` / `branding.manage`, audited).
+- Web: `plugins/branding.ts` `applyBranding()` applies `me.branding` colors to the Vuetify theme.
+
+### 6.5 Secret management (`src/core/secrets`, `/api/v1/secrets`)
+
+- Envelope encryption: each secret gets a random AES-256-GCM data key; the value is
+  encrypted with AAD bound to `org:secretId`; the data key is wrapped by the master key via a
+  `KeyProvider` (`LocalKeyProvider` from `SECRETS_MASTER_KEYS="1:<b64 32B>,2:…"` +
+  `SECRETS_ACTIVE_KEY_VERSION`; `SECRETS_KEY_PROVIDER` selects the provider — implement the
+  interface for a cloud KMS and register it in `keyProvider()`).
+- `TenantSecret`: org + optional group/institution scope, `kind` (`smtp`, `sms`,
+  `ai.openai`, `storage`…), `name`, ciphertext, wrapped key, `keyVersion`, `last4`,
+  `fingerprint`, `createdById`, `rotatedAt`.
+- The HTTP API is **write-only**: responses carry only masked metadata (`masked`, `last4`,
+  `fingerprint`). Create / rotate / delete are audited (`secret.create|rotate|delete`).
+- **Engines read secrets only through `getSecret({ kind, name?, institutionId?, groupId?,
+purpose })`** — falls back institution → group → org, audits `secret.access` (or
+  `secret.access_failed`) with the purpose, and returns a `SecretValue` whose `toString/toJSON`
+  are redacted; call `.reveal()` only at the point of use. Never log or return the value.
+- Master-key rotation: add a new version to `SECRETS_MASTER_KEYS`, set it active, then
+  `POST /api/v1/platform/secrets/rewrap` (`platform.secret.rotate_keys`, audited
+  `secret.rewrap`). Old versions must stay configured until rewrap completes.
+- pino redaction (`LOG_REDACT_PATHS`) covers `value`, `secret`, `password`, tokens, etc.
+
+### 6.6 Permissions & default roles
+
+`subscription.view`, `billing.view`, `feature.view`, `feature.manage`, `branding.view`,
+`branding.manage`, `secret.view`, `secret.manage` (+ platform `platform.plan.manage`,
+`platform.subscription.manage`, `platform.secret.rotate_keys`). Group owner: all; group
+admin: features manage + secrets view + branding; institution admin: feature view + branding;
+finance: subscription + billing view.
+
+### 6.7 Rules for later layers
+
+1. Mount module routers with `requireFeature('<module>')` and check per-institution access in
+   services with `assertFeatureEnabled`.
+2. Count-limited creates use `withLimit(key, 1, …)`, deletes `releaseLimit`, and register a
+   `registerUsageSource`. Metered usage (AI tokens, messages) uses `consumeLimit(key, n)`.
+3. Credentials for SMTP/SMS/AI/storage come only from `getSecret()` with a `purpose`.
+4. Rendered documents and notifications use `resolveBranding()`.
+5. Test fixtures provision a subscription (`provisionOrganizationSubscription`) for new orgs.
+
+## 7. File storage, documents & PDFs (Layer 4)
+
+### 7.1 Storage engine (`src/core/storage`)
+
+- `StorageProvider` interface: `putObject`, `getObject`, `headObject`, `deleteObject`, `copy`,
+  `getSignedDownloadUrl`, `getSignedUploadUrl`. Implementations: `S3StorageProvider`
+  (`@aws-sdk/client-s3` + presigner; private bucket, SSE `AES256`/`aws:kms`, SHA-256 checksums,
+  version-aware), `FsStorageProvider` (`STORAGE_DRIVER=local`, dev) and `MemoryStorageProvider`
+  (unit tests). Local providers serve HMAC-signed, expiring tokens at
+  `/api/v1/storage/local/:token` (GET download / PUT signed upload; checksum + size enforced).
+- **Provider selection:** `storageForWrite({ institutionId, groupId })` uses the most specific
+  tenant secret of kind `storage` (institution → group → org via `getSecret`), else the
+  platform provider from env (`STORAGE_*`). Storage secret value:
+  `{"accessKeyId":"…","secretAccessKey":"…"}`; metadata:
+  `{provider:"s3", bucket, region, endpoint?, forcePathStyle?, sse?, kmsKeyId?}`. Each
+  version records which secret wrote it (`storageSecretId`); reads use
+  `storageForObject(ref)` (`getSecretById`), so rotating/adding a tenant bucket never breaks
+  old files.
+- **Keys are server-generated, never client-supplied:**
+  `org/{orgId}[/grp/{groupId}][/inst/{institutionId}]/{module}/{entity}/{entityId}/{uuid}-{sanitizedName}`
+  (`buildObjectKey`); every read/delete calls `assertTenantKey(key, orgId)`.
+- Signed URLs only (`STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_UPLOAD_URL_TTL_SECONDS`), no
+  public objects; responses are `no-store` with forced `Content-Disposition`.
+- **Upload policy:** extension + MIME allowlist (`DOCUMENT_UPLOAD_TYPES`, `LOGO_UPLOAD_TYPES`
+  in `@erp/shared`; no SVG/HTML), magic-byte sniffing, `STORAGE_MAX_UPLOAD_BYTES`. Bytes are
+  counted against the `storage_bytes` limit (`consumeLimit` on write, `releaseLimit` on purge /
+  failure; `registerUsageSource('storage_bytes')` for reconciliation). No BLOBs in MySQL.
+- **Virus scanning:** `setVirusScanner({ scan })` — the default no-op marks versions
+  `SKIPPED`; a real scanner can return `PENDING` and later call
+  `recordScanResult(versionId, 'CLEAN' | 'INFECTED')`. `INFECTED` versions cannot be downloaded.
+
+### 7.2 Document engine (`src/core/documents`, `/api/v1/documents`)
+
+- Models (tenant-owned): `Document` (org + group/institution/campus/department FKs, owner
+  `ownerType`/`ownerId`, `module`, `category`/`documentType`, title, `confidentiality`
+  PUBLIC/INTERNAL/CONFIDENTIAL/RESTRICTED, `status`, `currentVersionId`, issue/expiry date,
+  soft delete + `purgeAfter`), `DocumentVersion` (**immutable** — DB triggers reject updates
+  of content columns and deletes; storage key, size, sha256, mime, uploader, version number,
+  scan status), `DocumentPermission` (grants to a USER, ROLE key or SCOPE with actions
+  `view|download|upload_version|delete|share`, optional expiry), `DocumentExpiryReminder`
+  (`daysBefore` → `remindAt`, PENDING/SENT/CANCELLED), `DocumentSignature` (e-signature
+  placeholder: status only), `DocumentUpload` (pending signed-URL uploads).
+- **Attaching documents from a module** (always through `documentEngine`, never Prisma):
+
+  ```ts
+  import { documentEngine } from '../../core/documents';
+  const doc = await documentEngine.attach({
+    ownerType: 'employee',
+    ownerId: employee.id,
+    module: 'hr',
+    metadata: {
+      title: 'PAN card',
+      category: 'identity',
+      documentType: 'pan',
+      confidentiality: 'CONFIDENTIAL',
+      expiryDate: '2030-01-01',
+    },
+    file: { fileName, mimeType, body }, // or the signed-URL flow below
+    authorization: 'caller', // only if your service already authorized
+  });
+  ```
+
+  Other APIs: `addVersion`, `restoreVersion` (copies the old object into a NEW version),
+  `list`/`get`/`versions`, `downloadUrl` (audited `document.download`), `currentVersionUrl`,
+  `readCurrentVersion`, `update`, `remove` (soft delete; bytes purged after
+  `DOCUMENT_RETENTION_DAYS`), `expiring`, grants and signature requests.
+
+- **Upload flows:** (a) multipart through the API — `POST /documents/files` (`file` +
+  `metadata` JSON) or `POST /documents/:id/versions`; (b) signed URL —
+  `POST /documents/uploads` (validates type/size, pre-checks `storage_bytes`) → client `PUT`s
+  to the returned URL with the returned headers → `POST /documents/uploads/:id/complete`
+  (`headObject` verifies size + checksum, records metadata, consumes the limit). Same for
+  versions via `POST /documents/:id/versions/uploads`.
+- **Authorization** (`core/documents/access.ts`) — a document is visible when ANY of:
+  1. RBAC + scope: `document.view` in a scope covering the document's hierarchy FKs, plus
+     confidentiality (`CONFIDENTIAL` needs `document.view_confidential`; `RESTRICTED` needs
+     it at ORGANIZATION scope). Action permissions: `download` → `document.download`,
+     `upload_version` → `document.upload`, `delete` → `document.delete`, `share` →
+     `document.share`; metadata edits → `document.manage`.
+  2. Explicit grants (`DocumentPermission`) by user, role key or scope. Creating a RESTRICTED
+     document auto-grants the creator.
+  3. **Owner self-access** via the owner-type registry (requires `document.view_own`).
+     Invisible documents return 404; visible ones with a missing action return 403
+     `DOCUMENT_ACCESS_DENIED`. DTOs include `allowedActions` for the UI.
+- **Registering an owner type** (do this once at module import; Layer 6 registers
+  `employee` so employees see their own documents):
+
+  ```ts
+  registerDocumentOwnerType({
+    type: 'employee',
+    // Hierarchy of the owner (tenant-scoped lookup); null = not found → 422.
+    resolveScope: async (id) => { const e = await tenantDb().employee.findFirst(...);
+      return e && { groupId: …, institutionId: e.institutionId, campusId: …, departmentId: … }; },
+    selfAccess: {
+      actions: ['view', 'download'],
+      ownedIds: async (principal) => (await employeeIdsForUser(principal.userId)),
+    },
+  });
+  ```
+
+  Built-in owner types: `organization`, `group`, `institution`, `campus`, `department`.
+
+- **Hooks for jobs / Layer 5** (`core/documents/hooks.ts`, run in a tenant context such as
+  `runAsPlatform`, no principal checks): `dueExpiryReminders({ asOf })` +
+  `markReminderSent(id)` (notification delivery is Layer 5), `purgeExpiredDocuments()`,
+  `expireStaleUploads()`, `recordScanResult()`.
+- Routes are mounted with `requireFeature('documents')`; every mutation is audited
+  (`document.create|version_create|version_restore|update|delete|share|unshare|download|purge|…`).
+
+### 7.3 Branding logos
+
+`POST /api/v1/branding/{organization,groups/:id,institutions/:id}/logo` (multipart `file`,
+PNG/JPEG ≤ `LOGO_MAX_BYTES`, `branding.manage`) stores the logo as a PUBLIC `branding`
+document (new uploads add versions to the same document) and sets `BrandingProfile.logoFileId`
+(+ `logoStorageKey`); `DELETE …/logo` detaches it. `brandingLogoUrl(target)` /
+`GET /branding/logo-url?institutionId=` return an audited, short-lived signed URL of the
+resolved (possibly inherited) logo.
+
+### 7.4 PDF engine (`src/core/pdf`, `/api/v1/pdf`)
+
+- Templates are versioned code in a registry: `registerPdfTemplate({ key, version, name,
+inputSchema (zod .strict()), defaultCategory, defaultDocumentType, title(input), build(input,
+ctx) })` → returns a `PdfDocumentModel` of blocks (`heading`, `paragraph`, `keyValue`,
+  `table`, `signature`, `spacer`; `{{ var }}` interpolation). `pdfTemplate(key, version?)`
+  resolves the latest version unless pinned; generated documents record
+  `metadata.templateKey/templateVersion` so old PDFs stay reproducible.
+- Renderer is pluggable (`setPdfRenderer`); default `PdfKitRenderer` (pure JS) draws the
+  letterhead from `resolveBranding` (logo, display name, colors, letterhead text, contact
+  line) and a footer with page numbers on every page.
+- `generatePdf({ templateKey, version?, data, ownerType, ownerId, title?, category?,
+confidentiality? })` checks `pdf.generate` + `document.upload` in the owner's scope, renders
+  with the owner's branding and stores the result through the document engine (module `pdf`).
+  `renderPdfTemplate()` renders without storing. Sample: `generic_letter` v1. Later layers
+  register `offer_letter`, `relieving_letter`, `payslip`, … in their module and call
+  `generatePdf` (or `renderPdfTemplate` + `documentEngine.attach` with
+  `authorization: 'caller'` for batch jobs).
+
+### 7.5 Permissions, roles, env
+
+- Permissions: `document.view|upload|download|delete|manage|share|view_confidential|view_own`,
+  `pdf.generate`. Group owner/admin: all; institution admin: all in scope; HR: documents +
+  confidential + pdf; finance/academic/teaching: view + download; self-service: `document.view_own`.
+- Env: `STORAGE_DRIVER` (`s3|local|memory`), `STORAGE_LOCAL_DIR`,
+  `STORAGE_LOCAL_SIGNING_SECRET` (required in production for `local`), `STORAGE_PUBLIC_BASE_URL`,
+  `STORAGE_S3_{BUCKET,REGION,ENDPOINT,FORCE_PATH_STYLE,ACCESS_KEY_ID,SECRET_ACCESS_KEY,SSE,KMS_KEY_ID}`,
+  `STORAGE_SIGNED_URL_TTL_SECONDS`, `STORAGE_UPLOAD_URL_TTL_SECONDS`, `STORAGE_MAX_UPLOAD_BYTES`,
+  `DOCUMENT_RETENTION_DAYS`.
+- Web: `pages/DocumentsPage.vue` (list/upload/download/versions/restore) under
+  `/group|/institution|/employee/documents`; `BrandingPage` handles logo upload/preview.
+  `apiFetch` accepts `FormData` bodies for multipart.
+
+### 7.6 Rules for later layers
+
+1. Never store files in MySQL or build storage keys yourself — use `documentEngine` (or
+   `core/storage` + `buildObjectKey` for non-document artifacts).
+2. Register an owner type for every entity that owns documents, with `selfAccess` when the
+   person should see their own files.
+3. Never return storage keys or long-lived URLs; issue signed URLs via `downloadUrl` (audited).
+4. Generated documents (letters, payslips) are PDF templates registered in the module and
+   stored through `generatePdf`; bump `version` instead of changing a template's output.
+
+## 8. Queues, workflow, notifications, communication & integrations (Layer 5)
+
+All Layer 5 engines live in `src/core/*` and register themselves via side-effect imports in
+`src/engines.ts`, which is imported by **both** the API (`app.ts`) and the worker
+(`worker.ts`). Later layers add their own registration modules (e.g.
+`modules/leave/leave.workflow.ts`) to `engines.ts`.
+
+### 8.1 Queue (`src/core/queue`)
+
+- Drivers: `bullmq` (Redis via ioredis; default outside tests) and `inline` (in-process,
+  default when `NODE_ENV=test`). Select with `QUEUE_DRIVER`; `QUEUE_CONCURRENCY`, `QUEUE_PREFIX`,
+  `REDIS_URL` configure BullMQ.
+- `defineJob({ name, handler, attempts?, backoffMs? })` registers a handler (exponential
+  backoff, default 5 attempts / 2 s). `enqueue(name, data, { delayMs?, jobId? })` — **`data`
+  must include `organizationId`**; the processor runs inside `runWithTenant` with a system
+  principal (`runAsSystem(orgId, fn)`), so `tenantDb()`/`audit.record` work unchanged.
+- `defineRecurringJob({ name, everyMs | pattern, handler })` runs platform-level and fans out
+  per tenant with `forEachActiveOrganization` + `enqueue`. BullMQ job schedulers are
+  registered by the worker; the inline driver has `startInlineScheduler` (dev) and tests call
+  `runRecurringJobNow(name)` + `drainJobs({ includeDelayed })`.
+- Worker: `apps/api/src/worker.ts` (`pnpm --filter @erp/api worker` in dev,
+  `start:worker` for the built bundle). Built-in recurring jobs: document expiry reminders
+  (`dueExpiryReminders` → `document.expiring` notification → `markReminderSent`),
+  `purgeExpiredDocuments`, `expireStaleUploads`, workflow SLA escalation. Retries (messages,
+  webhooks) are delayed jobs.
+- Auth rate limiting uses a pluggable store: `RATE_LIMIT_STORE=memory|redis` (memory in tests).
+
+### 8.2 Domain event bus (`src/core/events`)
+
+```ts
+registerEventType({ key: 'employee.created', label: 'Employee created', webhook: true });
+await emit('employee.created', { employeeId }, { institutionId });
+onEvent('employee.*', 'payroll.employee-sync', async (event) => {
+  /* subscriber */
+});
+```
+
+`emit` persists a `domain_events` row in the current tenant and enqueues `events.dispatch`;
+subscribers run in the job (each failing subscriber is retried on its own, never breaking the
+emitting request). Events with `webhook !== false` fan out to matching outbound
+webhook subscriptions. **Never put secrets/PII beyond what a subscriber needs in payloads.**
+
+### 8.3 Workflow engine (`src/core/workflow`, `/api/v1/workflows`)
+
+- Tenant-scoped, **versioned** `workflow_definitions` (editing an ACTIVE definition publishes
+  a new version; running instances keep theirs) scoped ORGANIZATION / GROUP / INSTITUTION —
+  the most specific active definition wins. Steps: approvers by `role` key or `permission` (holders
+  whose scope covers the request), `user`, `reporting_manager` (levels); `mode: any|all`; optional
+  `conditions` (`{ field, op, value }` on `context`, e.g. amount > 50000) — unmatched steps are
+  skipped; `slaHours` + `escalateTo` approvers for SLA escalation (`workflow.sla_escalation` job); `allowSelfApproval` (default false).
+- Modules register an entity type and submit:
+
+```ts
+registerWorkflowEntity({
+  entityType: 'leave_request',
+  label: 'Leave request',
+  linkFor: (i) => `/employee/leave/${i.entityId}`,
+  onApproved: async (i) => leaveService.markApproved(i.entityId),
+  onRejected: async (i) => leaveService.markRejected(i.entityId, i.comment),
+});
+const instance = await submitWorkflow({
+  entityType: 'leave_request',
+  entityId: leave.id,
+  title: 'Leave: 3 days',
+  institutionId,
+  departmentId,
+  context: { days: 3 },
+});
+if (!instance) {
+  /* no active definition → auto-approve per module policy */
+}
+```
+
+- Layer 6 (HR) registers `registerReportingManagerResolver(async (userId, levels) => [...])`.
+- Actions: `approve | reject | send_back | delegate | comment` (+ requester `cancel`,
+  `resubmit`). Approver authorization is enforced server-side (must be a PENDING assignee;
+  the requester can never approve unless `allowSelfApproval`). Every action is stored in
+  `workflow_actions`, audited, emitted as `workflow.*` events and notified.
+- APIs: `GET /workflows/inbox` (my pending approvals), `GET /workflows/instances?view=mine|all`,
+  `GET /workflows/instances/:id` (steps, history, `allowedActions`),
+  `POST /workflows/instances/:id/actions`, definitions CRUD (`workflow.view|manage`).
+
+### 8.4 Notification engine (`src/core/notifications`, `/api/v1/notifications`)
+
+```ts
+registerNotificationEvent({
+  key: 'leave.approved',
+  label: 'Leave approved',
+  defaultChannels: ['in_app', 'email'],
+  mandatory: false,
+});
+await publish('leave.approved', { recipients: [userId], title, body, link, data, institutionId });
+```
+
+`publish` creates a `notification_jobs` row and enqueues delivery: organization
+`notification_rules` (event → channels / extra recipients by role / template) override
+defaults, user `notification_preferences` filter non-mandatory channels, then in-app rows,
+email/SMS/WhatsApp (via the communication engine, template key = event key when present) and
+push (`registerPushProvider`; FCM/APNs stubs record to `pushOutbox`) are produced. Users manage
+their own notifications/preferences/devices (always self-scoped, no permission needed).
+
+### 8.5 Communication engine (`src/core/communication`, `/api/v1/communication`)
+
+- Providers (`communication_providers`, ORGANIZATION/GROUP/INSTITUTION scoped, `priority`
+  order = fallback chain): email `smtp` (nodemailer) / `ses` / `sendgrid`, SMS `http` /
+  `twilio` / `msg91`, WhatsApp `whatsapp_cloud`, and `log` for every channel (dev/tests; writes
+  to `messageOutbox`). Credentials are write-only and stored via the secrets engine
+  (`getSecret({ kind, purpose }).reveal()` at send time). With no provider configured, email
+  uses the platform SMTP (`MAIL_DRIVER=smtp`) or `log`; other channels use `log` outside
+  production.
+- Templates (`message_templates` + immutable `message_template_versions`): `{{var}}`
+  (HTML-escaped), `{{{raw}}}`, dotted paths; email wraps in the branded layout
+  (`resolveBranding` + `brandingLogoUrl`). Modules ship defaults with
+  `registerDefaultTemplate({ key, channel, subject, body, htmlBody })`; tenants override by key.
+- Sending: `sendMessages({ channel, recipients, templateKey | body, variables, institutionId,
+eventKey })` → `message_logs` (QUEUED) → queued delivery with per-provider rate limiting,
+  retries/backoff and fallback. `sendSystemEmail({ to, templateKey, variables })` for
+  security mail (invites, password reset) — it bypasses feature flags/limits and never stores
+  the body (`sensitive`). `sendMessages` asserts the `communication` **and** channel features
+  and calls `consumeLimit('communication_messages', n)`. The send API requires
+  `message.send` in the target scope.
+- Delivery callbacks: public `POST /api/v1/communication/webhooks/:providerId`, header
+  `X-Erp-Signature: sha256=<hex HMAC-SHA256(raw body, provider webhook secret)>`; body
+  `{ providerMessageId, status, cost?, error? }` or `{ events: [...] }` → `delivery_events` and
+  the log status (QUEUED → SENT → DELIVERED | FAILED | BOUNCED).
+- Campaigns: `POST /communication/campaigns` (≤ 5000 recipients) are queued in batches.
+- **Invite / password-reset tokens are never returned by the API**; they are emailed. Tests
+  read them from `messageOutbox` (`clearOutbox()` between tests).
+
+### 8.6 Integration framework (`src/core/integrations`, `/api/v1/integrations`)
+
+- **API clients**: org-scoped machine clients (optionally restricted to a group/institution)
+  with hashed secrets (`clientSecret` shown once), `scopes` = permission codes allowed by
+  `isApiClientScopeAllowed` (no `platform.*`, `secret.*`, `integration.*`, …), per-client rate
+  limit, expiry, revoke, `api_usage` log. Token: `POST /api/v1/oauth/token`
+  (`grant_type=client_credentials`, JSON/form or HTTP Basic, optional narrower `scope`) →
+  short-lived bearer whose principal has **only** the granted scopes within the client's
+  hierarchy scope; all existing `requirePermission`/`scopeWhere` checks apply unchanged.
+- **Outbound webhooks**: subscriptions (`events` patterns like `employee.*`, HTTPS URL, signing
+  secret stored via secrets) receive matching domain events. Delivery headers:
+  `x-erp-event`, `x-erp-delivery`, `x-erp-timestamp`,
+  `x-erp-signature: t=<ts>,v1=<hex HMAC-SHA256(secret, "<ts>.<body>")>`. Failures retry with
+  backoff (6 attempts) and every attempt is recorded in `webhook_events`; deliveries can be
+  replayed. Private/loopback URLs are rejected unless `WEBHOOK_ALLOW_INSECURE` (non-prod).
+- **Integration credentials** (`integration_credentials`): third-party config + secret;
+  modules call `getIntegrationCredential({ provider, name?, institutionId?, purpose })` →
+  `{ config, secret }` and `secret.reveal()` only at use.
+
+### 8.7 Permissions, features, env
+
+New permissions: `workflow.view|manage`, `notification.manage`,
+`communication.view|manage`, `integration.view|manage` (sending uses the existing
+`message.send`) (granted to org/group/institution
+admins per their scope). Feature keys: `communication`, `email`, `sms`, `whatsapp`; limit key
+`communication_messages`. Env: `QUEUE_DRIVER`, `QUEUE_CONCURRENCY`, `RATE_LIMIT_STORE`,
+`APP_PUBLIC_URL`, `API_PUBLIC_URL`, `WEBHOOK_ALLOW_INSECURE` (see `.env.example`).
+
+### 8.8 Rules for later layers
+
+1. Approvals go through `registerWorkflowEntity` + `submitWorkflow`; never build ad-hoc
+   approval tables. Side effects belong in `onApproved/onRejected`.
+2. User-facing alerts use `publish(eventKey, …)` with a registered notification event —
+   never send email/SMS directly from a module for notifications.
+3. Outbound messages use `sendMessages`/templates; never instantiate transports or read
+   provider credentials yourself.
+4. Emit a domain event (`registerEventType` + `emit`) for every significant state change;
+   webhooks, notifications and workflows subscribe to it.
+5. Background work uses `defineJob`/`enqueue` with `organizationId` in the payload; register
+   jobs from a module imported by `engines.ts`.
+
+## 9. HR employee master (Layer 6)
+
+Module: `apps/api/src/modules/employees` (routes under `/api/v1/employees` and
+`/api/v1/designations`), registered from `employees.registrations.ts` which is imported by
+`src/engines.ts`. Every route is behind `requireFeature('hr')`. Shared zod schemas / DTOs live
+in `@erp/shared` (`schemas/hr.ts`, `types/hr.ts`).
+
+### 9.1 Data model
+
+| Table                                                                    | Purpose                                                                                                                                                                                                                                                                                                                                                                   |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `employees`                                                              | Current assignment (denormalized `groupId/institutionId/campusId/departmentId`, `designationId`, `reportingManagerId`), `employeeCode` (unique per org), `employmentType` (TEACHING / NON_TEACHING / CONTRACT / VISITING), `status` (DRAFT → ONBOARDING → ACTIVE → ON_NOTICE → EXITED), joining / probation / confirmation / resignation / exit dates, optional `userId`. |
+| `employee_profiles`                                                      | Personal fields (`employeePersonalSchema`: contacts, addresses, family, qualifications, experience as JSON) + envelope-encrypted `sensitive*` columns + `sensitiveMasked` + PAN / Aadhaar blind indexes (`panIndex`, `aadhaarIndex`, unique per org).                                                                                                                     |
+| `designations`                                                           | Position master; org-wide, group-level or institution-level.                                                                                                                                                                                                                                                                                                              |
+| `employee_positions`, `employee_departments`, `employee_reporting_lines` | **Effective-dated history** (`effectiveFrom`, `effectiveTo` null = open). Departments carry `isPrimary` (secondary departments are extra open rows).                                                                                                                                                                                                                      |
+| `employee_movements`                                                     | Transfer / promotion / designation / department / reporting change requests (PENDING_APPROVAL → SCHEDULED → APPLIED, or REJECTED / CANCELLED). Transfers stay inside the employee's organization/group.                                                                                                                                                                   |
+| `employee_salary_history`                                                | Immutable salary revisions (DB triggers reject UPDATE / DELETE).                                                                                                                                                                                                                                                                                                          |
+| `employee_checklist_items`                                               | Onboarding / exit checklist (PENDING / DONE / WAIVED).                                                                                                                                                                                                                                                                                                                    |
+| `employee_profile_change_requests`                                       | Self-service change requests.                                                                                                                                                                                                                                                                                                                                             |
+| `employee_code_sequences`                                                | Per-institution (or org default) numbering: `prefix + zero-padded nextNumber`.                                                                                                                                                                                                                                                                                            |
+
+History rows are never rewritten when an employee moves: the open row is closed
+(`effectiveTo = effectiveFrom(new) - 1 day`) and a new row is opened, so historical rows keep
+the **old** institution / department ids (acceptance 8-9). Dates are `@db.Date`, exchanged as
+`YYYY-MM-DD`.
+
+### 9.2 Lookup helpers for later layers
+
+```ts
+import { employeeAssignmentAsOf, employeeIdsForUser } from '../employees/employees.assignment';
+import { salaryAsOf } from '../employees/employees.salary';
+
+await employeeAssignmentAsOf(employeeId, '2026-03-31');
+// → { groupId, institutionId, campusId, departmentId, secondaryDepartmentIds, designationId,
+//     employmentType, reportingManagerId, asOf } | null (not employed that day)
+await salaryAsOf(employeeId, '2026-03-31'); // latest revision with effectiveFrom ≤ date | null
+await employeeIdsForUser(userId); // employees linked to a login (normally 0/1)
+```
+
+- Use `employeeAssignmentAsOf` (not the denormalized `employees` columns) whenever a date
+  matters: attendance/leave approver routing for a past day, payroll institution attribution
+  for a period that spans a transfer.
+- Authorization: load with `loadVisibleEmployee(id)` / `loadEmployeeFor(id, permission)` from
+  `employees.service.ts`; they authorize against the employee's current hierarchy
+  (`hierarchyResource('employee', …)`), so Group HR (`group_hr` at a group) sees all
+  institutions in the group and `hr_manager` at an institution sees only that institution.
+
+### 9.3 Salary history extension points (Layer 8)
+
+`employee_salary_history` rows carry `effectiveFrom`, `annualCtc`, `currency`, `amounts`
+(free-form `{ component: monthlyAmount }` JSON), nullable `salaryStructureId` (string ref —
+payroll attaches its structure id), `revisionReason`, `previousId` (chain to the prior revision).
+Rows are immutable; a correction is a new revision. Create through
+`POST /employees/:id/salary` (`salary.update`; emits `employee.salary_revised`).
+Payroll should resolve the structure via `salaryAsOf()` and must not edit history rows.
+
+### 9.4 Lifecycle, workflow & hooks
+
+- Lifecycle endpoints: `POST /employees/:id/{onboard,activate,confirm,resign,withdraw-resignation,exit,rehire}`
+  (`employee.lifecycle`). Creating (and rehiring) an employee consumes the `employees` limit
+  (`withLimit('employees', 1, …)`); deleting a draft or exiting releases it;
+  `registerUsageSource('employees', …)` counts non-exited employees.
+- Checklists: `registerChecklistHook(kind, { key, title })` / `registerExitChecklistHook(...)`
+  add items to every new ONBOARDING / EXIT checklist (e.g. a future assets module registers
+  `asset_recovery` and calls `completeChecklistItem` when assets are returned).
+- Workflow entities: `employee_transfer` (movements) and `employee_profile_change`
+  (self-service). When no ACTIVE definition exists the request auto-applies. Future-dated
+  approved movements become SCHEDULED and are applied by the daily job
+  `hr.apply_scheduled_movements`.
+- `registerReportingManagerResolver(reportingManagerUserIds)`: `levels` = how many managers
+  up the CURRENT chain contribute approvers (1 = direct manager). Managers without a user or
+  EXITED are skipped but still count as a level. Layer 7 leave approvals get this for free via
+  the `reporting_manager` approver type.
+- Engine change: workflow `onApproved` now receives `ref.comment` (the final approver's
+  comment); modules store it as `decidedComment`.
+
+### 9.5 Sensitive fields
+
+PAN / Aadhaar / UAN / ESIC / PF number and bank account are sealed together as one JSON blob
+with `encryptFields(orgId, 'employee:<id>', values)` (`core/secrets/field-encryption.ts`,
+envelope encryption via the Layer 3 key provider, AAD-bound to the employee). `sensitiveMasked` is stored alongside and
+is all APIs ever return. `POST /employees/:id/sensitive/reveal` (`employee.view_sensitive`,
+not granted to institution admins by default) decrypts and writes an `employee.sensitive_view`
+audit row. Duplicate PAN / Aadhaar checks use `blindIndex` (HMAC) columns. Audit diffs redact
+the `sensitive` key. Payroll (Layer 8) must use `decryptSensitive()` server-side for bank
+transfer files and never persist clear values.
+
+### 9.6 Events, notifications, documents, PDFs, jobs
+
+- Events (all webhook-deliverable): `employee.created|updated|deleted|activated|confirmed|resigned|exited|rehired|transferred|promoted|reassigned|salary_revised`.
+- Notifications: `employee.joined`, `employee.transferred`, `employee.exiting`,
+  `employee.exited`, `employee.profile_change_decided`.
+- Document owner type `employee`: HR in scope via `document.*` on the employee's hierarchy;
+  the linked user (SELF_SERVICE, `document.view_own`) can view/download their own documents.
+- PDF templates `hr_offer_letter`, `hr_experience_letter`, `hr_relieving_letter` (branded);
+  `POST /employees/:id/letters` generates and stores them as employee documents.
+- Bulk import: `POST /employees/import` (multipart `file`, `dryRun`) enqueues
+  `hr.employee_import`; `GET /employees/import/:jobId` returns the validation report.
+  `GET /employees/export` streams CSV (`employee.export`).
+- Self-service: `GET /employees/me` (masked), `POST /employees/me/change-requests` (only
+  `SELF_SERVICE_PROFILE_FIELDS`).
+
+### 9.7 Rules for later layers
+
+1. Reference employees by `employeeId`; never copy assignment fields into your own tables
+   without also storing the effective date they were taken from.
+2. Resolve "where/what was the employee on date D" via `employeeAssignmentAsOf`, salary via
+   `salaryAsOf`.
+3. Never read the `sensitive*` ciphertext columns directly; use `decryptSensitive()` and audit the access.
+4. Add exit/onboarding steps through `registerChecklistHook`, not by editing lifecycle code.
+5. Only act on employees in status ACTIVE / ON_NOTICE (ONBOARDING for joining-day flows).
+
+## 10. Attendance, leave, holidays & shifts (Layer 7)
+
+Modules `holidays`, `shifts`, `attendance` and `leave` (all under `/api/v1`, mounted with
+`requireFeature('hr')`; no new feature keys). Registrations (workflow entities, events,
+notification events, jobs) live in `src/modules/attendance/attendance.registrations.ts`, imported
+by `engines.ts`. Dates are `YYYY-MM-DD` strings in the organization's local calendar; minute
+values are minutes after midnight.
+
+### 10.1 Data model
+
+| Model                             | Purpose                                                                                                                                                                                                                                                                                   |
+| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `HolidayCalendar` / `Holiday`     | Per-year calendar at scope ORGANIZATION / GROUP / INSTITUTION / CAMPUS with optional `weeklyOffs` pattern; holidays typed PUBLIC / RESTRICTED / OPTIONAL; `removed=true` suppresses an inherited holiday.                                                                                 |
+| `Shift` / `ShiftAssignment`       | Shift per institution (start/end minute, cross-midnight, grace in/out, half-day & full-day minimum minutes, break, overtime threshold, weekly offs, `isDefault`). Assignments are effective-dated per employee **or** department, optional rotation (`rotationShiftIds`, `rotationDays`). |
+| `AttendancePunch`                 | Raw punches: source WEB / MOBILE / BIOMETRIC / API, direction, device id, geo (lat/lng/accuracy), import job id. Never mutated by computation.                                                                                                                                            |
+| `AttendanceRecord`                | One derived row per employee per date: status (PRESENT, ABSENT, HALF_DAY, LATE, ON_LEAVE, HOLIDAY, WEEKLY_OFF, ON_DUTY, LOP), first in / last out, worked / late / early-exit / overtime minutes, shift + institution as of that date, leave link, `manualOverride`.                      |
+| `AttendanceRegularization`        | Employee correction requests (workflow `attendance_regularization`).                                                                                                                                                                                                                      |
+| `AttendancePeriodLock`            | LOCKED / UNLOCKED per institution + period, with lock/unlock actor + reason.                                                                                                                                                                                                              |
+| `AttendancePolicy`                | Per institution: `lateMarksPerHalfDay`, `absentIsLop`, etc.                                                                                                                                                                                                                               |
+| `AttendanceImportJob`             | Biometric CSV / API import batches with per-row errors.                                                                                                                                                                                                                                   |
+| `LeaveType`                       | Paid/unpaid, half-day allowed, gender & employment-type eligibility, documents required (after N days), sandwich rule, encashable, carry-forward cap, max consecutive days.                                                                                                               |
+| `LeavePolicy` / `LeavePolicyRule` | Per institution (or org-wide) and optional employment type; rule per leave type: accrual frequency (MONTHLY / QUARTERLY / YEARLY / NONE), amount, joining pro-rata, carry-forward cap, encash cap. Most specific policy wins (`pickPolicy`).                                              |
+| `LeaveLedgerEntry`                | Append-only ledger: ACCRUAL, CONSUMPTION, ADJUSTMENT, CARRY_FORWARD, LAPSE, ENCASHMENT, REVERSAL. **Balance is always derived** from the ledger (sum of entries effective in the leave year up to the as-of date).                                                                        |
+| `LeaveRequest`                    | Leave application with half-day flags, computed day breakdown, workflow `leave_request`.                                                                                                                                                                                                  |
+
+### 10.2 Holiday resolution
+
+`HolidayResolver` (`holidays/holidays.resolver.ts`): for a date the **most specific** calendar
+(CAMPUS → INSTITUTION → GROUP → ORGANIZATION) that has an entry for the date wins (so an
+institution can override or remove a group/org holiday). The weekly-off pattern comes from the most
+specific calendar defining one (default: every Sunday). Weekly-off rules are `{ weekday, weeks? }`,
+e.g. Sunday + 2nd/4th Saturday = `[{weekday:0},{weekday:6,weeks:[2,4]}]`. The employee's calendar is
+chosen **per date** from `employeeAssignmentAsOf`, so a transferred employee uses the old
+institution's calendar before the transfer and the new one after.
+`GET /holidays/resolve?employeeId&from&to` exposes this.
+
+### 10.3 Shift resolution
+
+`shifts/shifts.resolver.ts`, per employee + date: (1) the employee's own active assignment (latest
+`effectiveFrom`), (2) the assignment of the as-of department, (3) the institution default shift,
+(4) none → 4 h / 8 h half / full-day thresholds, no lateness. Rotations cycle every `rotationDays`
+from `effectiveFrom`. Cross-midnight shifts (end ≤ start) attribute punches up to 4 h after shift
+end to the shift's start date. A shift's own `weeklyOffs` override the calendar pattern.
+
+### 10.4 Daily computation, regularization, locks
+
+`computeAttendance(employeeIds, from, to)` (`attendance.compute.ts`) combines punches + shift +
+holidays + approved leave + approved regularizations into `AttendanceRecord`s via the pure
+`computeDay`. Precedence: full-day leave → holiday / weekly off → punches (late if first-in >
+start + grace; half day below the full-day minimum; absent below the half-day minimum). Only
+ACTIVE / ON_NOTICE (and EXITED, up to their exit date) employees are computed; dates outside
+employment are skipped. Records with `manualOverride` and dates in a LOCKED period are never
+recomputed. Triggers: punch / import (punched days), leave decisions, regularization approval,
+`POST /attendance/recompute`, and the recurring `attendance.daily_recompute` job (last 3 days,
+`forEachActiveOrganization`).
+
+Regularizations go through `submitWorkflow('attendance_regularization')` (reporting-manager
+approval is possible via the workflow definition; auto-approves when no definition exists). On
+approval the day is recomputed with the corrected in/out times or status.
+
+**Period lock:** `POST /attendance/locks` (`attendance.lock`) locks an institution + period. Any
+punch, override, recompute or regularization touching a locked date fails with
+`409 PERIOD_LOCKED`. `POST /attendance/locks/:id/unlock` requires `attendance.unlock` and a reason
+and is audited (`attendance.period_unlock`). Payroll should lock the period before finalizing.
+
+### 10.5 Leave
+
+- **Day calculation** (`calculateLeaveDays`): working days count 1 (0.5 for the start/end half);
+  holidays / weekly offs count 0 unless the type's sandwich rule is on and they lie between
+  leave days. Uses the employee's as-of calendar and shift per date. `POST /leave/preview` returns
+  the breakdown.
+- **Validation:** eligibility (gender, employment type), half-day allowed, max consecutive days,
+  overlap with pending/approved requests, sufficient balance for paid types (unpaid types never
+  check balance), documents if required, employee ACTIVE / ON_NOTICE.
+- **Workflow** `leave_request` (reporting manager approval via definitions; auto-approve when none).
+  Approval posts a CONSUMPTION ledger entry for paid types and recomputes attendance. Cancel /
+  withdraw (`POST /leave/requests/:id/cancel`) posts a REVERSAL entry and recomputes.
+- **Accrual** (`runAccrual`, job `leave.daily_accrual`, also `POST /leave/accrual/run`):
+  idempotent per period key; joining pro-rata in the joining period.
+- **Year-end** (`runYearEnd`, `POST /leave/year-end`): per type, encash (capped) and lapse dated
+  Dec 31 and carry forward (capped) dated Jan 1 of the next year.
+
+### 10.6 Events, notifications, jobs
+
+Events: `attendance.regularization_requested`, `attendance.regularized`,
+`attendance.period_locked`, `attendance.period_unlocked`, `leave.applied`, `leave.approved`,
+`leave.rejected`, `leave.cancelled`. Notification events: `leave.applied`, `leave.approved`,
+`leave.rejected`, `leave.cancelled`, `attendance.regularization_decided`. Jobs:
+`attendance.daily_recompute`, `leave.daily_accrual`, recurring `time_office.daily.schedule`.
+
+### 10.7 Payroll feed (contract for Layer 8)
+
+```ts
+// apps/api/src/modules/attendance/attendance.summary.ts
+attendanceSummaryForPeriod(
+  target: string /* employeeId */ | { employeeIds: string[] } | { institutionId: string; departmentId?: string },
+  periodStart: 'YYYY-MM-DD',
+  periodEnd: 'YYYY-MM-DD',
+): Promise<AttendanceSummaryDto[]>   // type from @erp/shared
+```
+
+No authorization (callers run in a tenant context and decide access). Recomputes the non-locked
+days first, so it is always consistent with punches / leave / holidays. HTTP:
+`GET /attendance/summary?from&to&(employeeId|institutionId[&departmentId])` (`attendance.view`,
+scoped). Per employee it returns:
+
+| Field                                                             | Meaning                                                                                                                                                                         |
+| ----------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `calendarDays`, `employedDays`                                    | Days in period / days within employment (join → exit).                                                                                                                          |
+| `pendingDays`                                                     | Employed days with no record yet (should be 0 after recompute).                                                                                                                 |
+| `presentDays`, `onDutyDays`                                       | Present days (LATE and ON_DUTY count as present; HALF_DAY counts 0.5); `onDutyDays` is the ON_DUTY subset.                                                                      |
+| `paidLeaveDays`, `paidLeaveByType[{leaveTypeId, code, days}]`     | Approved paid leave.                                                                                                                                                            |
+| `unpaidLeaveDays`, `absentDays`                                   | Approved unpaid leave; absences (incl. the absent half of half days).                                                                                                           |
+| `holidays`, `weeklyOffs`                                          | Per as-of calendar / shift.                                                                                                                                                     |
+| `lateCount`, `earlyExitCount`, `overtimeMinutes`, `overtimeHours` | From computed records.                                                                                                                                                          |
+| `lateDeductionDays`                                               | `floor(lateCount / lateMarksPerHalfDay) × 0.5`, capped at present days (0 when the policy has no rule). Policy = attendance policy of the institution on the last employed day. |
+| `lopDays`                                                         | `unpaidLeaveDays + (absentIsLop ? absentDays : 0) + lateDeductionDays`.                                                                                                         |
+| `payableDays`                                                     | `presentDays + paidLeaveDays + holidays + weeklyOffs + (absentIsLop ? 0 : absentDays) − lateDeductionDays`.                                                                     |
+| `locked`                                                          | Every employed day of the period is in a LOCKED period.                                                                                                                         |
+| `institutionDays[{institutionId, days}]`                          | Split per as-of institution (transfers mid-period).                                                                                                                             |
+
+`payableDays + lopDays = employedDays` (when `pendingDays = 0`). Pro-ration for joiners / leavers
+should use `employedDays` vs `calendarDays`.
+
+### 10.8 Permissions, roles, web
+
+Permissions: `holiday.view|manage`, `shift.view|manage`,
+`attendance.view|manage|import|lock|unlock`, `attendance.view_own|punch_own|regularize_own`,
+`leave.view|manage|apply|adjust`, `leave.view_own|apply_own`. HR roles get management permissions;
+the employee role gets the `*_own` set. Web: `/hr/attendance`, `/hr/leave`, `/hr/leave-setup`,
+`/hr/shifts`, `/hr/holidays`; self-service `/employee/attendance` (punch, calendar, regularize)
+and `/employee/leave` (balances, apply with live preview, cancel).
+
+### 10.9 Rules for later layers
+
+1. Payroll must read attendance only through `attendanceSummaryForPeriod`; never re-derive LOP.
+2. Lock the attendance period before finalizing payroll; edits after that need explicit unlock.
+3. Leave encashment payouts read ENCASHMENT ledger entries; never mutate ledger rows (append
+   ADJUSTMENT / REVERSAL instead).
+4. Resolve holidays / shifts with the resolvers (per date, per as-of assignment), never by
+   institution id alone.
+
+## 11. Payroll rule engine (Layer 8)
+
+Module `apps/api/src/modules/payroll` (`/api/v1/payroll`, `requireFeature('payroll')`, which
+depends on `hr`). Registrations (workflows, events, notifications, jobs, PDF templates) live in
+`payroll.registrations.ts`, imported by `engines.ts`.
+
+### 11.1 Data model
+
+| Table                                                | Purpose                                                                                                                                                                                                                                                                                                      |
+| ---------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `salary_components`                                  | Component master per organization (`institutionId = null`) or institution: type (EARNING, DEDUCTION, EMPLOYER_CONTRIBUTION, REIMBURSEMENT, STATUTORY), calc type (FIXED, PERCENTAGE of CTC/BASIC/GROSS/component, FORMULA, SLAB, STATUTORY), taxable, pro-rated, rounding, display order, payslip visibility |
+| `salary_rules`                                       | Effective-dated, versioned calculation overrides (org or institution, optional condition formula). Immutable (trigger) — add a new version instead                                                                                                                                                           |
+| `salary_structures` / `salary_structure_versions`    | Templates of component lines per institution / grade / employment type; versions are effective-dated and immutable                                                                                                                                                                                           |
+| `payroll_settings`, `statutory_rule_packs`           | Per-institution statutory switches + state; data-driven PF/ESI/PT/TDS/LWF packs versioned by financial year (built-in defaults, custom overrides)                                                                                                                                                            |
+| `employee_salaries`                                  | Assignment = one `employee_salary_history` row (Layer 6, immutable) + structure, CTC, FIXED overrides, tax regime                                                                                                                                                                                            |
+| `salary_revisions`                                   | Revision requests (workflow `salary_revision`), with arrears for back-dated revisions                                                                                                                                                                                                                        |
+| `payroll_batches`, `payroll_runs`                    | Group batch (§53) → one run per institution and period; runs carry `revision` / `previousRunId`                                                                                                                                                                                                              |
+| `payroll_run_employees`, `payroll_items`             | Per-employee result (days, totals, calc trace, warnings) and per-component line items                                                                                                                                                                                                                        |
+| `payroll_adjustments`                                | One-time earnings / deductions / arrears / loan EMIs / reimbursements / leave encashment                                                                                                                                                                                                                     |
+| `payroll_payments`                                   | Net pay per employee, bank file export, payment status                                                                                                                                                                                                                                                       |
+| `payslips`, `form16_records`                         | Documents (category `payroll`) stored via the document engine                                                                                                                                                                                                                                                |
+| `loans`, `loan_installments`, `reimbursement_claims` | Auto-deducted EMIs; claims via workflow `reimbursement_claim` feeding adjustments                                                                                                                                                                                                                            |
+
+### 11.2 Formula evaluator & dependency graph
+
+`formula.ts` is a hand-written tokenizer + recursive-descent parser (no `eval` / `Function`):
+numbers, variables, `+ - * / %`, comparisons, `&& || !`, `?:` and the whitelisted functions
+`min max round floor ceil abs if`. Inputs are length-limited and identifiers are validated, so
+property access / calls to anything else are rejected. Variables: `CTC` (monthly), `ANNUAL_CTC`,
+`GROSS` (full-rate earnings), component codes, `PAYABLE_DAYS`, `CALENDAR_DAYS`, `LOP_DAYS`,
+`OT_HOURS`, `PRESENT_DAYS`, `EMPLOYED_DAYS`, `ENCASHMENT_DAYS`, `FACTOR`, `EMPLOYMENT_TYPE`.
+`engine.ts` builds the dependency graph across components (percentage bases, formula variables,
+slab bases), orders it topologically and rejects cycles / unknown references with
+`422 INVALID_SALARY_GRAPH` — at save time (components, rules, structure versions) and at compute
+time. Precedence of a component's calculation: structure line → institution rule → org rule →
+component default.
+
+### 11.3 Computation
+
+`computeEmployeePayroll` (in `payroll.compute.ts`) resolves `employeeAssignmentAsOf`,
+`salaryAsOf` → `employee_salaries`, the structure version effective at period end, rules and
+statutory packs, then reads attendance **only** through `attendanceSummaryForPeriod`. Pro-rated
+components use `payableDays / calendarDays`; mid-period transfers are split by
+`institutionDays` so each institution's run pays its share; joiners / leavers use
+`employedDays`. Statutory (`statutory.ts`): PF 12% of basic capped at the wage ceiling (configurable),
+ESI by gross threshold, PT by state slab table, TDS (old/new regime annualised estimate,
+declarations placeholder), optional LWF. Every amount produces a calc-trace entry and a
+human-readable explanation.
+
+### 11.4 Run lifecycle
+
+`DRAFT → (attendance lock check) → COMPUTING → COMPUTED → PENDING_APPROVAL → APPROVED →
+FINALIZED`, plus `CANCELLED` and `REOPENED`. Compute fans out `payroll.compute_batch` jobs (50
+employees per job); recompute is allowed only before submission. Submission starts the
+`payroll_run` workflow when a definition exists, otherwise `POST /runs/:id/decision` applies
+maker-checker (the preparer cannot approve unless an org owner). Finalize creates
+`payroll_payments`, marks loan installments deducted and enqueues
+`payroll.generate_payslips` (branded PDF via `renderPdfTemplate` + `resolveBranding`, attached
+with `documentEngine.attach({ authorization: 'caller' })`, employees notified).
+
+**Immutability (acceptance 14–15).** Locked runs are rejected by the service (409) **and** by
+MySQL triggers (`payroll_runs_guard_*`, `payroll_items_guard_*`, `payroll_run_employees_guard_*`,
+`payroll_adjustments_guard_*`, `payroll_payments_*`). The only path out of FINALIZED is
+`POST /runs/:id/reopen` (`payroll.reopen`, reason required, audited, event
+`payroll.run_reopened`): it marks the run REOPENED and creates a new DRAFT revision; the
+finalized data and payslips remain (payslips are superseded on the next finalize).
+
+### 11.5 Revisions, arrears, loans, reimbursements
+
+Revisions (workflow `salary_revision`) append salary history; a back-dated revision
+recomputes every FINALIZED run on/after `effectiveFrom` with the new salary and creates
+ARREAR adjustments for the differences in the next run. Loans generate installments deducted
+automatically while the run is computed; approved reimbursement claims become adjustments.
+
+### 11.6 Reports, events, web
+
+Reports (`payroll.report`): register, component summary, statutory PF/ESI/PT/TDS/LWF and group
+consolidated summary (scoped to institutions where the caller holds `payroll.report`, so
+`group_finance` / `group_hr` see their group), each as JSON / CSV / Excel (exceljs) / PDF.
+Events / webhooks: `payroll.run_computed|run_approved|run_finalized|run_reopened`,
+`payslip.published`. Permissions: `payroll.view|process|manage|approve|lock|reopen|report|disburse`,
+`salary.view|update`, `form16.manage`, `payroll.view_own`, `reimbursement.claim_own`; roles
+`payroll_manager`, `finance_manager`, `group_finance` (+ reopen), employee self-service.
+Web: `/hr/payroll/{runs,components,structures,salary,payslips}`, run wizard
+`/hr/payroll/runs/:id` (compute, review with per-employee trace, adjustments, approve,
+finalize, payments, reports, reopen), `/employee/payslips` (payslips + Form 16),
+`/group/payroll` (consolidated summary).
+
+### 11.7 Rules for later layers
+
+1. Never write `payroll_*` rows of a locked run; reopen creates a new revision.
+2. Add statutory changes as new `statutory_rule_packs` versions (per financial year), not code edits.
+3. Calculation changes are new rule / structure versions — never update existing versions.
+
+## 12. Frontend (apps/web)
 
 - Vue 3 `<script setup lang="ts">`, Pinia stores, Vue Router, Vuetify 3 (auto-import).
 - Layout shells: `PlatformLayout`, `GroupLayout`, `InstitutionLayout`, `EmployeeLayout`
   (Student/Parent/Teacher layouts come later). Sidebar menus are data-driven
-  (`src/navigation/menus.ts`) and filtered by permission codes.
-- API calls go through `src/api/client.ts`. In dev the selected demo organization is sent as
-  `X-Dev-Organization`; this is replaced by auth tokens in Layer 2. The server is always the
-  authority on tenant and permissions.
+  (`src/navigation/menus.ts`) and filtered by the permission codes from `GET /api/v1/me`.
+- Auth: `useAuthStore` (`src/stores/auth.ts`) keeps the access token in memory and refreshes
+  via the httpOnly cookie (single-flight; the client retries once on `TOKEN_EXPIRED`).
+  Routes declare `meta.permission`; the global guard (`navigation/guard.ts`) redirects to
+  `/login` or `/forbidden`. Login page handles organization selection and the MFA step.
+- API calls go through `src/api/client.ts` (`apiFetch`). The client never sends tenant ids;
+  the server is always the authority on tenant, permissions and scopes.
 - Shared DTO types/schemas come from `@erp/shared`.
+- Layer 5 UI: `NotificationBell` in the app bar (unread count polled every 60 s),
+  `/<layout>/notifications` (list + channel preferences), `/<layout>/approvals` (inbox, my
+  requests, instance history + actions), `/group|institution/communication` (providers,
+  templates, message log) and `/group/integrations` (API clients, webhooks, deliveries/replay).
 
-## 7. Testing & quality
+## 13. Testing & quality
 
 - **Vitest** everywhere; **supertest** for HTTP. API has two projects:
   - `unit` (`src/**/*.test.ts`) — no database required.
@@ -142,13 +1045,13 @@ Redis via **ioredis** and **BullMQ** (`src/core/queue`). Layer 1 only wires conf
 - **CI** (GitHub Actions): install → lint → format check → typecheck → test (MySQL 8.4
   service container) → build.
 
-## 8. Foundation stack
+## 14. Foundation stack
 
 1. Scaffold + multi-tenancy engine + group/institution hierarchy
 2. Auth (JWT access/refresh, TOTP MFA, sessions, login history) + RBAC + scope authz + users + audit
 3. Module licensing / subscriptions + branding + secret management
 4. Cloud file storage + document management
-5. Workflow + notification engines + integration framework
+5. Queue + workflow + notification + communication engines + integration framework
 6. HR employee master
 7. Attendance / leave / holiday / shift
 8. Payroll rule engine
