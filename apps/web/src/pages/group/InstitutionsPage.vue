@@ -36,16 +36,21 @@ async function load() {
 }
 onMounted(load);
 
+const companyTypes = [
+  { value: 'COMPANY', title: 'Company' },
+  { value: 'BRANCH', title: 'Branch / office' },
+];
+const educationTypes = ['SCHOOL', 'COLLEGE', 'UNIVERSITY', 'INSTITUTE'].map((value) => ({
+  value,
+  title: value.charAt(0) + value.slice(1).toLowerCase(),
+}));
+// Company organizations that license the education module can also run schools/colleges.
 const types = computed(() =>
   terms.value.isCompany
-    ? [
-        { value: 'COMPANY', title: 'Company' },
-        { value: 'BRANCH', title: 'Branch / office' },
-      ]
-    : ['SCHOOL', 'COLLEGE', 'UNIVERSITY', 'INSTITUTE'].map((value) => ({
-        value,
-        title: value.charAt(0) + value.slice(1).toLowerCase(),
-      })),
+    ? auth.hasFeature('education')
+      ? [...companyTypes, ...educationTypes]
+      : companyTypes
+    : educationTypes,
 );
 const typeLabel = (t: string) => t.charAt(0) + t.slice(1).toLowerCase();
 

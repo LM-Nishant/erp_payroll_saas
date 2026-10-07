@@ -10,7 +10,10 @@ export interface MenuItem {
   feature?: FeatureKey;
   /** Label used for company (non-education) organizations. */
   companyTitle?: string;
-  /** Hidden for company organizations (students, campuses, academics…). */
+  /**
+   * Hidden for company organizations (students, campuses, academics…) unless the organization
+   * licenses the `education` module, which turns these items back on.
+   */
   educationOnly?: boolean;
 }
 
@@ -409,6 +412,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       feature: 'hr',
     },
     {
+      title: 'My salary',
+      icon: 'mdi-cash-multiple',
+      to: '/employee/salary',
+      permission: 'payroll.view_own',
+      feature: 'payroll',
+    },
+    {
       title: 'My payslips',
       icon: 'mdi-receipt-text',
       to: '/employee/payslips',
@@ -540,7 +550,7 @@ export function visibleMenu<T extends MenuItem>(
       (item) =>
         can(item.permission) &&
         hasFeature(item.feature) &&
-        !(kind === 'COMPANY' && item.educationOnly),
+        !(kind === 'COMPANY' && item.educationOnly && !hasFeature('education')),
     )
     .map((item) =>
       kind === 'COMPANY' && item.companyTitle ? { ...item, title: item.companyTitle } : item,

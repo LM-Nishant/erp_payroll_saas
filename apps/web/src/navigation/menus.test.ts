@@ -62,6 +62,18 @@ describe('visibleMenu', () => {
     expect(titles('EDUCATION')).not.toContain('Head office');
   });
 
+  it('shows education-only items for company organizations that license education', () => {
+    const can = () => true;
+    const items: MenuItem[] = [
+      { title: 'Employees', icon: 'x', to: '/e' },
+      { title: 'Students', icon: 'x', to: '/s', feature: 'education', educationOnly: true },
+    ];
+    const titles = (features: string[]) =>
+      visibleMenu(items, can, (f) => !f || features.includes(f), 'COMPANY').map((i) => i.title);
+    expect(titles(['hr'])).toEqual(['Employees']);
+    expect(titles(['hr', 'education'])).toEqual(['Employees', 'Students']);
+  });
+
   it('shows time-office pages by their own permissions', () => {
     const perms = new Set(['employee.view', 'attendance.view', 'holiday.view']);
     const can = (p?: string) => !p || perms.has(p);

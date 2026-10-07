@@ -27,6 +27,7 @@ import {
   institutionFilter,
   institutionIdsFor,
 } from './payroll.access';
+import { rupeesInWords } from './amount-words';
 import { num, toForm16Dto, toPayslipDto } from './payroll.mappers';
 import { loadRun, type PayslipJob } from './payroll.runs';
 
@@ -46,7 +47,8 @@ type ListForm16Query = z.output<typeof listForm16QuerySchema>;
 export const PAYSLIP_TEMPLATE = 'payroll_payslip';
 export const FORM16_TEMPLATE = 'payroll_form16';
 
-const moneyRow = z.tuple([z.string().max(200), z.string().max(40)]);
+/** [component, amount] or [component, amount, year-to-date]. */
+const moneyRow = z.array(z.string().max(200)).min(2).max(3);
 const payslipInputSchema = z.object({
   employeeName: z.string().max(200),
   employeeCode: z.string().max(64),
@@ -66,6 +68,10 @@ const payslipInputSchema = z.object({
   totalDeductions: z.string(),
   net: z.string(),
   bankAccount: z.string().max(40).optional(),
+  designation: z.string().max(200).optional(),
+  dateOfJoining: z.string().max(20).optional(),
+  payDate: z.string().max(20).optional(),
+  netInWords: z.string().max(300).optional(),
 });
 type PayslipInput = z.infer<typeof payslipInputSchema>;
 
@@ -74,7 +80,7 @@ const money = (n: number) =>
 
 registerPdfTemplate<PayslipInput>({
   key: PAYSLIP_TEMPLATE,
-  version: 1,
+  version: 2,
   name: 'Payslip',
   description: 'Monthly payslip with earnings, deductions and net pay (branded per institution).',
   inputSchema: payslipInputSchema,
@@ -82,25 +88,37 @@ registerPdfTemplate<PayslipInput>({
   defaultDocumentType: 'payslip',
   title: (i) => `Payslip ${i.periodLabel} - ${i.employeeName} (${i.employeeCode})`,
   build(input) {
+    const opt = (label: string, value: string | undefined, text: string): [string, string][] =>
+      value ? [[label, text]] : [];
+    const cols = (rows: string[][]) =>
+      rows.some((r) => r.length > 2)
+        ? ['Component', 'Amount (INR)', 'YTD (INR)']
+        : ['Component', 'Amount (INR)'];
     const blocks: PdfBlock[] = [
-      { type: 'heading', level: 1, text: 'Payslip for {{periodLabel}}' },
+      { type: 'heading', level: 1, text: 'Payslip for the month of {{periodLabel}}' },
+      { type: 'heading', level: 2, text: 'Pay summary' },
       {
         type: 'keyValue',
         rows: [
-          ['Employee', '{{employeeName}} ({{employeeCode}})'],
+          ['Employee name', '{{employeeName}}, {{employeeCode}}'],
+          ...opt('Designation', input.designation, '{{designation}}'),
+          ...opt('Date of joining', input.dateOfJoining, '{{dateOfJoining}}'),
           ['Institution', '{{institution}}'],
-          ...(input.department ? [['Department', '{{department}}'] as [string, string]] : []),
-          ['Pay period', '{{periodStart}} to {{periodEnd}}'],
-          ['Calendar / payable / LOP days', '{{calendarDays}} / {{payableDays}} / {{lopDays}}'],
+          ...opt('Department', input.department, '{{department}}'),
+          ['Pay period', '{{periodLabel}} ({{periodStart}} to {{periodEnd}})'],
+          ['Paid days', '{{payableDays}} of {{calendarDays}} | LOP days: {{lopDays}}'],
+          ...opt('Pay date', input.payDate, '{{payDate}}'),
+          ...opt('Bank account no', input.bankAccount, '{{bankAccount}}'),
           ...(input.revision > 1 ? [['Revision', '{{revision}}'] as [string, string]] : []),
+          ['Total net pay', 'INR {{net}}'],
         ],
       },
       { type: 'heading', level: 2, text: 'Earnings' },
-      { type: 'table', columns: ['Component', 'Amount (INR)'], rows: input.earnings },
+      { type: 'table', columns: cols(input.earnings), rows: input.earnings },
       { type: 'heading', level: 2, text: 'Deductions' },
       {
         type: 'table',
-        columns: ['Component', 'Amount (INR)'],
+        columns: cols(input.deductions),
         rows: input.deductions.length ? input.deductions : [['None', '0.00']],
       },
       {
@@ -108,17 +126,19 @@ registerPdfTemplate<PayslipInput>({
         rows: [
           ['Gross earnings', '{{gross}}'],
           ['Total deductions', '{{totalDeductions}}'],
-          ['Net pay', '{{net}}'],
-          ...(input.bankAccount
-            ? [['Paid to account', '{{bankAccount}}'] as [string, string]]
-            : []),
+          ['Total net payable', '{{net}}'],
+          ...opt('Amount in words', input.netInWords, '{{netInWords}}'),
         ],
+      },
+      {
+        type: 'paragraph',
+        text: 'Total net payable = Gross earnings - Total deductions',
       },
     ];
     if (input.employer.length) {
       blocks.push(
         { type: 'heading', level: 2, text: 'Employer contributions (not part of net pay)' },
-        { type: 'table', columns: ['Component', 'Amount (INR)'], rows: input.employer },
+        { type: 'table', columns: cols(input.employer), rows: input.employer },
       );
     }
     blocks.push({
@@ -175,6 +195,65 @@ registerPdfTemplate<Form16Input>({
 
 /* --------------------------------- Generation job --------------------------------------- */
 
+const ddmmyyyy = (d: Date) =>
+  `${String(d.getUTCDate()).padStart(2, '0')}/${String(d.getUTCMonth() + 1).padStart(2, '0')}/${d.getUTCFullYear()}`;
+
+async function employeeProfiles(employeeIds: string[]) {
+  const employees = await db().employee.findMany({
+    where: { id: { in: employeeIds } },
+    select: { id: true, designationId: true, dateOfJoining: true },
+  });
+  const designationIds = employees.map((e) => e.designationId).filter((d): d is string => !!d);
+  const designations = await db().designation.findMany({
+    where: { id: { in: designationIds } },
+    select: { id: true, name: true },
+  });
+  const names = new Map(designations.map((d) => [d.id, d.name]));
+  return new Map(
+    employees.map((e) => [
+      e.id,
+      {
+        designation: e.designationId ? (names.get(e.designationId) ?? null) : null,
+        dateOfJoining: e.dateOfJoining ? ddmmyyyy(e.dateOfJoining) : null,
+      },
+    ]),
+  );
+}
+
+/**
+ * Year-to-date totals per employee and `category:code` from published payslips of the same
+ * financial year (April–March) that start before `periodStart`.
+ */
+async function ytdBefore(employeeIds: string[], periodStart: Date) {
+  const y = periodStart.getUTCFullYear();
+  const fyStartYear = periodStart.getUTCMonth() >= 3 ? y : y - 1;
+  const slips = await db().payslip.findMany({
+    where: {
+      employeeId: { in: employeeIds },
+      status: 'PUBLISHED',
+      periodStart: { gte: new Date(Date.UTC(fyStartYear, 3, 1)), lt: periodStart },
+    },
+    select: { runId: true, employeeId: true },
+  });
+  const out = new Map<string, Map<string, number>>();
+  if (!slips.length) return out;
+  const runEmployees = await db().payrollRunEmployee.findMany({
+    where: { OR: slips.map((s) => ({ runId: s.runId, employeeId: s.employeeId })) },
+    select: { id: true },
+  });
+  const items = await db().payrollItem.findMany({
+    where: { runEmployeeId: { in: runEmployees.map((r) => r.id) } },
+    select: { employeeId: true, category: true, code: true, amount: true },
+  });
+  for (const i of items) {
+    const m = out.get(i.employeeId) ?? new Map<string, number>();
+    const key = `${i.category}:${i.code}`;
+    m.set(key, (m.get(key) ?? 0) + num(i.amount));
+    out.set(i.employeeId, m);
+  }
+  return out;
+}
+
 const periodLabelOf = (d: Date) =>
   `${d.toLocaleString('en-US', { month: 'long', timeZone: 'UTC' })} ${d.getUTCFullYear()}`;
 
@@ -197,6 +276,12 @@ export async function generatePayslipsJob(data: PayslipJob): Promise<void> {
   });
   const deptName = new Map(departments.map((d) => [d.id, d.name]));
   const periodLabel = periodLabelOf(run.periodStart);
+  const profiles = await employeeProfiles(employees.map((e) => e.employeeId));
+  const ytd = await ytdBefore(
+    employees.map((e) => e.employeeId),
+    run.periodStart,
+  );
+  const payDate = ddmmyyyy(run.finalizedAt ?? new Date());
   let published = 0;
   for (const re of employees) {
     if (done.has(re.employeeId)) continue;
@@ -204,10 +289,16 @@ export async function generatePayslipsJob(data: PayslipJob): Promise<void> {
       where: { runEmployeeId: re.id, showOnPayslip: true },
       orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
     });
+    const prior = ytd.get(re.employeeId);
     const rows = (cat: string[]) =>
       items
         .filter((i) => cat.includes(i.category) && num(i.amount) !== 0)
-        .map((i) => [i.name, money(num(i.amount))] as [string, string]);
+        .map((i) => [
+          i.name,
+          money(num(i.amount)),
+          money(num(i.amount) + (prior?.get(`${i.category}:${i.code}`) ?? 0)),
+        ]);
+    const profile = profiles.get(re.employeeId);
     const input: PayslipInput = {
       employeeName: re.employeeName,
       employeeCode: re.employeeCode,
@@ -224,13 +315,17 @@ export async function generatePayslipsJob(data: PayslipJob): Promise<void> {
       lopDays: String(num(re.lopDays)),
       earnings: rows(['EARNING']),
       deductions: rows(['DEDUCTION']),
-      employer: rows(['EMPLOYER']),
+      employer: rows(['EMPLOYER_CONTRIBUTION']),
       gross: money(num(re.gross)),
       totalDeductions: money(num(re.deductions)),
       net: money(num(re.net)),
       ...(paymentByEmployee.get(re.employeeId)?.bankAccountMasked
         ? { bankAccount: paymentByEmployee.get(re.employeeId)!.bankAccountMasked! }
         : {}),
+      ...(profile?.designation ? { designation: profile.designation } : {}),
+      ...(profile?.dateOfJoining ? { dateOfJoining: profile.dateOfJoining } : {}),
+      payDate,
+      netInWords: rupeesInWords(num(re.net)),
     };
     const rendered = await renderPdfTemplate(PAYSLIP_TEMPLATE, input, {
       groupId: inst.groupId,
