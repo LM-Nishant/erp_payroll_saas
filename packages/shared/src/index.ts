@@ -1,5 +1,6 @@
 export * from './auth/password-policy';
 export * from './auth/permissions';
+export * from './schemas/academics';
 export * from './licensing/features';
 export * from './schemas/assets';
 export * from './schemas/attendance';
@@ -19,6 +20,7 @@ export * from './schemas/platform';
 export * from './schemas/secrets';
 export * from './schemas/students';
 export * from './schemas/workflow';
+export * from './types/academics';
 export * from './types/api';
 export * from './types/assets';
 export * from './types/attendance';

@@ -68,6 +68,20 @@ model Organization {
   updatedAt DateTime           @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt DateTime?          @map("deleted_at") @db.DateTime(3)
 
+  // Academics & Exams
+  subjects                Subject[]
+  subjectAllocations      SubjectAllocation[]
+  classTeacherAssignments ClassTeacherAssignment[]
+  bellPeriods             BellPeriod[]
+  timetableEntries        TimetableEntry[]
+  timetableSubstitutions  TimetableSubstitution[]
+  studentAttendance       StudentAttendance[]
+  gradingScales           GradingScale[]
+  examTerms               ExamTerm[]
+  examSchedules           ExamSchedule[]
+  examMarks               ExamMark[]
+  examResults             ExamResult[]
+
   groups                    Group[]
   institutions              Institution[]
   campuses                  Campus[]
@@ -253,6 +267,12 @@ model Institution {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?       @map("deleted_at") @db.DateTime(3)
 
+  // Academics & Exams
+  subjects      Subject[]
+  bellPeriods   BellPeriod[]
+  gradingScales GradingScale[]
+  examTerms     ExamTerm[]
+
   organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   group                Group?                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
   campuses             Campus[]
@@ -380,6 +400,8 @@ model Program {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
+  subjects Subject[]
+
   organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   institution        Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
   department         Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
@@ -411,6 +433,14 @@ model ClassSection {
   createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  // Academics & Exams
+  subjectAllocations SubjectAllocation[]
+  classTeacher       ClassTeacherAssignment[]
+  timetableEntries   TimetableEntry[]
+  studentAttendance  StudentAttendance[]
+  examSchedules      ExamSchedule[]
+  examResults        ExamResult[]
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   institution  Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
@@ -519,6 +549,11 @@ model Student {
   createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt       DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt       DateTime?     @map("deleted_at") @db.DateTime(3)
+
+  // Academics & Exams
+  attendance  StudentAttendance[]
+  examMarks   ExamMark[]
+  examResults ExamResult[]
 
   organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   user         User?                  @relation(fields: [userId], references: [id], onDelete: Restrict)
@@ -738,6 +773,12 @@ model User {
   createdAt           DateTime   @default(now()) @map("created_at") @db.DateTime(3)
   updatedAt           DateTime   @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt           DateTime?  @map("deleted_at") @db.DateTime(3)
+
+  // Academics & Exams
+  subjectAllocations     SubjectAllocation[]      @relation("SubjectAllocationTeacher")
+  classTeacherOf         ClassTeacherAssignment[] @relation("ClassTeacherUser")
+  timetableEntries       TimetableEntry[]         @relation("TimetableTeacher")
+  timetableSubstitutions TimetableSubstitution[]  @relation("TimetableSubstitute")
 
   memberships   OrganizationMembership[]
   platformRoles PlatformRoleAssignment[]
@@ -4410,4 +4451,386 @@ model InventoryTransaction {
   @@index([organizationId, itemId, date])
   @@index([organizationId, institutionId, date])
   @@map("inventory_transactions")
+}
+
+// ===== Academics & Exams =====
+
+enum SubjectType {
+  THEORY
+  PRACTICAL
+  ELECTIVE
+}
+
+enum StudentAttendanceStatus {
+  PRESENT
+  ABSENT
+  LATE
+  LEAVE
+  HALF_DAY
+}
+
+enum ExamTermType {
+  UNIT_TEST
+  MID_TERM
+  FINAL
+  OTHER
+}
+
+enum ExamTermStatus {
+  DRAFT
+  SCHEDULED
+  MARKS_ENTRY
+  RESULTS_COMPUTED
+  PUBLISHED
+}
+
+enum ExamMarksStatus {
+  OPEN
+  LOCKED
+}
+
+/// Subject taught in a program (curriculum). Marks defaults feed exam schedules.
+model Subject {
+  id             String       @id @default(uuid()) @db.Char(36)
+  organizationId String       @map("organization_id") @db.Char(36)
+  groupId        String?      @map("group_id") @db.Char(36)
+  institutionId  String       @map("institution_id") @db.Char(36)
+  campusId       String?      @map("campus_id") @db.Char(36)
+  departmentId   String       @map("department_id") @db.Char(36)
+  programId      String       @map("program_id") @db.Char(36)
+  code           String       @db.VarChar(32)
+  name           String       @db.VarChar(200)
+  type           SubjectType  @default(THEORY)
+  credits        Decimal?     @db.Decimal(4, 1)
+  maxMarks       Int          @default(100) @map("max_marks")
+  passMarks      Int          @default(35) @map("pass_marks")
+  status         EntityStatus @default(ACTIVE)
+  createdAt      DateTime     @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
+
+  organization     Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution      Institution         @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  program          Program             @relation(fields: [programId], references: [id], onDelete: Restrict)
+  allocations      SubjectAllocation[]
+  timetableEntries TimetableEntry[]
+  examSchedules    ExamSchedule[]
+
+  @@unique([programId, code])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, programId])
+  @@index([organizationId, deletedAt])
+  @@map("subjects")
+}
+
+/// Subject → teacher (user) allocation for a class section.
+model SubjectAllocation {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  groupId        String?  @map("group_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  campusId       String?  @map("campus_id") @db.Char(36)
+  departmentId   String   @map("department_id") @db.Char(36)
+  classSectionId String   @map("class_section_id") @db.Char(36)
+  subjectId      String   @map("subject_id") @db.Char(36)
+  teacherUserId  String   @map("teacher_user_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher      User         @relation("SubjectAllocationTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+
+  @@unique([classSectionId, subjectId])
+  @@index([organizationId, teacherUserId])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, departmentId])
+  @@map("subject_allocations")
+}
+
+/// Class teacher (homeroom) of a section — marks daily attendance.
+model ClassTeacherAssignment {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  groupId        String?  @map("group_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  campusId       String?  @map("campus_id") @db.Char(36)
+  departmentId   String   @map("department_id") @db.Char(36)
+  classSectionId String   @map("class_section_id") @db.Char(36)
+  teacherUserId  String   @map("teacher_user_id") @db.Char(36)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  teacher      User         @relation("ClassTeacherUser", fields: [teacherUserId], references: [id], onDelete: Restrict)
+
+  @@unique([classSectionId])
+  @@index([organizationId, teacherUserId])
+  @@index([organizationId, institutionId])
+  @@map("class_teacher_assignments")
+}
+
+/// Bell schedule period of an institution (minutes from midnight).
+model BellPeriod {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  groupId        String?  @map("group_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  seq            Int
+  name           String   @db.VarChar(64)
+  startTime      String   @map("start_time") @db.VarChar(5)
+  endTime        String   @map("end_time") @db.VarChar(5)
+  isBreak        Boolean  @default(false) @map("is_break")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution         @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  entries      TimetableEntry[]
+  attendance   StudentAttendance[]
+
+  @@unique([institutionId, seq])
+  @@index([organizationId, institutionId])
+  @@map("bell_periods")
+}
+
+/// Weekly timetable cell: section × day × period → subject, teacher, room.
+model TimetableEntry {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  groupId        String?  @map("group_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  campusId       String?  @map("campus_id") @db.Char(36)
+  departmentId   String   @map("department_id") @db.Char(36)
+  classSectionId String   @map("class_section_id") @db.Char(36)
+  dayOfWeek      Int      @map("day_of_week")
+  periodId       String   @map("period_id") @db.Char(36)
+  subjectId      String   @map("subject_id") @db.Char(36)
+  teacherUserId  String?  @map("teacher_user_id") @db.Char(36)
+  room           String?  @db.VarChar(64)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization  Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  classSection  ClassSection            @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  period        BellPeriod              @relation(fields: [periodId], references: [id], onDelete: Restrict)
+  subject       Subject                 @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  teacher       User?                   @relation("TimetableTeacher", fields: [teacherUserId], references: [id], onDelete: Restrict)
+  substitutions TimetableSubstitution[]
+
+  @@unique([classSectionId, dayOfWeek, periodId])
+  @@index([organizationId, teacherUserId, dayOfWeek, periodId])
+  @@index([organizationId, institutionId, room, dayOfWeek, periodId])
+  @@index([organizationId, departmentId])
+  @@map("timetable_entries")
+}
+
+/// One-day substitute teacher for a timetable entry.
+model TimetableSubstitution {
+  id               String   @id @default(uuid()) @db.Char(36)
+  organizationId   String   @map("organization_id") @db.Char(36)
+  groupId          String?  @map("group_id") @db.Char(36)
+  institutionId    String   @map("institution_id") @db.Char(36)
+  campusId         String?  @map("campus_id") @db.Char(36)
+  departmentId     String   @map("department_id") @db.Char(36)
+  classSectionId   String   @map("class_section_id") @db.Char(36)
+  entryId          String   @map("entry_id") @db.Char(36)
+  date             DateTime @db.Date
+  substituteUserId String   @map("substitute_user_id") @db.Char(36)
+  reason           String?  @db.VarChar(500)
+  createdByUserId  String?  @map("created_by_user_id") @db.Char(36)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  entry        TimetableEntry @relation(fields: [entryId], references: [id], onDelete: Restrict)
+  substitute   User           @relation("TimetableSubstitute", fields: [substituteUserId], references: [id], onDelete: Restrict)
+
+  @@unique([entryId, date])
+  @@index([organizationId, substituteUserId, date])
+  @@index([organizationId, institutionId, date])
+  @@map("timetable_substitutions")
+}
+
+/// Student attendance mark — daily (periodKey = '') or per bell period.
+model StudentAttendance {
+  id             String                  @id @default(uuid()) @db.Char(36)
+  organizationId String                  @map("organization_id") @db.Char(36)
+  groupId        String?                 @map("group_id") @db.Char(36)
+  institutionId  String                  @map("institution_id") @db.Char(36)
+  campusId       String?                 @map("campus_id") @db.Char(36)
+  departmentId   String                  @map("department_id") @db.Char(36)
+  classSectionId String                  @map("class_section_id") @db.Char(36)
+  studentId      String                  @map("student_id") @db.Char(36)
+  date           DateTime                @db.Date
+  periodId       String?                 @map("period_id") @db.Char(36)
+  periodKey      String                  @default("") @map("period_key") @db.VarChar(36)
+  status         StudentAttendanceStatus
+  remarks        String?                 @db.VarChar(500)
+  markedByUserId String?                 @map("marked_by_user_id") @db.Char(36)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  period       BellPeriod?  @relation(fields: [periodId], references: [id], onDelete: Restrict)
+
+  @@unique([studentId, date, periodKey])
+  @@index([organizationId, classSectionId, date])
+  @@index([organizationId, institutionId, date])
+  @@index([organizationId, departmentId])
+  @@map("student_attendance")
+}
+
+/// Configurable grading scale (bands JSON: [{grade, minPercent, points, isPass}]).
+model GradingScale {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  name           String    @db.VarChar(120)
+  bands          Json
+  isDefault      Boolean   @default(false) @map("is_default")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  terms        ExamTerm[]
+
+  @@index([organizationId, institutionId])
+  @@index([organizationId, deletedAt])
+  @@map("grading_scales")
+}
+
+/// Exam term (Unit test, Mid-term, Final) of an institution for an academic year.
+model ExamTerm {
+  id             String         @id @default(uuid()) @db.Char(36)
+  organizationId String         @map("organization_id") @db.Char(36)
+  groupId        String?        @map("group_id") @db.Char(36)
+  institutionId  String         @map("institution_id") @db.Char(36)
+  name           String         @db.VarChar(120)
+  type           ExamTermType   @default(UNIT_TEST)
+  academicYear   String         @map("academic_year") @db.VarChar(9)
+  startDate      DateTime?      @map("start_date") @db.Date
+  endDate        DateTime?      @map("end_date") @db.Date
+  gradingScaleId String?        @map("grading_scale_id") @db.Char(36)
+  status         ExamTermStatus @default(DRAFT)
+  publishedAt    DateTime?      @map("published_at") @db.DateTime(3)
+  createdAt      DateTime       @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime       @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?      @map("deleted_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  gradingScale GradingScale?  @relation(fields: [gradingScaleId], references: [id], onDelete: Restrict)
+  schedules    ExamSchedule[]
+  results      ExamResult[]
+
+  @@unique([institutionId, academicYear, name])
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, deletedAt])
+  @@map("exam_terms")
+}
+
+/// Exam paper: term × section × subject with date and max/pass marks; marks lock state.
+model ExamSchedule {
+  id             String          @id @default(uuid()) @db.Char(36)
+  organizationId String          @map("organization_id") @db.Char(36)
+  groupId        String?         @map("group_id") @db.Char(36)
+  institutionId  String          @map("institution_id") @db.Char(36)
+  campusId       String?         @map("campus_id") @db.Char(36)
+  departmentId   String          @map("department_id") @db.Char(36)
+  termId         String          @map("term_id") @db.Char(36)
+  classSectionId String          @map("class_section_id") @db.Char(36)
+  subjectId      String          @map("subject_id") @db.Char(36)
+  examDate       DateTime        @map("exam_date") @db.Date
+  startTime      String?         @map("start_time") @db.VarChar(5)
+  endTime        String?         @map("end_time") @db.VarChar(5)
+  room           String?         @db.VarChar(64)
+  maxMarks       Int             @map("max_marks")
+  passMarks      Int             @map("pass_marks")
+  marksStatus    ExamMarksStatus @default(OPEN) @map("marks_status")
+  lockedAt       DateTime?       @map("locked_at") @db.DateTime(3)
+  lockedByUserId String?         @map("locked_by_user_id") @db.Char(36)
+  createdAt      DateTime        @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  term         ExamTerm     @relation(fields: [termId], references: [id], onDelete: Restrict)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  subject      Subject      @relation(fields: [subjectId], references: [id], onDelete: Restrict)
+  marks        ExamMark[]
+
+  @@unique([termId, classSectionId, subjectId])
+  @@index([organizationId, institutionId, examDate])
+  @@index([organizationId, classSectionId])
+  @@index([organizationId, departmentId])
+  @@map("exam_schedules")
+}
+
+/// Marks of one student in one exam paper.
+model ExamMark {
+  id              String   @id @default(uuid()) @db.Char(36)
+  organizationId  String   @map("organization_id") @db.Char(36)
+  institutionId   String   @map("institution_id") @db.Char(36)
+  classSectionId  String   @map("class_section_id") @db.Char(36)
+  scheduleId      String   @map("schedule_id") @db.Char(36)
+  studentId       String   @map("student_id") @db.Char(36)
+  marks           Decimal? @db.Decimal(6, 2)
+  isAbsent        Boolean  @default(false) @map("is_absent")
+  remarks         String?  @db.VarChar(500)
+  enteredByUserId String?  @map("entered_by_user_id") @db.Char(36)
+  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  schedule     ExamSchedule @relation(fields: [scheduleId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([scheduleId, studentId])
+  @@index([organizationId, studentId])
+  @@map("exam_marks")
+}
+
+/// Computed term result of a student (subjects JSON = per-subject breakdown).
+model ExamResult {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  campusId       String?   @map("campus_id") @db.Char(36)
+  departmentId   String    @map("department_id") @db.Char(36)
+  classSectionId String    @map("class_section_id") @db.Char(36)
+  termId         String    @map("term_id") @db.Char(36)
+  studentId      String    @map("student_id") @db.Char(36)
+  totalMarks     Decimal   @map("total_marks") @db.Decimal(8, 2)
+  maxTotal       Decimal   @map("max_total") @db.Decimal(8, 2)
+  percentage     Decimal   @db.Decimal(5, 2)
+  grade          String?   @db.VarChar(8)
+  gpa            Decimal?  @db.Decimal(4, 2)
+  rank           Int?
+  passed         Boolean
+  subjects       Json
+  computedAt     DateTime  @map("computed_at") @db.DateTime(3)
+  publishedAt    DateTime? @map("published_at") @db.DateTime(3)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  term         ExamTerm     @relation(fields: [termId], references: [id], onDelete: Restrict)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([termId, studentId])
+  @@index([organizationId, classSectionId, termId])
+  @@index([organizationId, studentId])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, departmentId])
+  @@map("exam_results")
 }

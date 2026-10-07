@@ -46,6 +46,24 @@ const TIME_VIEW = views('holiday', 'shift', 'attendance', 'leave');
 
 /** Asset custody (view / check-out / check-in) for institution admins and HR. */
 const ASSET_CUSTODY = ['asset.view', 'asset.assign', 'asset.return'] as PermissionCode[];
+/** Academics, timetable, student attendance & exams. */
+const ACADEMICS_MANAGE = pick('subject', 'timetable', 'student_attendance', 'exam').filter(
+  (c) => !c.endsWith('.view_own'),
+);
+/** Teachers: marking / marks entry restricted to allocated sections in the services. */
+const ACADEMICS_TEACHING = [
+  'subject.view',
+  'timetable.view',
+  'student_attendance.view',
+  'student_attendance.mark',
+  'exam.view',
+  'exam.marks_entry',
+] as PermissionCode[];
+const ACADEMICS_SELF_SERVICE = [
+  'timetable.view_own',
+  'student_attendance.view_own',
+  'exam.view_own',
+] as PermissionCode[];
 
 /** Full administration of everything below the group/institution level. */
 const INSTITUTION_ADMIN = [
@@ -77,6 +95,7 @@ const INSTITUTION_ADMIN = [
   'pdf.generate',
   'workflow.view',
   'communication.view',
+  ...ACADEMICS_MANAGE,
 ] as PermissionCode[];
 
 const GROUP_ADMIN = [
@@ -147,6 +166,7 @@ const ACADEMIC_LEAD = [
   'message.send',
   'message.schedule',
   'ai.use',
+  ...ACADEMICS_MANAGE,
 ] as PermissionCode[];
 
 const TEACHING = [
@@ -158,6 +178,7 @@ const TEACHING = [
   'document.upload',
   'message.send',
   'ai.use',
+  ...ACADEMICS_TEACHING,
 ] as PermissionCode[];
 
 /**
@@ -170,8 +191,16 @@ const SELF_SERVICE = [
   'ai.use',
   'library.view_own',
 ] as PermissionCode[];
-const STUDENT_SELF_SERVICE = [...SELF_SERVICE, 'student.view_own'] as PermissionCode[];
-const PARENT_SELF_SERVICE = [...SELF_SERVICE, 'ward.view'] as PermissionCode[];
+const STUDENT_SELF_SERVICE = [
+  ...SELF_SERVICE,
+  'student.view_own',
+  ...ACADEMICS_SELF_SERVICE,
+] as PermissionCode[];
+const PARENT_SELF_SERVICE = [
+  ...SELF_SERVICE,
+  'ward.view',
+  ...ACADEMICS_SELF_SERVICE,
+] as PermissionCode[];
 
 /** Employee self-service adds the own-profile APIs (`/employees/me`). */
 const EMPLOYEE_SELF_SERVICE = [
@@ -280,6 +309,13 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'HOD',
       description: 'Head of department; limited to assigned departments',
       typicalScope: 'DEPARTMENT',
+      permissions: ACADEMIC_LEAD,
+    },
+    {
+      key: 'academic_coordinator',
+      name: 'Academic Coordinator',
+      description: 'Subjects, timetable, attendance and examinations of an institution',
+      typicalScope: 'INSTITUTION',
       permissions: ACADEMIC_LEAD,
     },
     {
