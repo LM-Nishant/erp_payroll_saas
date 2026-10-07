@@ -87,6 +87,26 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'LeavePolicyRule',
   'LeaveLedgerEntry',
   'LeaveRequest',
+  // Payroll (modules/payroll)
+  'SalaryComponent',
+  'SalaryRule',
+  'SalaryStructure',
+  'SalaryStructureVersion',
+  'PayrollSetting',
+  'StatutoryRulePack',
+  'EmployeeSalary',
+  'SalaryRevision',
+  'PayrollBatch',
+  'PayrollRun',
+  'PayrollRunEmployee',
+  'PayrollItem',
+  'PayrollAdjustment',
+  'PayrollPayment',
+  'Payslip',
+  'Form16Record',
+  'Loan',
+  'LoanInstallment',
+  'ReimbursementClaim',
 ]);
 
 /**

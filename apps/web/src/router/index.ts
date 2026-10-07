@@ -91,6 +91,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/ApprovalsPage.vue'),
       },
       {
+        path: 'payroll',
+        name: 'group-payroll',
+        meta: { permission: 'payroll.report', feature: 'payroll' },
+        component: () => import('@/pages/payroll/GroupPayrollReportPage.vue'),
+      },
+      {
         path: 'communication',
         name: 'group-communication',
         meta: { permission: 'communication.view', feature: 'communication' },
@@ -212,6 +218,43 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/hr/HolidayCalendarsPage.vue'),
       },
       {
+        path: 'payroll/runs',
+        name: 'hr-payroll-runs',
+        meta: { permission: 'payroll.view', feature: 'payroll' },
+        component: () => import('@/pages/payroll/PayrollRunsPage.vue'),
+      },
+      {
+        path: 'payroll/runs/:id',
+        name: 'hr-payroll-run',
+        props: true,
+        meta: { permission: 'payroll.view', feature: 'payroll' },
+        component: () => import('@/pages/payroll/PayrollRunDetailPage.vue'),
+      },
+      {
+        path: 'payroll/components',
+        name: 'hr-payroll-components',
+        meta: { permission: 'payroll.view', feature: 'payroll' },
+        component: () => import('@/pages/payroll/SalaryComponentsPage.vue'),
+      },
+      {
+        path: 'payroll/structures',
+        name: 'hr-payroll-structures',
+        meta: { permission: 'payroll.view', feature: 'payroll' },
+        component: () => import('@/pages/payroll/SalaryStructuresPage.vue'),
+      },
+      {
+        path: 'payroll/salary',
+        name: 'hr-payroll-salary',
+        meta: { permission: 'salary.view', feature: 'payroll' },
+        component: () => import('@/pages/payroll/EmployeeSalaryPage.vue'),
+      },
+      {
+        path: 'payroll/payslips',
+        name: 'hr-payroll-payslips',
+        meta: { permission: 'payroll.view', feature: 'payroll' },
+        component: () => import('@/pages/payroll/PayslipsPage.vue'),
+      },
+      {
         path: 'documents',
         name: 'hr-documents',
         meta: { permission: 'document.view', feature: 'documents' },
@@ -261,6 +304,12 @@ export const routes: RouteRecordRaw[] = [
         path: 'approvals',
         name: 'employee-approvals',
         component: () => import('@/pages/ApprovalsPage.vue'),
+      },
+      {
+        path: 'payslips',
+        name: 'employee-payslips',
+        meta: { permission: 'payroll.view_own', feature: 'payroll' },
+        component: () => import('@/pages/payroll/MyPayslipsPage.vue'),
       },
       {
         path: 'documents',

@@ -42,6 +42,7 @@ import { attendanceRouter } from './modules/attendance/attendance.routes';
 import { designationsRouter, employeesRouter } from './modules/employees/employees.routes';
 import { holidaysRouter } from './modules/holidays/holidays.routes';
 import { leaveRouter } from './modules/leave/leave.routes';
+import { payrollRouter } from './modules/payroll/payroll.routes';
 import { shiftsRouter } from './modules/shifts/shifts.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
@@ -152,6 +153,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/shifts', requireFeature('hr'), shiftsRouter);
   api.use('/attendance', requireFeature('hr'), attendanceRouter);
   api.use('/leave', requireFeature('hr'), leaveRouter);
+  api.use('/payroll', requireFeature('payroll'), payrollRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
   api.use('/permissions', permissionsRouter);
