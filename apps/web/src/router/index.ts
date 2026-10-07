@@ -411,6 +411,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/payroll/MyPayslipsPage.vue'),
       },
       {
+        path: 'salary',
+        name: 'employee-salary',
+        meta: { permission: 'payroll.view_own', feature: 'payroll' },
+        component: () => import('@/pages/payroll/MySalaryPage.vue'),
+      },
+      {
         path: 'documents',
         name: 'employee-documents',
         meta: { permission: 'document.view_own', feature: 'documents' },

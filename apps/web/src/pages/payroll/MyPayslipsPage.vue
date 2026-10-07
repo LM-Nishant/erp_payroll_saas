@@ -30,7 +30,13 @@ async function open(path: string) {
 </script>
 
 <template>
-  <h2 class="text-h5 mb-4">My payslips</h2>
+  <div class="d-flex align-center mb-4">
+    <h2 class="text-h5">My payslips</h2>
+    <v-spacer />
+    <v-btn prepend-icon="mdi-cash-multiple" variant="tonal" to="/employee/salary">
+      Salary structure &amp; annual statement
+    </v-btn>
+  </div>
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>

@@ -396,3 +396,73 @@ export interface GroupPayrollSummaryDto {
     employerTotal: number;
   };
 }
+
+/* ---------------------------- Employee self-service: my salary ---------------------------- */
+
+export interface MySalaryComponentDto {
+  code: string;
+  name: string;
+  category: PayrollLineDto['category'];
+  monthly: number;
+  annual: number;
+}
+
+export interface MySalaryRevisionDto {
+  effectiveFrom: string;
+  annualCtc: number;
+  reason: string;
+}
+
+export interface MySalaryDto {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  designation: string | null;
+  department: string | null;
+  institution: string | null;
+  dateOfJoining: string | null;
+  effectiveFrom: string;
+  structureName: string | null;
+  taxRegime: TaxRegime;
+  annualCtc: number;
+  monthlyCtc: number;
+  earnings: MySalaryComponentDto[];
+  deductions: MySalaryComponentDto[];
+  employerContributions: MySalaryComponentDto[];
+  grossMonthly: number;
+  deductionsMonthly: number;
+  netMonthly: number;
+  employerMonthly: number;
+  revisions: MySalaryRevisionDto[];
+  warnings: string[];
+}
+
+export interface SalaryStatementMonthDto {
+  month: string;
+  label: string;
+  payableDays: number;
+  lopDays: number;
+  gross: number;
+  deductions: number;
+  net: number;
+  tds: number;
+}
+
+export interface SalaryStatementRowDto {
+  code: string;
+  name: string;
+  category: PayrollLineDto['category'];
+  amounts: Record<string, number>;
+  total: number;
+}
+
+export interface SalaryStatementDto {
+  employeeId: string;
+  employeeCode: string;
+  employeeName: string;
+  financialYear: string;
+  months: SalaryStatementMonthDto[];
+  rows: SalaryStatementRowDto[];
+  totals: { gross: number; deductions: number; net: number; tds: number; employer: number };
+  availableYears: string[];
+}

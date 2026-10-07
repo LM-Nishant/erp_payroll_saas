@@ -309,6 +309,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       feature: 'hr',
     },
     {
+      title: 'My salary',
+      icon: 'mdi-cash-multiple',
+      to: '/employee/salary',
+      permission: 'payroll.view_own',
+      feature: 'payroll',
+    },
+    {
       title: 'My payslips',
       icon: 'mdi-receipt-text',
       to: '/employee/payslips',
