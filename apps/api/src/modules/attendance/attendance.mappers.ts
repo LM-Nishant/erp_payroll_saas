@@ -65,9 +65,14 @@ export const toRecordDto = (
   computedAt: r.computedAt.toISOString(),
 });
 
-export const toRegularizationDto = (r: AttendanceRegularization): AttendanceRegularizationDto => ({
+export const toRegularizationDto = (
+  r: AttendanceRegularization & { employee?: { employeeCode: string; displayName: string } },
+): AttendanceRegularizationDto => ({
   id: r.id,
   employeeId: r.employeeId,
+  ...(r.employee
+    ? { employeeCode: r.employee.employeeCode, employeeName: r.employee.displayName }
+    : {}),
   date: dateToStr(r.date),
   inMinute: r.inMinute,
   outMinute: r.outMinute,

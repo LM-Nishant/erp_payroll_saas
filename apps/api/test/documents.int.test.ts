@@ -623,6 +623,13 @@ describe.skipIf(!hasTestDatabase)('document engine', () => {
     const logo = await fetchSigned(logoUrl.url).buffer(true).expect(200);
     expect(Buffer.from(logo.body).equals(PNG)).toBe(true);
 
+    // App-shell logo: any member gets the logo of their home scope (HOD → Engineering).
+    const homeLogo = (await as('hod').get('/api/v1/branding/home-logo-url').expect(200)).body.data;
+    expect(homeLogo.versionId).toBe(logoUrl.versionId);
+    expect((await as('bcc').get('/api/v1/branding/home-logo-url').expect(200)).body.data).toBe(
+      null,
+    );
+
     const templates = (await as('engAdmin').get('/api/v1/pdf/templates').expect(200)).body.data;
     expect(templates.map((t: { key: string }) => t.key)).toContain('generic_letter');
     await as('hod')

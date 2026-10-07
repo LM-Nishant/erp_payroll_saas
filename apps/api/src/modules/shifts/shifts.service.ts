@@ -60,10 +60,17 @@ export const toShiftDto = (s: Shift): ShiftDto => ({
   updatedAt: s.updatedAt.toISOString(),
 });
 
-export const toAssignmentDto = (a: ShiftAssignment): ShiftAssignmentDto => ({
+type EmployeeLabel = { employeeCode: string; displayName: string } | null;
+
+export const toAssignmentDto = (
+  a: ShiftAssignment & { employee?: EmployeeLabel },
+): ShiftAssignmentDto => ({
   id: a.id,
   institutionId: a.institutionId,
   employeeId: a.employeeId,
+  ...(a.employee
+    ? { employeeCode: a.employee.employeeCode, employeeName: a.employee.displayName }
+    : {}),
   departmentId: a.departmentId,
   shiftId: a.shiftId,
   rotationShiftIds: Array.isArray(a.rotationShiftIds) ? (a.rotationShiftIds as string[]) : null,
@@ -218,6 +225,7 @@ export const shiftService = {
     const [rows, total] = await Promise.all([
       db.shiftAssignment.findMany({
         where,
+        include: { employee: { select: { employeeCode: true, displayName: true } } },
         orderBy: [{ effectiveFrom: 'desc' }],
         ...toPageWindow(query),
       }),

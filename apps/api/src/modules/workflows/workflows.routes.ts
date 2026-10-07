@@ -77,6 +77,11 @@ workflowsRouter.get('/instances', async (req, res) => {
 workflowsRouter.get('/instances/:id', async (req, res) => {
   res.json({ data: await workflowInstancesService.get(idOf(req)) });
 });
+const delegateQuerySchema = z.object({ search: z.string().max(100).optional() }).strict();
+workflowsRouter.get('/instances/:id/delegates', async (req, res) => {
+  const { search } = parseInput(delegateQuerySchema, req.query);
+  res.json({ data: await workflowInstancesService.delegateCandidates(idOf(req), search ?? '') });
+});
 workflowsRouter.post('/instances/:id/actions', async (req, res) => {
   const input = parseInput(workflowActSchema, req.body);
   res.json({ data: await workflowInstancesService.act(idOf(req), input) });

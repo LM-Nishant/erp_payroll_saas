@@ -2,6 +2,7 @@
 import type { ApiListResponse, ShiftAssignmentDto, ShiftDto } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import {
   formatWeeklyOffsInput,
@@ -123,7 +124,7 @@ async function save() {
 const assign = reactive({
   open: false,
   target: 'department' as 'department' | 'employee',
-  employeeId: '',
+  employeeId: null as string | null,
   departmentId: null as string | null,
   shiftId: null as string | null,
   rotationShiftIds: [] as string[],
@@ -135,7 +136,7 @@ function openAssign() {
   Object.assign(assign, {
     open: true,
     target: 'department',
-    employeeId: '',
+    employeeId: null,
     departmentId: null,
     shiftId: shifts.value[0]?.id ?? null,
     rotationShiftIds: [],
@@ -151,7 +152,7 @@ async function saveAssign() {
       method: 'POST',
       body: JSON.stringify({
         institutionId: institutionId.value,
-        employeeId: assign.target === 'employee' ? assign.employeeId.trim() : null,
+        employeeId: assign.target === 'employee' ? assign.employeeId : null,
         departmentId: assign.target === 'department' ? assign.departmentId : null,
         shiftId: rotation ? assign.rotationShiftIds[0] : assign.shiftId,
         rotationShiftIds: rotation ? assign.rotationShiftIds : null,
@@ -263,7 +264,11 @@ const shiftHeaders = [
     <tbody>
       <tr v-for="a in assignments" :key="a.id">
         <td>
-          {{ a.employeeId ? `Employee ${a.employeeId}` : `Department ${deptName(a.departmentId)}` }}
+          {{
+            a.employeeId
+              ? `Employee ${a.employeeName ?? a.employeeId}${a.employeeCode ? ` (${a.employeeCode})` : ''}`
+              : `Department ${deptName(a.departmentId)}`
+          }}
         </td>
         <td>
           <template v-if="a.rotationShiftIds">
@@ -385,7 +390,12 @@ const shiftHeaders = [
           item-value="id"
           label="Department *"
         />
-        <v-text-field v-else v-model="assign.employeeId" label="Employee ID *" />
+        <EmployeePicker
+          v-else
+          v-model="assign.employeeId"
+          :institution-id="institutionId"
+          label="Employee *"
+        />
         <v-select
           v-model="assign.shiftId"
           :items="shifts"

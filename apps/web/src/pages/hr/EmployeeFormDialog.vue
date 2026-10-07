@@ -2,6 +2,7 @@
 import { EMPLOYMENT_TYPES, type EmployeeDto } from '@erp/shared';
 import { computed, reactive, ref, watch } from 'vue';
 import { ApiError, apiFetch } from '@/api/client';
+import EmployeePicker from '@/components/EmployeePicker.vue';
 import { label, useHrOptions } from './useHrOptions';
 
 /** Create / edit an employee. Assignment fields are editable only while the record is DRAFT. */
@@ -26,6 +27,7 @@ const blank = () => ({
   campusId: null as string | null,
   departmentId: null as string | null,
   designationId: null as string | null,
+  reportingManagerId: null as string | null,
   employmentType: 'TEACHING' as (typeof EMPLOYMENT_TYPES)[number],
   status: 'DRAFT' as 'DRAFT' | 'ONBOARDING' | 'ACTIVE',
   workEmail: '',
@@ -52,6 +54,7 @@ watch(open, async (isOpen) => {
       campusId: e.campusId,
       departmentId: e.departmentId,
       designationId: e.designationId,
+      reportingManagerId: e.reportingManagerId,
       employmentType: e.employmentType,
       workEmail: e.workEmail ?? '',
       workPhone: e.workPhone ?? '',
@@ -97,6 +100,7 @@ async function save() {
         campusId: form.campusId,
         departmentId: form.departmentId,
         designationId: form.designationId,
+        reportingManagerId: form.reportingManagerId,
       }
     : {};
   try {
@@ -223,6 +227,13 @@ const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, titl
               item-value="id"
               label="Designation"
               clearable
+              :disabled="!assignmentEditable"
+            />
+          </v-col>
+          <v-col cols="12" md="6">
+            <EmployeePicker
+              v-model="form.reportingManagerId"
+              label="Reporting manager"
               :disabled="!assignmentEditable"
             />
           </v-col>

@@ -5,7 +5,8 @@ import {
   resolvedBrandingQuerySchema,
 } from '@erp/shared';
 import { Router, type Request } from 'express';
-import { requirePermission } from '../../core/authz';
+import { homeLogoUrl } from '../../core/auth';
+import { currentPrincipal, requirePermission } from '../../core/authz';
 import { parseMultipartFile } from '../../core/http/multipart';
 import { parseInput } from '../../core/http/validation';
 import { brandingService } from './branding.service';
@@ -25,6 +26,11 @@ brandingRouter.get('/resolved', view, async (req, res) => {
   res.json({
     data: await brandingService.resolved(parseInput(resolvedBrandingQuerySchema, req.query)),
   });
+});
+
+// The app-shell logo of the caller's home scope; every member may read it (no branding.view).
+brandingRouter.get('/home-logo-url', async (_req, res) => {
+  res.json({ data: await homeLogoUrl(currentPrincipal()) });
 });
 
 brandingRouter.get('/logo-url', view, async (req, res) => {

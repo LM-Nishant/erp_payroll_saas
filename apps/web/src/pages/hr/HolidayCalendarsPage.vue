@@ -11,6 +11,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import { formatWeeklyOffsInput, parseWeeklyOffs, weeklyOffsText } from './timeOffice';
 import { label, useHrOptions, type Option } from './useHrOptions';
@@ -157,7 +158,12 @@ async function deleteHoliday(id: string) {
 }
 
 // Effective calendar preview for an employee
-const preview = reactive({ employeeId: '', from: '', to: '', days: [] as ResolvedDayDto[] });
+const preview = reactive({
+  employeeId: null as string | null,
+  from: '',
+  to: '',
+  days: [] as ResolvedDayDto[],
+});
 async function resolve() {
   try {
     preview.days = (
@@ -220,7 +226,12 @@ const types = HOLIDAY_TYPES.map((value) => ({ value, title: label(value) }));
 
   <h3 class="text-h6 mt-8 mb-2">Effective calendar for an employee</h3>
   <div class="d-flex ga-2 align-center">
-    <v-text-field v-model="preview.employeeId" label="Employee ID" density="compact" hide-details />
+    <EmployeePicker
+      v-model="preview.employeeId"
+      density="compact"
+      hide-details
+      style="min-width: 280px"
+    />
     <v-text-field v-model="preview.from" type="date" label="From" density="compact" hide-details />
     <v-text-field v-model="preview.to" type="date" label="To" density="compact" hide-details />
     <v-btn

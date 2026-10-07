@@ -359,7 +359,7 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
     </thead>
     <tbody>
       <tr v-for="r in regularizations" :key="r.id">
-        <td>{{ r.employeeId }}</td>
+        <td>{{ r.employeeName ? `${r.employeeName} (${r.employeeCode})` : r.employeeId }}</td>
         <td>{{ r.date }}</td>
         <td>
           {{
