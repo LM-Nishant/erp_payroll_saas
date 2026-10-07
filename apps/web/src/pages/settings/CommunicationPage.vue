@@ -12,6 +12,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import DraftWithAiButton from '@/components/ai/DraftWithAiButton.vue';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -360,6 +361,17 @@ const statusColor: Record<string, string> = {
           <v-select v-model="tForm.channel" :items="[...MESSAGE_CHANNELS]" label="Channel" />
           <v-text-field v-model="tForm.name" label="Name" />
         </template>
+        <div class="mb-2">
+          <DraftWithAiButton
+            kind="circular"
+            @drafted="
+              (d) => {
+                tForm.subject = d.subject;
+                tForm.body = d.body;
+              }
+            "
+          />
+        </div>
         <v-text-field v-if="tForm.channel === 'email'" v-model="tForm.subject" label="Subject" />
         <v-textarea v-model="tForm.body" label="Text body ({{variable}})" rows="4" auto-grow />
         <v-textarea

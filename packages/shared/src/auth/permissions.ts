@@ -149,6 +149,9 @@ export const PERMISSIONS = {
   'ai.use': 'Use AI assistants',
   'ai.configure': 'Configure AI providers',
   'ai.action.send_message': 'Allow AI to send messages',
+  // ===== AI =====
+  'ai.manage': 'Manage organization AI settings (provider, model, enabled features, limits)',
+  'ai.view_usage': 'View AI usage dashboards (tokens by feature / user / day)',
 } as const satisfies Record<string, string>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;

@@ -15,6 +15,7 @@ import {
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
 import EmployeeLoginCard from '@/components/EmployeeLoginCard.vue';
+import DraftWithAiButton from '@/components/ai/DraftWithAiButton.vue';
 import ProfilePhotoCard from '@/components/ProfilePhotoCard.vue';
 import { useAuthStore } from '@/stores/auth';
 import EmployeeFormDialog from './EmployeeFormDialog.vue';
@@ -354,6 +355,23 @@ async function saveSalary() {
 
 /* ---- letters (stored as employee documents) ---- */
 const letter = reactive({ open: false, type: 'offer' as 'offer' | 'experience' | 'relieving' });
+const aiLetter = ref<{ subject: string; body: string } | null>(null);
+const aiLetterVars = computed((): Record<string, string> => {
+  const e = employee.value;
+  if (!e) return {};
+  return {
+    employeeName: e.displayName,
+    employeeCode: e.employeeCode,
+    designation: e.designation?.name ?? '',
+    department: e.department?.name ?? '',
+    institution: e.institution?.name ?? '',
+    dateOfJoining: e.dateOfJoining ?? '',
+  };
+});
+async function copyAiLetter() {
+  if (aiLetter.value)
+    await navigator.clipboard.writeText(`${aiLetter.value.subject}\n\n${aiLetter.value.body}`);
+}
 async function generateLetter() {
   try {
     const doc = (
@@ -881,7 +899,7 @@ const personalRows = computed(() => {
       </v-card>
     </v-dialog>
 
-    <v-dialog v-model="letter.open" max-width="420">
+    <v-dialog v-model="letter.open" max-width="560">
       <v-card title="Generate letter">
         <v-card-text>
           <v-radio-group v-model="letter.type">
@@ -892,6 +910,24 @@ const personalRows = computed(() => {
           <p class="text-caption">
             Generated with the institution branding and stored in the employee's documents.
           </p>
+          <DraftWithAiButton
+            :kind="`${letter.type}_letter`"
+            :variables="aiLetterVars"
+            label="Or draft a custom letter with AI"
+            @drafted="aiLetter = $event"
+          />
+          <template v-if="aiLetter">
+            <v-text-field v-model="aiLetter.subject" label="Subject" class="mt-3" />
+            <v-textarea v-model="aiLetter.body" label="Draft" rows="8" auto-grow />
+            <v-btn
+              size="small"
+              variant="text"
+              prepend-icon="mdi-content-copy"
+              @click="copyAiLetter"
+            >
+              Copy
+            </v-btn>
+          </template>
         </v-card-text>
         <v-card-actions>
           <v-spacer />

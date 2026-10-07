@@ -14,3 +14,4 @@ import './modules/employees/employees.registrations';
 import './modules/students/students.registrations';
 import './modules/attendance/attendance.registrations';
 import './modules/payroll/payroll.registrations';
+import './modules/ai/ai.registrations';

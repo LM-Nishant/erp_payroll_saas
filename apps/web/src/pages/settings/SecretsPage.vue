@@ -16,7 +16,7 @@ const canManage = computed(() => auth.can('secret.manage'));
 
 const dialog = ref(false);
 const rotating = ref<SecretDto | null>(null);
-const form = reactive({ kind: 'smtp', name: 'default', description: '', value: '' });
+const form = reactive({ kind: 'smtp', name: 'default', description: '', value: '', metadata: '' });
 
 async function load() {
   loading.value = true;
@@ -32,7 +32,13 @@ onMounted(load);
 
 function openCreate() {
   rotating.value = null;
-  Object.assign(form, { kind: 'smtp', name: 'default', description: '', value: '' });
+  Object.assign(form, {
+    kind: 'smtp',
+    name: 'default',
+    description: '',
+    value: '',
+    metadata: '',
+  });
   dialog.value = true;
 }
 function openRotate(s: SecretDto) {
@@ -57,6 +63,7 @@ async function submit() {
           name: form.name,
           description: form.description || null,
           value: form.value,
+          metadata: form.metadata.trim() ? (JSON.parse(form.metadata) as object) : null,
         }),
       });
     }
@@ -127,6 +134,13 @@ const headers = [
           <v-text-field v-model="form.kind" label="Kind (e.g. smtp, sms, ai.openai)" />
           <v-text-field v-model="form.name" label="Name" />
           <v-text-field v-model="form.description" label="Description" />
+          <v-textarea
+            v-model="form.metadata"
+            label="Metadata (JSON, optional — non-secret)"
+            placeholder='{"model": "gpt-4o-mini", "baseUrl": "https://api.openai.com/v1"}'
+            rows="2"
+            auto-grow
+          />
         </template>
         <v-text-field
           v-model="form.value"

@@ -145,3 +145,12 @@ The foundation was built as an 8-PR stack:
 - real Form 16 generation (currently a placeholder PDF);
 - full income-tax declarations and proofs;
 - bank-specific payment file formats.
+
+## AI assistant (demo)
+
+The `ai` module works out of the box with a deterministic **mock** provider (no keys needed).
+Seed demo AI settings and conversations against a running API with
+`API_URL=http://127.0.0.1:3100 node scripts/demo/seed-ai.mjs`. To use OpenAI / Azure OpenAI / any
+OpenAI-compatible endpoint, add a secret of kind `ai.openai` (value = API key, optional metadata
+`{"model":"gpt-4o-mini","baseUrl":"…"}`) on the Secrets page, then set provider `openai` and enable
+data sharing on **AI settings**. See docs/ARCHITECTURE.md §16.

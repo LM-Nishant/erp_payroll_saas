@@ -123,6 +123,21 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'integration.view',
     },
     { title: 'Secrets', icon: 'mdi-key-chain', to: '/group/secrets', permission: 'secret.view' },
+    { title: 'AI tools', icon: 'mdi-robot', to: '/group/ai', permission: 'ai.use', feature: 'ai' },
+    {
+      title: 'AI settings',
+      icon: 'mdi-robot-outline',
+      to: '/group/ai/settings',
+      permission: 'ai.manage',
+      feature: 'ai',
+    },
+    {
+      title: 'AI usage',
+      icon: 'mdi-chart-box-outline',
+      to: '/group/ai/usage',
+      permission: 'ai.view_usage',
+      feature: 'ai',
+    },
   ],
   institution: [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/institution' },
@@ -284,6 +299,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'document.view',
       feature: 'documents',
     },
+    { title: 'AI tools', icon: 'mdi-robot', to: '/hr/ai', permission: 'ai.use', feature: 'ai' },
   ],
   employee: [
     { title: 'Home', icon: 'mdi-account', to: '/employee' },

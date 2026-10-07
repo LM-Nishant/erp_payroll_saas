@@ -175,6 +175,11 @@ model Organization {
   loans                     Loan[]
   loanInstallments          LoanInstallment[]
   reimbursementClaims       ReimbursementClaim[]
+  // AI
+  aiSettings                AiSetting[]
+  aiConversations           AiConversation[]
+  aiMessages                AiMessage[]
+  aiUsageLogs               AiUsageLog[]
 
   @@map("organizations")
 }
@@ -3584,4 +3589,91 @@ model ReimbursementClaim {
 
   @@index([organizationId, employeeId, status])
   @@map("reimbursement_claims")
+}
+
+// ===== AI =====
+
+/// Per-organization AI gateway settings (provider, model, enabled AI features, data sharing).
+model AiSetting {
+  id                  String   @id @default(uuid()) @db.Char(36)
+  organizationId      String   @map("organization_id") @db.Char(36)
+  enabled             Boolean  @default(true)
+  provider            String   @default("mock") @db.VarChar(16)
+  defaultModel        String   @default("gpt-4o-mini") @map("default_model") @db.VarChar(100)
+  maxTokensPerRequest Int      @default(1024) @map("max_tokens_per_request")
+  temperature         Decimal  @default(0.2) @db.Decimal(3, 2)
+  enabledFeatures     Json     @map("enabled_features")
+  dataSharing         Boolean  @default(false) @map("data_sharing")
+  updatedByUserId     String?  @map("updated_by_user_id") @db.Char(36)
+  createdAt           DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId])
+  @@map("ai_settings")
+}
+
+/// A user's private AI conversation (assistant chat). Soft-deleted by its owner.
+model AiConversation {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  userId         String    @map("user_id") @db.Char(36)
+  feature        String    @db.VarChar(32)
+  title          String    @db.VarChar(200)
+  messageCount   Int       @default(0) @map("message_count")
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  messages     AiMessage[]
+
+  @@index([organizationId, userId, deletedAt, updatedAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  conversationId String   @map("conversation_id") @db.Char(36)
+  role           String   @db.VarChar(16)
+  content        String   @db.Text
+  toolCalls      Json?    @map("tool_calls")
+  totalTokens    Int      @default(0) @map("total_tokens")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  conversation AiConversation @relation(fields: [conversationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, conversationId, createdAt])
+  @@map("ai_messages")
+}
+
+/// One row per AI gateway call. Prompts are stored REDACTED + truncated; never secrets.
+model AiUsageLog {
+  id               String   @id @default(uuid()) @db.Char(36)
+  organizationId   String   @map("organization_id") @db.Char(36)
+  userId           String?  @map("user_id") @db.Char(36)
+  feature          String   @db.VarChar(32)
+  provider         String   @db.VarChar(16)
+  model            String   @db.VarChar(100)
+  promptTokens     Int      @default(0) @map("prompt_tokens")
+  completionTokens Int      @default(0) @map("completion_tokens")
+  totalTokens      Int      @default(0) @map("total_tokens")
+  latencyMs        Int      @default(0) @map("latency_ms")
+  status           String   @db.VarChar(16)
+  errorCode        String?  @map("error_code") @db.VarChar(64)
+  promptRedacted   String?  @map("prompt_redacted") @db.VarChar(1000)
+  conversationId   String?  @map("conversation_id") @db.Char(36)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, createdAt])
+  @@index([organizationId, feature, createdAt])
+  @@index([organizationId, userId, createdAt])
+  @@map("ai_usage_logs")
 }
