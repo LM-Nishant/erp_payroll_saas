@@ -168,6 +168,24 @@ export class PdfKitRenderer implements PdfRenderer {
       case 'spacer':
         doc.moveDown(block.size ?? 1);
         break;
+      case 'image': {
+        const w = Math.min(block.width ?? 140, width);
+        if (doc.y + w + 30 > doc.page.height - MARGIN) doc.addPage();
+        const x = block.align === 'left' ? MARGIN : MARGIN + (width - w) / 2;
+        const y = doc.y;
+        doc.image(block.data, x, y, { width: w });
+        doc.y = y + w + 4;
+        if (block.caption) {
+          doc.font('Helvetica').fontSize(9).fillColor(MUTED);
+          doc.text(block.caption, MARGIN, doc.y, {
+            width,
+            align: block.align === 'left' ? 'left' : 'center',
+          });
+        }
+        doc.x = MARGIN;
+        doc.moveDown(0.5);
+        break;
+      }
     }
   }
 

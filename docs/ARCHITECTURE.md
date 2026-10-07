@@ -222,6 +222,25 @@ await authorize(principal, 'department.update', hierarchyResource.department(bef
 - Background/system code that must act inside a tenant with platform authority uses
   `runAsPlatform({ organizationId, reason }, fn)` — always audited (`platform.run_as`).
 
+#### Organization onboarding & lifecycle (`core/platform/organizations.ts`)
+
+Platform admins manage tenants under `/api/v1/platform/organizations` (`platform.organization.view`
+to read, `platform.organization.manage` to write; UI: Platform → Organizations):
+
+- `POST /` `{ name, slug, planId, subscriptionStatus: TRIAL|ACTIVE, owner: { name, email, role } }`:
+  creates the organization, provisions default roles (`provisionOrganizationRoles`) and the plan
+  subscription (`provisionOrganizationSubscription`), then invites the first owner
+  (`group_owner` or `institution_owner`, organization scope) via `runAsPlatform` +
+  `userService.create`. The invite token goes by e-mail and is never returned. The slug must be
+  unique (409), and the plan must be ACTIVE (422).
+- `GET /`, `GET /:id` (counts and owners), `PATCH /:id` `{ name, reason }`,
+  `POST /:id/owners` (invite another owner).
+- `POST /:id/status` `{ status: ACTIVE|SUSPENDED|ARCHIVED, reason }`. A non-ACTIVE status revokes
+  every session of the org, and tenant requests then get 403 `TENANT_INACTIVE`.
+- Every change is audited in the target org with `actorType: 'platform'`
+  (`organization.create|update|suspend|activate|archive`). Subscription, add-ons and limit
+  overrides use the existing `/platform/organizations/:id/subscription` endpoints.
+
 ### 5.5 Rules for later layers
 
 1. Declare permissions in `@erp/shared` and add them to default roles; guard every route with
@@ -245,8 +264,16 @@ await authorize(principal, 'department.update', hierarchyResource.department(bef
   trial end, period dates, add-on features and limit overrides. A subscription **licenses
   modules** when ACTIVE, PAST_DUE, or TRIAL with `trialEndsAt` in the future. No subscription ⇒
   no modules and every limit is 0.
-- `Invoice` models billing minimally (amount, period, status `DRAFT|OPEN|PAID|OVERDUE|
-VOID`, paid-at); no payment gateway.
+- `Invoice`: period, line items, subtotal + GST (`taxRateBps`, default from settings) = amount,
+  status `DRAFT|OPEN|PAYMENT_SUBMITTED|PAID|OVERDUE|VOID`. Drafts are hidden from the tenant.
+- **Payments are manual UPI** (no gateway). `PlatformBillingSettings` (global single row:
+  seller name/address/GSTIN, UPI ID + payee, default GST %, terms; `GET|PUT
+/platform/billing-settings`). Tenants get a `upi://pay` link + QR (`GET
+/subscription/invoices/:id/upi`), download the PDF (`/pdf`, also on the platform side), and
+  report the UTR (`POST /subscription/invoices/:id/payment`, `billing.pay`) → `PAYMENT_SUBMITTED`.
+  The platform verifies in `GET /platform/invoices?status=PAYMENT_SUBMITTED` and PATCHes the
+  invoice to `PAID` (method/reference default to `UPI` / the submitted UTR) or back to `OPEN`.
+  Invoice PDFs are rendered in `core/features/invoicing.ts` (PDF `image` block for the QR).
 - Platform admins manage plans / subscriptions / invoices under `/api/v1/platform/{plans,
 organizations/:id/subscription, organizations/:id/invoices}` (`platform.plan.manage`,
   `platform.subscription.manage`). Tenant-scoped writes go through `runAsPlatform` and are

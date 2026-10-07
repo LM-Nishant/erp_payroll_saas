@@ -75,6 +75,8 @@ export interface ShiftAssignmentDto {
   id: string;
   institutionId: string;
   employeeId: string | null;
+  employeeCode?: string;
+  employeeName?: string;
   departmentId: string | null;
   shiftId: string;
   rotationShiftIds: string[] | null;
@@ -142,6 +144,8 @@ export interface AttendanceRecordDto {
 export interface AttendanceRegularizationDto {
   id: string;
   employeeId: string;
+  employeeCode?: string;
+  employeeName?: string;
   date: string;
   inMinute: number | null;
   outMinute: number | null;

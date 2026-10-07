@@ -1,11 +1,17 @@
 import {
   createInvoiceSchema,
+  createOrganizationSchema,
+  inviteOrganizationOwnerSchema,
+  listOrganizationsQuerySchema,
+  setOrganizationStatusSchema,
+  updateOrganizationSchema,
   createPlanSchema,
   idParamSchema,
   idSchema,
   listInvoicesQuerySchema,
+  platformBillingSettingsSchema,
+  platformInvoicesQuerySchema,
   listPlatformAuditLogsQuerySchema,
-  paginationQuerySchema,
   platformAccessSchema,
   platformReasonSchema,
   setSubscriptionSchema,
@@ -17,8 +23,20 @@ import { Router } from 'express';
 import { listAuditLogs } from '../../core/audit';
 import { currentPrincipal, requirePlatformPermission } from '../../core/authz';
 import { parseInput } from '../../core/http/validation';
-import { listOrganizations, openTenantAccess, resolveOrganizationSlug } from '../../core/platform';
-import { platformBillingService } from '../../core/features';
+import {
+  getPlatformOrganization,
+  listPlatformOrganizations,
+  openTenantAccess,
+  resolveOrganizationSlug,
+  setOrganizationStatus,
+  updateOrganizationRecord,
+} from '../../core/platform';
+import { createOrganization, inviteOrganizationOwner } from './organizations.service';
+import {
+  getBillingSettings,
+  platformBillingService,
+  updateBillingSettings,
+} from '../../core/features';
 
 const invoiceParamsSchema = z.object({ id: idSchema, invoiceId: idSchema });
 const actor = () => ({ userId: currentPrincipal().userId });
@@ -30,7 +48,58 @@ platformRouter.get(
   '/organizations',
   requirePlatformPermission('platform.organization.view'),
   async (req, res) => {
-    res.json(await listOrganizations(parseInput(paginationQuerySchema, req.query)));
+    res.json(await listPlatformOrganizations(parseInput(listOrganizationsQuerySchema, req.query)));
+  },
+);
+
+/** Onboard a tenant: organization, default roles, subscription and first owner invite. */
+platformRouter.post(
+  '/organizations',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const input = parseInput(createOrganizationSchema, req.body);
+    res.status(201).json({ data: await createOrganization(actor().userId, input) });
+  },
+);
+
+platformRouter.get(
+  '/organizations/:id',
+  requirePlatformPermission('platform.organization.view'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    res.json({ data: await getPlatformOrganization(id) });
+  },
+);
+
+platformRouter.patch(
+  '/organizations/:id',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    const input = parseInput(updateOrganizationSchema, req.body);
+    res.json({ data: await updateOrganizationRecord(actor().userId, id, input) });
+  },
+);
+
+/** Suspend / archive / re-activate. Non-active tenants get 403 TENANT_INACTIVE. */
+platformRouter.post(
+  '/organizations/:id/status',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    const input = parseInput(setOrganizationStatusSchema, req.body);
+    res.json({ data: await setOrganizationStatus(actor().userId, id, input) });
+  },
+);
+
+/** Invite an additional organization-wide owner (or retry a failed onboarding invite). */
+platformRouter.post(
+  '/organizations/:id/owners',
+  requirePlatformPermission('platform.organization.manage'),
+  async (req, res) => {
+    const { id } = parseInput(idParamSchema, req.params);
+    const input = parseInput(inviteOrganizationOwnerSchema, req.body);
+    res.status(201).json({ data: await inviteOrganizationOwner(actor().userId, id, input) });
   },
 );
 
@@ -146,6 +215,51 @@ platformRouter.patch(
     const input = parseInput(updateInvoiceSchema, req.body);
     res.json({
       data: await platformBillingService.updateInvoice(actor(), id, invoiceId, input),
+    });
+  },
+);
+
+platformRouter.get(
+  '/organizations/:id/invoices/:invoiceId/pdf',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (req, res) => {
+    const { id, invoiceId } = parseInput(invoiceParamsSchema, req.params);
+    const { number, pdf } = await platformBillingService.invoicePdf(id, invoiceId);
+    res
+      .type('application/pdf')
+      .setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`)
+      .send(pdf);
+  },
+);
+
+platformRouter.get(
+  '/invoices',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (req, res) => {
+    res.json(
+      await platformBillingService.listAllInvoices(
+        parseInput(platformInvoicesQuerySchema, req.query),
+      ),
+    );
+  },
+);
+
+// --- Platform billing settings (seller details, UPI ID, default GST) ---------------------
+
+platformRouter.get(
+  '/billing-settings',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (_req, res) => {
+    res.json({ data: await getBillingSettings() });
+  },
+);
+
+platformRouter.put(
+  '/billing-settings',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (req, res) => {
+    res.json({
+      data: await updateBillingSettings(parseInput(platformBillingSettingsSchema, req.body)),
     });
   },
 );

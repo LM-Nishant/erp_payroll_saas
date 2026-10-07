@@ -257,6 +257,7 @@ export const regularizationService = {
     const [rows, total] = await Promise.all([
       db.attendanceRegularization.findMany({
         where,
+        include: { employee: { select: { employeeCode: true, displayName: true } } },
         orderBy: { createdAt: 'desc' },
         ...toPageWindow(query),
       }),

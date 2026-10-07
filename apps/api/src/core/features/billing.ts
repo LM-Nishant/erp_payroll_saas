@@ -5,6 +5,8 @@ import {
   type CreateInvoiceInput,
   type CreatePlanInput,
   type ListInvoicesQuery,
+  type PlatformInvoiceDto,
+  type PlatformInvoicesQuery,
   type SetSubscriptionInput,
   type UpdateInvoiceInput,
   type UpdatePlanInput,
@@ -18,6 +20,8 @@ import { runAsPlatform } from '../platform';
 import { keyProvider, rewrapOrganizationSecrets } from '../secrets';
 import { currentOrganizationId } from '../tenancy/context';
 import { tenantDb, withTenant } from '../tenancy/tenant-db';
+import { resolveBranding } from '../branding';
+import { getBillingSettings, invoiceTotals, renderInvoicePdf } from './invoicing';
 import { invalidateLicenseCache, loadLicense } from './license';
 import { getAllLimitUsage } from './limits';
 import { toInvoiceDto, toPlanDto, toSubscriptionDto } from './mappers';
@@ -158,16 +162,30 @@ export const platformBillingService = {
       const db = tenantDb();
       const sub = await db.organizationSubscription.findFirst({ include: { plan: true } });
       if (!sub) throw new ValidationError('Organization has no subscription');
+      const settings = await getBillingSettings();
+      const lineItems = input.lineItems ?? [
+        {
+          description: `${sub.plan.name} subscription`,
+          quantity: 1,
+          unitCents: input.amountCents ?? sub.plan.priceCents,
+        },
+      ];
+      const taxRateBps = input.taxRateBps ?? settings.defaultTaxRateBps;
+      const totals = invoiceTotals(lineItems, taxRateBps);
       const invoice = await db.invoice.create({
         data: withTenant({
           subscriptionId: sub.id,
           number: invoiceNumber(),
           periodStart: input.periodStart,
           periodEnd: input.periodEnd,
-          amountCents: input.amountCents ?? sub.plan.priceCents,
+          lineItems: json(lineItems),
+          subtotalCents: totals.subtotalCents,
+          taxRateBps,
+          taxCents: totals.taxCents,
+          amountCents: totals.amountCents,
           currency: input.currency ?? sub.plan.currency,
-          status: 'OPEN' as const,
-          issuedAt: new Date(),
+          status: input.status,
+          issuedAt: input.status === 'OPEN' ? new Date() : null,
           dueAt: input.dueAt,
           notes: input.notes ?? null,
         }),
@@ -195,10 +213,23 @@ export const platformBillingService = {
       const before = await db.invoice.findFirst({ where: { id: invoiceId } });
       if (!before) throw new NotFoundError('Invoice');
       const { reason, ...fields } = input;
+      if (before.status === 'VOID' && fields.status !== 'VOID')
+        throw new ValidationError('A void invoice cannot be reopened');
+      const paid = fields.status === 'PAID';
       const after = await db.invoice.update({
         where: { id: invoiceId },
         data: {
           ...fields,
+          issuedAt: before.issuedAt ?? (fields.status !== 'DRAFT' ? new Date() : null),
+          // Verified UPI payment: default method/reference from the organization's submission.
+          paymentMethod: paid
+            ? (fields.paymentMethod ??
+              before.paymentMethod ??
+              (before.submittedReference ? 'UPI' : null))
+            : fields.paymentMethod,
+          paymentReference: paid
+            ? (fields.paymentReference ?? before.paymentReference ?? before.submittedReference)
+            : fields.paymentReference,
           paidAt:
             fields.status === 'PAID'
               ? (fields.paidAt ?? before.paidAt ?? new Date())
@@ -215,6 +246,38 @@ export const platformBillingService = {
       });
       return toInvoiceDto(after);
     });
+  },
+
+  /** All invoices across organizations (platform finance view). */
+  async listAllInvoices(query: PlatformInvoicesQuery) {
+    const where = {
+      ...(query.status ? { status: query.status } : {}),
+      ...(query.organizationId ? { organizationId: query.organizationId } : {}),
+      organization: { deletedAt: null },
+    };
+    const [rows, total] = await Promise.all([
+      prisma.invoice.findMany({
+        where,
+        include: { organization: { select: { id: true, name: true, slug: true } } },
+        orderBy: [{ createdAt: 'desc' }],
+        ...toPageWindow(query),
+      }),
+      prisma.invoice.count({ where }),
+    ]);
+    return toListResponse(
+      rows.map((r): PlatformInvoiceDto => ({ ...toInvoiceDto(r), organization: r.organization })),
+      total,
+      query,
+    );
+  },
+
+  async invoicePdf(organizationId: string, invoiceId: string) {
+    const inv = await prisma.invoice.findFirst({
+      where: { id: invoiceId, organizationId },
+      include: { subscription: { include: { plan: true } } },
+    });
+    if (!inv) throw new NotFoundError('Invoice');
+    return { number: inv.number, pdf: await invoicePdfFor(organizationId, inv) };
   },
 
   /** Master key rotation: re-wrap every organization's data keys to the active key version. */
@@ -235,3 +298,29 @@ export const platformBillingService = {
     };
   },
 };
+
+/** Invoice PDF with the organization (org-level branding contact details) as the buyer. */
+export async function invoicePdfFor(
+  organizationId: string,
+  inv: Parameters<typeof toInvoiceDto>[0] & { subscription?: { plan: { name: string } } | null },
+) {
+  const buyer = await resolveBranding(organizationId, {
+    scopeType: 'ORGANIZATION',
+    targetId: organizationId,
+    groupId: null,
+    institutionId: null,
+  });
+  const org = await prisma.organization.findUnique({
+    where: { id: organizationId },
+    select: { name: true },
+  });
+  return renderInvoicePdf(
+    toInvoiceDto(inv),
+    {
+      name: buyer.displayName || org?.name || 'Customer',
+      address: buyer.address,
+      email: buyer.contactEmail,
+    },
+    inv.subscription?.plan.name ?? null,
+  );
+}

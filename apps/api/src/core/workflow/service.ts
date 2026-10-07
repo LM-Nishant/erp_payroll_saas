@@ -381,6 +381,43 @@ export const workflowInstancesService = {
     return detail(row, role);
   },
 
+  /**
+   * Active organization members a pending approver can delegate the current step to, searched by
+   * name or email. Only the current step's pending assignees may look up delegates.
+   */
+  async delegateCandidates(id: string, search: string) {
+    const { row } = await findVisibleInstance(id);
+    const open = await loadOpen(row.id);
+    const userId = currentPrincipal().userId;
+    const db = tenantDb();
+    const assignee =
+      open?.step && userId
+        ? await db.workflowStepAssignee.findFirst({
+            where: { stepInstanceId: open.step.id, userId, status: 'PENDING' },
+            select: { id: true },
+          })
+        : null;
+    if (!assignee) {
+      throw new AppError(403, 'NOT_AN_APPROVER', 'You are not an approver of the current step');
+    }
+    const term = search.trim();
+    const rows = await db.organizationMembership.findMany({
+      where: {
+        status: 'ACTIVE',
+        userId: { not: userId! },
+        user: {
+          status: 'ACTIVE',
+          deletedAt: null,
+          ...(term ? { OR: [{ name: { contains: term } }, { email: { contains: term } }] } : {}),
+        },
+      },
+      select: { user: { select: { id: true, name: true, email: true } } },
+      orderBy: { user: { name: 'asc' } },
+      take: 20,
+    });
+    return rows.map((r) => r.user);
+  },
+
   async act(id: string, input: WorkflowActInput) {
     const { row, role } = await findVisibleInstance(id);
     const open = await loadOpen(row.id);

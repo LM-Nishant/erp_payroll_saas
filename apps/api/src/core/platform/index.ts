@@ -1,4 +1,3 @@
-import type { PaginationQuery } from '@erp/shared';
 import { recordAudit } from '../audit/audit';
 import { createPrincipal, runWithPrincipal, type Principal } from '../authz/principal';
 import { PLATFORM_ROLES } from '../authz/default-roles';
@@ -6,7 +5,6 @@ import { createSession, issueTokens } from '../auth/sessions';
 import { env } from '../config/env';
 import { prisma } from '../db/prisma';
 import { ForbiddenError, NotFoundError, ValidationError } from '../http/errors';
-import { toListResponse, toPageWindow } from '../http/pagination';
 import { runWithTenant } from '../tenancy/context';
 
 /**
@@ -14,25 +12,6 @@ import { runWithTenant } from '../tenancy/context';
  * must open an audited tenant-access session (HTTP) or use `runAsPlatform` (server code),
  * both of which require a reason and always write an audit record.
  */
-
-export async function listOrganizations(query: PaginationQuery) {
-  const where = {
-    deletedAt: null,
-    ...(query.search
-      ? { OR: [{ name: { contains: query.search } }, { slug: { contains: query.search } }] }
-      : {}),
-  };
-  const [rows, total] = await prisma.$transaction([
-    prisma.organization.findMany({
-      where,
-      orderBy: { name: 'asc' },
-      select: { id: true, slug: true, name: true, status: true, createdAt: true },
-      ...toPageWindow(query),
-    }),
-    prisma.organization.count({ where }),
-  ]);
-  return toListResponse(rows, total, query);
-}
 
 function assertReason(reason: string) {
   if (reason.trim().length < 10) {
@@ -133,3 +112,4 @@ export async function resolveOrganizationSlug(slug: string): Promise<string> {
   if (!org) throw new NotFoundError('Organization');
   return org.id;
 }
+export * from './organizations';

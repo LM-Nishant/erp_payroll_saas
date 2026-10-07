@@ -59,6 +59,7 @@ export const PERMISSIONS = {
   // Subscription, module licensing, branding, secrets
   'subscription.view': 'View the subscription plan, limits and usage',
   'billing.view': 'View subscription invoices and payment status',
+  'billing.pay': 'Report UPI payments (UTR) against subscription invoices',
   'feature.view': 'View enabled modules / features',
   'feature.manage': 'Enable or disable licensed modules per group / institution',
   'branding.view': 'View branding settings',

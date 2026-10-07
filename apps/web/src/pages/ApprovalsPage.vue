@@ -6,7 +6,7 @@ import type {
   WorkflowInstanceDetailDto,
   WorkflowInstanceDto,
 } from '@erp/shared';
-import { onMounted, reactive, ref } from 'vue';
+import { onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
 
 /** Approvals inbox (steps waiting on me), my requests, and the full instance history. */
@@ -17,7 +17,32 @@ const loading = ref(false);
 const error = ref<string | null>(null);
 
 const detail = ref<WorkflowInstanceDetailDto | null>(null);
-const form = reactive({ comment: '', delegateToUserId: '' });
+const form = reactive({ comment: '', delegateToUserId: null as string | null });
+
+interface DelegateUser {
+  id: string;
+  name: string;
+  email: string;
+}
+const delegates = ref<DelegateUser[]>([]);
+const delegateSearch = ref('');
+let delegateTimer: ReturnType<typeof setTimeout> | undefined;
+async function loadDelegates(term: string) {
+  if (!detail.value?.allowedActions.includes('delegate')) return;
+  const params = new URLSearchParams();
+  if (term.trim()) params.set('search', term.trim());
+  delegates.value = await apiFetch<{ data: DelegateUser[] }>(
+    `/api/v1/workflows/instances/${detail.value.id}/delegates?${params}`,
+  )
+    .then((r) => r.data)
+    .catch(() => []);
+}
+watch(delegateSearch, (term) => {
+  const picked = delegates.value.find((u) => u.id === form.delegateToUserId);
+  if (picked && term === `${picked.name} (${picked.email})`) return;
+  clearTimeout(delegateTimer);
+  delegateTimer = setTimeout(() => void loadDelegates(term ?? ''), 250);
+});
 
 async function load() {
   loading.value = true;
@@ -44,10 +69,12 @@ function onRow(_e: unknown, row: { item: WorkflowInstanceDto }) {
 }
 
 async function open(id: string) {
-  Object.assign(form, { comment: '', delegateToUserId: '' });
+  Object.assign(form, { comment: '', delegateToUserId: null });
+  delegates.value = [];
   detail.value = (
     await apiFetch<{ data: WorkflowInstanceDetailDto }>(`/api/v1/workflows/instances/${id}`)
   ).data;
+  await loadDelegates('');
 }
 
 async function act(action: WorkflowActionType | 'cancel' | 'resubmit') {
@@ -156,11 +183,18 @@ const headers = [
         </v-timeline>
         <template v-if="detail.allowedActions.length">
           <v-textarea v-model="form.comment" label="Comment" rows="2" auto-grow class="mt-2" />
-          <v-text-field
+          <v-autocomplete
             v-if="detail.allowedActions.includes('delegate')"
             v-model="form.delegateToUserId"
-            label="Delegate to user id"
+            v-model:search="delegateSearch"
+            :items="delegates"
+            :item-title="(u: DelegateUser) => `${u.name} (${u.email})`"
+            item-value="id"
+            label="Delegate to"
+            placeholder="Type a name or email"
             density="compact"
+            clearable
+            no-filter
           />
         </template>
       </v-card-text>

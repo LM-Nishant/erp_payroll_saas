@@ -723,6 +723,8 @@ enum SubscriptionStatus {
 enum InvoiceStatus {
   DRAFT
   OPEN
+  /// The organization reported a UPI payment (UTR); awaiting platform verification.
+  PAYMENT_SUBMITTED
   PAID
   OVERDUE
   VOID
@@ -778,23 +780,34 @@ model OrganizationSubscription {
 
 /// Subscription invoice. No payment gateway yet — `status` doubles as the payment status.
 model Invoice {
-  id               String        @id @default(uuid()) @db.Char(36)
-  organizationId   String        @map("organization_id") @db.Char(36)
-  subscriptionId   String        @map("subscription_id") @db.Char(36)
-  number           String        @unique @db.VarChar(40)
-  periodStart      DateTime      @map("period_start") @db.DateTime(3)
-  periodEnd        DateTime      @map("period_end") @db.DateTime(3)
-  amountCents      Int           @map("amount_cents")
-  currency         String        @db.Char(3)
-  status           InvoiceStatus @default(OPEN)
-  issuedAt         DateTime?     @map("issued_at") @db.DateTime(3)
-  dueAt            DateTime      @map("due_at") @db.DateTime(3)
-  paidAt           DateTime?     @map("paid_at") @db.DateTime(3)
-  paymentMethod    String?       @map("payment_method") @db.VarChar(64)
-  paymentReference String?       @map("payment_reference") @db.VarChar(128)
-  notes            String?       @db.VarChar(1000)
-  createdAt        DateTime      @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  id                 String        @id @default(uuid()) @db.Char(36)
+  organizationId     String        @map("organization_id") @db.Char(36)
+  subscriptionId     String        @map("subscription_id") @db.Char(36)
+  number             String        @unique @db.VarChar(40)
+  periodStart        DateTime      @map("period_start") @db.DateTime(3)
+  periodEnd          DateTime      @map("period_end") @db.DateTime(3)
+  amountCents        Int           @map("amount_cents")
+  currency           String        @db.Char(3)
+  status             InvoiceStatus @default(OPEN)
+  issuedAt           DateTime?     @map("issued_at") @db.DateTime(3)
+  dueAt              DateTime      @map("due_at") @db.DateTime(3)
+  paidAt             DateTime?     @map("paid_at") @db.DateTime(3)
+  paymentMethod      String?       @map("payment_method") @db.VarChar(64)
+  paymentReference   String?       @map("payment_reference") @db.VarChar(128)
+  notes              String?       @db.VarChar(1000)
+  /// InvoiceLineItem[] — `{description, quantity, unitCents}`; null for legacy single-amount invoices.
+  lineItems          Json?         @map("line_items")
+  subtotalCents      Int           @default(0) @map("subtotal_cents")
+  /// Tax rate in basis points (1800 = 18% GST).
+  taxRateBps         Int           @default(0) @map("tax_rate_bps")
+  taxCents           Int           @default(0) @map("tax_cents")
+  /// Payment reported by the organization (UPI UTR), pending platform verification.
+  submittedReference String?       @map("submitted_reference") @db.VarChar(128)
+  submittedNote      String?       @map("submitted_note") @db.VarChar(500)
+  submittedAt        DateTime?     @map("submitted_at") @db.DateTime(3)
+  submittedByUserId  String?       @map("submitted_by_user_id") @db.Char(36)
+  createdAt          DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt          DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
 
   organization Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   subscription OrganizationSubscription @relation(fields: [subscriptionId], references: [id], onDelete: Restrict)
@@ -802,6 +815,23 @@ model Invoice {
   @@index([organizationId, status])
   @@index([subscriptionId])
   @@map("invoices")
+}
+
+/// Platform seller details printed on invoices and the UPI payee (single row, id = "default").
+model PlatformBillingSettings {
+  id                String   @id @db.VarChar(36)
+  sellerName        String   @map("seller_name") @db.VarChar(200)
+  sellerAddress     String?  @map("seller_address") @db.VarChar(1000)
+  gstin             String?  @db.VarChar(20)
+  contactEmail      String?  @map("contact_email") @db.VarChar(254)
+  contactPhone      String?  @map("contact_phone") @db.VarChar(40)
+  upiId             String?  @map("upi_id") @db.VarChar(100)
+  upiPayeeName      String?  @map("upi_payee_name") @db.VarChar(100)
+  defaultTaxRateBps Int      @default(1800) @map("default_tax_rate_bps")
+  invoiceTerms      String?  @map("invoice_terms") @db.VarChar(1000)
+  updatedAt         DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  @@map("platform_billing_settings")
 }
 
 /// Enable/disable a licensed module at org / group / institution level. Can never exceed the

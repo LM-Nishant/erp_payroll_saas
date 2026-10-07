@@ -113,6 +113,7 @@ const FINANCE = [
   'audit.view',
   'ai.use',
   'billing.view',
+  'billing.pay',
   'subscription.view',
 ] as PermissionCode[];
 

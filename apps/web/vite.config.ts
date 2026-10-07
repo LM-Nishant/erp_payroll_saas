@@ -9,10 +9,11 @@ export default defineConfig({
     alias: { '@': fileURLToPath(new URL('./src', import.meta.url)) },
   },
   server: {
-    port: 5173,
+    port: Number(process.env.WEB_PORT ?? 5173),
+    strictPort: true,
     proxy: {
-      '/api': 'http://localhost:3000',
-      '/health': 'http://localhost:3000',
+      '/api': process.env.API_PROXY_TARGET ?? 'http://localhost:3000',
+      '/health': process.env.API_PROXY_TARGET ?? 'http://localhost:3000',
     },
   },
   test: {

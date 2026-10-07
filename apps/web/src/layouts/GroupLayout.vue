@@ -3,5 +3,5 @@ import AppShell from '@/components/AppShell.vue';
 </script>
 
 <template>
-  <AppShell layout="group" title="Group Workspace" color="primary" />
+  <AppShell layout="group" title="Group Workspace" />
 </template>

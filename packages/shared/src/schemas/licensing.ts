@@ -81,13 +81,28 @@ export type SetSubscriptionInput = z.infer<typeof setSubscriptionSchema>;
 
 export const invoiceStatusSchema = z.enum(INVOICE_STATUSES);
 
+export const invoiceLineItemSchema = z
+  .object({
+    description: z.string().trim().min(1).max(300),
+    quantity: z.number().positive().max(1_000_000),
+    unitCents: z.number().int().min(0).max(10_000_000_000),
+  })
+  .strict();
+export type InvoiceLineItem = z.infer<typeof invoiceLineItemSchema>;
+
 export const createInvoiceSchema = z
   .object({
     periodStart: z.coerce.date(),
     periodEnd: z.coerce.date(),
     dueAt: z.coerce.date(),
-    /** Defaults to the plan price. */
+    /** Line items; when omitted a single line at `amountCents` (default: plan price) is used. */
+    lineItems: z.array(invoiceLineItemSchema).min(1).max(50).optional(),
+    /** Pre-tax amount for a single-line invoice. Defaults to the plan price. */
     amountCents: z.number().int().min(0).optional(),
+    /** Tax (GST) in basis points; defaults to the platform billing settings (1800 = 18%). */
+    taxRateBps: z.number().int().min(0).max(10_000).optional(),
+    /** DRAFT invoices are not visible to the organization until issued (status → OPEN). */
+    status: z.enum(['DRAFT', 'OPEN']).default('OPEN'),
     currency: currencySchema.optional(),
     notes: z.string().trim().max(1000).nullish(),
     reason: reasonSchema,
@@ -110,6 +125,60 @@ export const updateInvoiceSchema = z
   })
   .strict();
 export type UpdateInvoiceInput = z.infer<typeof updateInvoiceSchema>;
+
+/** Organization reports a UPI payment against an invoice (verified by the platform). */
+export const submitInvoicePaymentSchema = z
+  .object({
+    /** UPI transaction reference (UTR / RRN). */
+    reference: z
+      .string()
+      .trim()
+      .regex(/^[A-Za-z0-9-]{6,64}$/, 'Enter the UPI transaction reference (UTR)'),
+    note: z.string().trim().max(500).nullish(),
+  })
+  .strict();
+export type SubmitInvoicePaymentInput = z.infer<typeof submitInvoicePaymentSchema>;
+
+export const platformBillingSettingsSchema = z
+  .object({
+    sellerName: z.string().trim().min(1).max(200),
+    sellerAddress: z.string().trim().max(1000).nullish(),
+    gstin: z
+      .string()
+      .trim()
+      .regex(/^[0-9A-Z]{15}$/, 'GSTIN must be 15 characters')
+      .nullish()
+      .or(z.literal('').transform(() => null)),
+    contactEmail: z
+      .string()
+      .trim()
+      .email()
+      .max(254)
+      .nullish()
+      .or(z.literal('').transform(() => null)),
+    contactPhone: z.string().trim().max(40).nullish(),
+    /** UPI VPA, e.g. `company@okhdfcbank`. */
+    upiId: z
+      .string()
+      .trim()
+      .regex(
+        /^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9.-]{1,63}$/,
+        'Enter a valid UPI ID (name@bank)',
+      )
+      .nullish()
+      .or(z.literal('').transform(() => null)),
+    upiPayeeName: z.string().trim().max(100).nullish(),
+    defaultTaxRateBps: z.number().int().min(0).max(10_000).default(1800),
+    invoiceTerms: z.string().trim().max(1000).nullish(),
+  })
+  .strict();
+export type PlatformBillingSettingsInput = z.infer<typeof platformBillingSettingsSchema>;
+
+export const platformInvoicesQuerySchema = paginationQuerySchema
+  .omit({ search: true })
+  .extend({ status: invoiceStatusSchema.optional(), organizationId: idSchema.optional() })
+  .strict();
+export type PlatformInvoicesQuery = z.infer<typeof platformInvoicesQuerySchema>;
 
 export const listInvoicesQuerySchema = paginationQuerySchema
   .omit({ search: true })

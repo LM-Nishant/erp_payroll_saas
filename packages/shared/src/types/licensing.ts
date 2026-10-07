@@ -62,7 +62,44 @@ export interface InvoiceDto {
   paymentMethod: string | null;
   paymentReference: string | null;
   notes: string | null;
+  lineItems: Array<{ description: string; quantity: number; unitCents: number }>;
+  subtotalCents: number;
+  taxRateBps: number;
+  taxCents: number;
+  submittedReference: string | null;
+  submittedNote: string | null;
+  submittedAt: string | null;
   createdAt: string;
+}
+
+/** Platform-wide invoice row (includes the organization). */
+export interface PlatformInvoiceDto extends InvoiceDto {
+  organization: { id: string; name: string; slug: string };
+}
+
+export interface PlatformBillingSettingsDto {
+  sellerName: string;
+  sellerAddress: string | null;
+  gstin: string | null;
+  contactEmail: string | null;
+  contactPhone: string | null;
+  upiId: string | null;
+  upiPayeeName: string | null;
+  defaultTaxRateBps: number;
+  invoiceTerms: string | null;
+  updatedAt: string | null;
+}
+
+/** UPI payment instructions for an invoice (`upi://pay` deep link + QR as a PNG data URL). */
+export interface InvoiceUpiPaymentDto {
+  invoiceId: string;
+  number: string;
+  amountCents: number;
+  currency: string;
+  upiId: string;
+  payeeName: string;
+  upiUri: string;
+  qrDataUrl: string;
 }
 
 export interface FeatureOverrideDto {

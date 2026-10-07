@@ -9,6 +9,7 @@ import {
 } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import { REQUEST_COLORS } from './timeOffice';
 import { label, todayIso } from './useHrOptions';
@@ -57,7 +58,7 @@ async function saveCancel() {
 // Apply on behalf
 const apply = reactive({
   open: false,
-  employeeId: '',
+  employeeId: null as string | null,
   leaveTypeId: null as string | null,
   fromDate: '',
   toDate: '',
@@ -77,7 +78,7 @@ async function saveApply() {
 }
 
 // Balances
-const employeeId = ref('');
+const employeeId = ref<string | null>(null);
 const asOf = ref(todayIso());
 const balances = ref<LeaveBalanceDto[]>([]);
 const ledger = ref<LeaveLedgerEntryDto[]>([]);
@@ -199,7 +200,12 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
 
   <template v-else>
     <div class="d-flex ga-2 align-center mb-4">
-      <v-text-field v-model="employeeId" label="Employee ID" density="compact" hide-details />
+      <EmployeePicker
+        v-model="employeeId"
+        density="compact"
+        hide-details
+        style="min-width: 280px"
+      />
       <v-text-field
         v-model="asOf"
         type="date"
@@ -275,7 +281,7 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
   <v-dialog v-model="apply.open" max-width="520">
     <v-card title="Apply leave on behalf">
       <v-card-text>
-        <v-text-field v-model="apply.employeeId" label="Employee ID *" />
+        <EmployeePicker v-model="apply.employeeId" label="Employee *" />
         <v-select
           v-model="apply.leaveTypeId"
           :items="types"

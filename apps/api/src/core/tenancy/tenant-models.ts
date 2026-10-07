@@ -153,4 +153,5 @@ export const GLOBAL_MODELS: ReadonlySet<string> = new Set([
   'Permission',
   // Subscription plan catalog (platform-managed).
   'SubscriptionPlan',
+  'PlatformBillingSettings',
 ]);

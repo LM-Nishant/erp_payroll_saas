@@ -19,12 +19,29 @@ export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee'
  */
 export const MENUS: Record<LayoutKey, MenuItem[]> = {
   platform: [
-    { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/platform' },
     {
       title: 'Organizations',
       icon: 'mdi-domain',
-      to: '/platform',
+      to: '/platform/organizations',
       permission: 'platform.organization.view',
+    },
+    {
+      title: 'Plans',
+      icon: 'mdi-tag-multiple',
+      to: '/platform/plans',
+      permission: 'platform.plan.manage',
+    },
+    {
+      title: 'Invoices',
+      icon: 'mdi-receipt-text',
+      to: '/platform/invoices',
+      permission: 'platform.subscription.manage',
+    },
+    {
+      title: 'Billing settings',
+      icon: 'mdi-qrcode',
+      to: '/platform/billing-settings',
+      permission: 'platform.subscription.manage',
     },
   ],
   group: [

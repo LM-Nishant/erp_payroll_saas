@@ -1,7 +1,8 @@
-import type { MeResponse, ResolvedBrandingDto, ScopeSummary } from '@erp/shared';
+import type { MeResponse, ResolvedBrandingDto, ScopeSummary, SignedUrlDto } from '@erp/shared';
 import { prisma } from '../db/prisma';
 import { effectivePermissions, type Principal } from '../authz/principal';
 import { resolveBranding } from '../branding';
+import { documentEngine } from '../documents';
 import { enabledFeaturesAnywhere } from '../features/features';
 import type { SettingTarget } from '../settings/target';
 import { getUserById } from './identity';
@@ -13,6 +14,18 @@ async function licensing(principal: Principal) {
     features: await enabledFeaturesAnywhere({ organizationId }),
     branding: await homeBranding(principal, organizationId),
   };
+}
+
+/**
+ * Signed URL of the principal's home logo for the app shell. Any member may read it (the logo is
+ * shown to everyone); issuing it is audited as `document.download`, so clients fetch it only when
+ * `branding.logoFileId` changes.
+ */
+export async function homeLogoUrl(principal: Principal): Promise<SignedUrlDto | null> {
+  if (!principal.organizationId) return null;
+  const branding = await homeBranding(principal, principal.organizationId);
+  if (!branding.logoFileId) return null;
+  return documentEngine.currentVersionUrl(branding.logoFileId, 'inline');
 }
 
 /**

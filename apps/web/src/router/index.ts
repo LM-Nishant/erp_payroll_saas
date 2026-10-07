@@ -30,7 +30,35 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/PlatformLayout.vue'),
     meta: { permission: 'platform.organization.view' },
     children: [
-      { path: '', name: 'platform-dashboard', ...placeholder('Platform dashboard') },
+      { path: '', name: 'platform-dashboard', redirect: { name: 'platform-organizations' } },
+      {
+        path: 'organizations',
+        name: 'platform-organizations',
+        component: () => import('@/pages/platform/OrganizationsPage.vue'),
+      },
+      {
+        path: 'organizations/:id',
+        name: 'platform-organization',
+        component: () => import('@/pages/platform/OrganizationDetailPage.vue'),
+      },
+      {
+        path: 'plans',
+        name: 'platform-plans',
+        meta: { permission: 'platform.plan.manage' },
+        component: () => import('@/pages/platform/PlansPage.vue'),
+      },
+      {
+        path: 'invoices',
+        name: 'platform-invoices',
+        meta: { permission: 'platform.subscription.manage' },
+        component: () => import('@/pages/platform/InvoicesPage.vue'),
+      },
+      {
+        path: 'billing-settings',
+        name: 'platform-billing-settings',
+        meta: { permission: 'platform.subscription.manage' },
+        component: () => import('@/pages/platform/BillingSettingsPage.vue'),
+      },
       {
         path: 'notifications',
         name: 'platform-notifications',

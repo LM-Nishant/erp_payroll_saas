@@ -76,6 +76,13 @@ curl localhost:3000/health/ready
 The web app (`pnpm dev:web`) has a login page (with the MFA step) and a permission-driven
 sidebar.
 
+**Creating an organization (tenant):** sign in as `platform@erp.test` and go to
+**Organizations → New organization**. Enter the name, slug, plan, trial or active status and the
+first owner. Roles and the subscription are provisioned automatically, and the owner gets an invite
+e-mail (with `MAIL_DRIVER=log` the link appears in the API log). On the organization page you can
+rename, suspend, activate or archive it, invite more owners, and configure the plan, add-on
+modules and limit overrides. The API equivalent is `POST /api/v1/platform/organizations`.
+
 With `TENANT_RESOLVER=dev-header` (dev/test only, refused in production) a request without a
 token may send `X-Dev-Organization: <slug>` and acts as an all-permissions dev principal.
 
