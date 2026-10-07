@@ -24,7 +24,7 @@ export interface ScopeSummary {
 
 export interface MeResponse {
   user: { id: string; email: string; name: string; mfaEnabled: boolean };
-  organization: { id: string; slug: string; name: string } | null;
+  organization: { id: string; slug: string; name: string; kind: 'EDUCATION' | 'COMPANY' } | null;
   /** Session opened by a platform admin through the audited tenant-access path. */
   platformAccess: boolean;
   platformRoles: string[];

@@ -27,6 +27,8 @@ export const toPunchDto = (p: AttendancePunch): AttendancePunchDto => ({
   deviceId: p.deviceId,
   latitude: n(p.latitude),
   longitude: n(p.longitude),
+  selfieDocumentId: p.selfieDocumentId,
+  faceDistance: n(p.faceDistance),
   createdAt: p.createdAt.toISOString(),
 });
 

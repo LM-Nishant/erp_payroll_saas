@@ -25,6 +25,12 @@ export interface EmployeeDto {
   designationId: string | null;
   reportingManagerId: string | null;
   employmentType: EmploymentType;
+  employeeTypeId: string | null;
+  employeeType: { id: string; name: string; code: string } | null;
+  /** True when a profile photo is on file (fetch it from `/employees/:id/photo-url`). */
+  hasPhoto: boolean;
+  /** True when the profile photo has a face descriptor for selfie punches. */
+  hasFaceDescriptor: boolean;
   status: EmployeeStatus;
   firstName: string;
   middleName: string | null;
@@ -191,6 +197,8 @@ export interface DesignationDto {
   name: string;
   groupId: string | null;
   institutionId: string | null;
+  departmentId: string | null;
+  department: { id: string; name: string; code: string } | null;
   category: EmploymentType | null;
   level: number | null;
   description: string | null;
@@ -231,4 +239,16 @@ export interface EmployeeImportJobDto {
 /** `GET /employees/me` — the caller's own record (sensitive values masked). */
 export interface MyEmployeeDto extends EmployeeDetailDto {
   pendingChangeRequests: EmployeeProfileChangeRequestDto[];
+}
+
+export interface EmployeeTypeDto {
+  id: string;
+  code: string;
+  name: string;
+  category: EmploymentType;
+  description: string | null;
+  status: 'ACTIVE' | 'INACTIVE';
+  employeeCount: number;
+  createdAt: string;
+  updatedAt: string;
 }

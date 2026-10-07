@@ -6,6 +6,11 @@ export const ORGANIZATION_STATUSES = ['ACTIVE', 'SUSPENDED', 'ARCHIVED'] as cons
 export type OrganizationStatus = (typeof ORGANIZATION_STATUSES)[number];
 export const organizationStatusSchema = z.enum(ORGANIZATION_STATUSES);
 
+/** EDUCATION shows school/college menus and labels; COMPANY uses corporate terminology. */
+export const ORGANIZATION_KINDS = ['EDUCATION', 'COMPANY'] as const;
+export type OrganizationKind = (typeof ORGANIZATION_KINDS)[number];
+export const organizationKindSchema = z.enum(ORGANIZATION_KINDS);
+
 /** Tenant roles a platform admin may grant to an organization's first owner. */
 export const ORGANIZATION_OWNER_ROLES = ['group_owner', 'institution_owner'] as const;
 
@@ -29,6 +34,7 @@ export const createOrganizationSchema = z
   .object({
     name: nameSchema,
     slug: slugSchema,
+    kind: organizationKindSchema.default('EDUCATION'),
     planId: idSchema,
     subscriptionStatus: z.enum(['TRIAL', 'ACTIVE']).default('TRIAL'),
     owner: inviteOrganizationOwnerSchema,
@@ -37,7 +43,7 @@ export const createOrganizationSchema = z
 export type CreateOrganizationInput = z.infer<typeof createOrganizationSchema>;
 
 export const updateOrganizationSchema = z
-  .object({ name: nameSchema, reason: platformReason })
+  .object({ name: nameSchema, kind: organizationKindSchema.optional(), reason: platformReason })
   .strict();
 export type UpdateOrganizationInput = z.infer<typeof updateOrganizationSchema>;
 
@@ -57,6 +63,7 @@ export interface PlatformOrganizationDto {
   slug: string;
   name: string;
   status: OrganizationStatus;
+  kind: OrganizationKind;
   createdAt: string;
   updatedAt: string;
 }

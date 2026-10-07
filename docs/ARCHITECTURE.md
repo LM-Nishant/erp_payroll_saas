@@ -807,6 +807,32 @@ transfer files and never persist clear values.
 4. Add exit/onboarding steps through `registerChecklistHook`, not by editing lifecycle code.
 5. Only act on employees in status ACTIVE / ON_NOTICE (ONBOARDING for joining-day flows).
 
+### 9.8 Company mode, employee types, department roles and face punch
+
+- **Organization kind.** `Organization.kind` is `EDUCATION` (default) or `COMPANY`. It is set by the
+  platform admin (create / edit organization) and exposed on `/me`. The web `useTerms()` helper
+  (`apps/web/src/lib/terms.ts`) and `visibleMenu(items, can, hasFeature, kind)` use it to relabel
+  Group → "Head office" and Institution → "Company", hide campus fields, and title the app
+  "HRMS & Payroll". Institution types add `COMPANY` and `BRANCH`.
+- **Employee types.** `EmployeeType` (org-level, `/employee-types`, `designation.view|manage`) is a
+  custom label mapped to a built-in `employmentType` category. Creating an employee with
+  `employeeTypeId` derives `employmentType`. A type in use cannot change category or be deleted
+  (409).
+- **Department roles.** `Designation.departmentId` (optional) ties a designation to a department of
+  the same institution (422 otherwise); `GET /designations?departmentId=` returns that department's
+  roles plus unscoped ones. The HR → Departments page manages departments and their roles.
+- **Profile photo.** `POST /employees/me/photo` and `/employees/:id/photo` (multipart `file` +
+  optional `faceDescriptor` JSON of 128 numbers) store the photo as an `employee` document
+  (`Employee.photoDocumentId`) and the face descriptor (`Employee.faceDescriptor`).
+  `GET …/photo-url` returns a signed URL; `GET /employees/me/face` returns the reference descriptor.
+- **Selfie punch.** When `AttendancePolicy.requireFaceMatch` is on, `POST /attendance/me/punch`
+  must be multipart with a selfie `file` and `faceDescriptor` (400 `SELFIE_REQUIRED`). The server
+  compares Euclidean distance with the stored descriptor (threshold 0.5): no reference →
+  409 `PROFILE_PHOTO_REQUIRED`, mismatch → 422 `FACE_MISMATCH`. The selfie is stored as a document
+  (`AttendancePunch.selfieDocumentId`, `faceDistance`). Descriptors are computed in the browser with
+  `@vladmandic/face-api` (models in `apps/web/public/models`). There is **no liveness detection**,
+  so a printed photo can pass; treat this as a deterrent, not strong biometric proof.
+
 ## 10. Attendance, leave, holidays & shifts (Layer 7)
 
 Modules `holidays`, `shifts`, `attendance` and `leave` (all under `/api/v1`, mounted with

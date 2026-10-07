@@ -60,6 +60,7 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'IntegrationCredential',
   // HR employee master (Layer 6)
   'Designation',
+  'EmployeeType',
   'EmployeeCodeSequence',
   'Employee',
   'EmployeeProfile',
@@ -135,6 +136,7 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'Role',
   'Document',
   'Designation',
+  'EmployeeType',
   'Employee',
 ]);
 

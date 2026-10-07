@@ -2,6 +2,7 @@
 import type { EmployeePersonalInput, MyEmployeeDto } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ApiError, apiFetch } from '@/api/client';
+import ProfilePhotoCard from '@/components/ProfilePhotoCard.vue';
 import { label, STATUS_COLORS } from './useHrOptions';
 
 /**
@@ -134,6 +135,7 @@ async function submit() {
         <span v-if="me.department"> · {{ me.department.name }}</span>
       </v-card-subtitle>
       <v-card-text>
+        <ProfilePhotoCard base-path="/api/v1/employees/me" editable class="mb-4" />
         <v-row>
           <v-col cols="12" md="6">
             <v-list density="compact">

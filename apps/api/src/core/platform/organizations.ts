@@ -23,6 +23,7 @@ const orgSelect = {
   slug: true,
   name: true,
   status: true,
+  kind: true,
   createdAt: true,
   updatedAt: true,
 } as const;
@@ -32,6 +33,7 @@ type OrgRow = {
   slug: string;
   name: string;
   status: OrganizationStatus;
+  kind: 'EDUCATION' | 'COMPANY';
   createdAt: Date;
   updatedAt: Date;
 };
@@ -41,6 +43,7 @@ const toDto = (o: OrgRow): PlatformOrganizationDto => ({
   slug: o.slug,
   name: o.name,
   status: o.status,
+  kind: o.kind,
   createdAt: o.createdAt.toISOString(),
   updatedAt: o.updatedAt.toISOString(),
 });
@@ -114,6 +117,7 @@ export async function createOrganizationRecord(
   input: {
     name: string;
     slug: string;
+    kind?: 'EDUCATION' | 'COMPANY';
     planId: string;
     subscriptionStatus: 'TRIAL' | 'ACTIVE';
   },
@@ -129,7 +133,7 @@ export async function createOrganizationRecord(
     throw new ConflictError(`Organization slug "${input.slug}" is already taken`);
   }
   const org = await prisma.organization.create({
-    data: { name: input.name, slug: input.slug, status: 'ACTIVE' },
+    data: { name: input.name, slug: input.slug, kind: input.kind ?? 'EDUCATION', status: 'ACTIVE' },
     select: orgSelect,
   });
   await provisionOrganizationRoles(org.id);
@@ -155,13 +159,14 @@ export async function createOrganizationRecord(
 export async function updateOrganizationRecord(
   actorUserId: string | null,
   id: string,
-  input: { name: string; reason: string },
+  input: { name: string; kind?: 'EDUCATION' | 'COMPANY'; reason: string },
 ): Promise<PlatformOrganizationDto> {
   const before = await loadOrg(id);
-  if (before.name === input.name) return toDto(before);
+  const kind = input.kind ?? before.kind;
+  if (before.name === input.name && before.kind === kind) return toDto(before);
   const org = await prisma.organization.update({
     where: { id },
-    data: { name: input.name },
+    data: { name: input.name, kind },
     select: orgSelect,
   });
   await recordAudit({
@@ -172,8 +177,8 @@ export async function updateOrganizationRecord(
     actorUserId,
     actorType: 'platform',
     reason: input.reason,
-    before: { name: before.name },
-    after: { name: org.name },
+    before: { name: before.name, kind: before.kind },
+    after: { name: org.name, kind: org.kind },
   });
   return toDto(org);
 }

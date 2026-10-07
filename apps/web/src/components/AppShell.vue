@@ -5,13 +5,22 @@ import { useRouter } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import NotificationBell from '@/components/NotificationBell.vue';
 import { MENUS, visibleMenu, type LayoutKey } from '@/navigation/menus';
+import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 
 const props = defineProps<{ layout: LayoutKey; title: string; color?: string }>();
 const auth = useAuthStore();
 const router = useRouter();
 const drawer = ref(true);
-const items = computed(() => visibleMenu(MENUS[props.layout], auth.can, auth.hasFeature));
+const items = computed(() =>
+  visibleMenu(MENUS[props.layout], auth.can, auth.hasFeature, auth.me?.organization?.kind),
+);
+const terms = useTerms();
+const shellTitle = computed(() =>
+  terms.value.isCompany
+    ? props.title.replace('Institution', 'Company').replace('Group', 'Head office')
+    : props.title,
+);
 
 // Signing a logo URL is audited, so refetch only when the resolved logo document changes.
 const logoUrl = ref<string | null>(null);
@@ -40,8 +49,8 @@ async function signOut() {
 <template>
   <v-navigation-drawer v-model="drawer">
     <v-list-item
-      :title="title"
-      :subtitle="auth.me?.branding?.displayName ?? auth.me?.organization?.name ?? 'Education ERP'"
+      :title="shellTitle"
+      :subtitle="auth.me?.branding?.displayName ?? auth.me?.organization?.name ?? terms.appName"
     >
       <template v-if="logoUrl" #prepend>
         <v-img :src="logoUrl" width="40" height="40" contain class="mr-3" />
@@ -60,7 +69,7 @@ async function signOut() {
   </v-navigation-drawer>
   <v-app-bar :color="color ?? 'primary'" density="comfortable">
     <v-app-bar-nav-icon @click="drawer = !drawer" />
-    <v-app-bar-title>{{ title }}</v-app-bar-title>
+    <v-app-bar-title>{{ shellTitle }}</v-app-bar-title>
     <v-chip v-if="auth.me?.platformAccess" class="mr-2" color="warning" size="small">
       platform access
     </v-chip>

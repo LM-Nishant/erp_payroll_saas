@@ -8,12 +8,14 @@ import {
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiDownload, apiFetch } from '@/api/client';
+import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import EmployeeFormDialog from './EmployeeFormDialog.vue';
 import { label, STATUS_COLORS, useHrOptions } from './useHrOptions';
 
 /** Employee list. The API returns only employees inside the caller's HR scope. */
 const auth = useAuthStore();
+const terms = useTerms();
 const router = useRouter();
 const { institutions, departments, loadBase, loadForInstitution } = useHrOptions();
 
@@ -139,7 +141,7 @@ const failedRows = computed(() => (job.value?.report ?? []).filter((r) => r.erro
 const headers = [
   { title: 'Code', key: 'employeeCode' },
   { title: 'Name', key: 'displayName' },
-  { title: 'Institution', key: 'institution', sortable: false },
+  { title: terms.value.institution, key: 'institution', sortable: false },
   { title: 'Department', key: 'department', sortable: false },
   { title: 'Designation', key: 'designation', sortable: false },
   { title: 'Type', key: 'employmentType' },
@@ -244,7 +246,15 @@ function openRow(_e: unknown, row: { item: EmployeeDto }) {
     <template #[`item.institution`]="{ item }">{{ item.institution?.name ?? '—' }}</template>
     <template #[`item.department`]="{ item }">{{ item.department?.name ?? '—' }}</template>
     <template #[`item.designation`]="{ item }">{{ item.designation?.name ?? '—' }}</template>
-    <template #[`item.employmentType`]="{ item }">{{ label(item.employmentType) }}</template>
+    <template #[`item.employmentType`]="{ item }">
+      {{ item.employeeType?.name ?? label(item.employmentType) }}
+    </template>
+    <template #[`item.displayName`]="{ item }">
+      <v-icon v-if="item.hasPhoto" size="small" color="success" class="mr-1" title="Has photo">
+        mdi-account-circle
+      </v-icon>
+      {{ item.displayName }}
+    </template>
     <template #[`item.status`]="{ item }">
       <v-chip size="small" :color="STATUS_COLORS[item.status]">{{ label(item.status) }}</v-chip>
     </template>

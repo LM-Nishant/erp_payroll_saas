@@ -12,7 +12,7 @@ import { label, useHrOptions } from './useHrOptions';
 
 /** Designation / position master and per-institution employee code numbering. */
 const auth = useAuthStore();
-const { institutions, loadBase } = useHrOptions();
+const { institutions, departments, loadBase, loadForInstitution } = useHrOptions();
 const items = ref<DesignationDto[]>([]);
 const sequences = ref<EmployeeCodeSequenceDto[]>([]);
 const loading = ref(false);
@@ -52,16 +52,19 @@ const dialog = reactive({
   code: '',
   name: '',
   institutionId: null as string | null,
+  departmentId: null as string | null,
   category: null as string | null,
   level: null as number | null,
 });
-function openDialog(d?: DesignationDto) {
+async function openDialog(d?: DesignationDto) {
+  await loadForInstitution(d?.institutionId ?? null);
   Object.assign(dialog, {
     open: true,
     id: d?.id ?? null,
     code: d?.code ?? '',
     name: d?.name ?? '',
     institutionId: d?.institutionId ?? null,
+    departmentId: d?.departmentId ?? null,
     category: d?.category ?? null,
     level: d?.level ?? null,
   });
@@ -71,6 +74,7 @@ async function save() {
     code: dialog.code.trim(),
     name: dialog.name.trim(),
     category: dialog.category,
+    departmentId: dialog.departmentId,
     level: dialog.level === null || (dialog.level as unknown) === '' ? null : Number(dialog.level),
   };
   try {
@@ -124,6 +128,7 @@ const headers = [
   { title: 'Code', key: 'code' },
   { title: 'Name', key: 'name' },
   { title: 'Scope', key: 'scope', sortable: false },
+  { title: 'Department', key: 'department', sortable: false },
   { title: 'Category', key: 'category' },
   { title: 'Level', key: 'level' },
   { title: 'Status', key: 'status' },
@@ -150,6 +155,7 @@ const categories = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value)
   </v-alert>
   <v-data-table :items="items" :headers="headers" :loading="loading">
     <template #[`item.scope`]="{ item }">{{ scopeOf(item) }}</template>
+    <template #[`item.department`]="{ item }">{{ item.department?.name ?? 'All' }}</template>
     <template #[`item.category`]="{ item }">
       {{ item.category ? label(item.category) : '—' }}
     </template>
@@ -219,6 +225,21 @@ const categories = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value)
           item-title="name"
           item-value="id"
           label="Institution (empty = organization-wide)"
+          clearable
+          @update:model-value="
+            (id: string | null) => {
+              dialog.departmentId = null;
+              loadForInstitution(id);
+            }
+          "
+        />
+        <v-autocomplete
+          v-model="dialog.departmentId"
+          :items="departments"
+          item-title="name"
+          item-value="id"
+          label="Department (empty = all departments)"
+          :disabled="!dialog.institutionId"
           clearable
         />
         <v-select v-model="dialog.category" :items="categories" label="Category" clearable />

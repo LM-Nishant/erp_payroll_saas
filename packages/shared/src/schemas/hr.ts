@@ -21,7 +21,17 @@ export const isoDateSchema = z
 const text = (max: number) => z.string().trim().max(max);
 const optionalText = (max: number) => text(max).nullish();
 
-export const EMPLOYMENT_TYPES = ['TEACHING', 'NON_TEACHING', 'CONTRACT', 'VISITING'] as const;
+export const EMPLOYMENT_TYPES = [
+  'TEACHING',
+  'NON_TEACHING',
+  'CONTRACT',
+  'VISITING',
+  'FULL_TIME',
+  'PART_TIME',
+  'INTERN',
+] as const;
+/** Base categories offered to company (non-education) organizations. */
+export const COMPANY_EMPLOYMENT_TYPES = ['FULL_TIME', 'PART_TIME', 'CONTRACT', 'INTERN'] as const;
 export const employmentTypeSchema = z.enum(EMPLOYMENT_TYPES);
 export type EmploymentType = z.infer<typeof employmentTypeSchema>;
 
@@ -233,7 +243,10 @@ export const createEmployeeSchema = z
     designationId: idSchema.nullish(),
     reportingManagerId: idSchema.nullish(),
     userId: idSchema.nullish(),
-    employmentType: employmentTypeSchema,
+    /** Custom employee type; when set, `employmentType` is derived from its category. */
+    employeeTypeId: idSchema.nullish(),
+    /** Required unless `employeeTypeId` is given. */
+    employmentType: employmentTypeSchema.optional(),
     /** New employees start as DRAFT (default) or ONBOARDING / ACTIVE directly. */
     status: z.enum(['DRAFT', 'ONBOARDING', 'ACTIVE']).default('DRAFT'),
     firstName: text(100).min(1),
@@ -264,6 +277,7 @@ export const updateEmployeeSchema = z
     designationId: idSchema.nullish(),
     reportingManagerId: idSchema.nullish(),
     userId: idSchema.nullish(),
+    employeeTypeId: idSchema.nullish(),
     employmentType: employmentTypeSchema.optional(),
     firstName: text(100).min(1).optional(),
     middleName: optionalText(100),
@@ -286,6 +300,7 @@ export const listEmployeesQuerySchema = paginationQuerySchema
     designationId: idSchema.optional(),
     status: employeeStatusSchema.optional(),
     employmentType: employmentTypeSchema.optional(),
+    employeeTypeId: idSchema.optional(),
   })
   .strict();
 export type ListEmployeesQuery = z.infer<typeof listEmployeesQuerySchema>;
@@ -422,6 +437,8 @@ export const createDesignationSchema = z
     name: nameSchema,
     groupId: idSchema.nullish(),
     institutionId: idSchema.nullish(),
+    /** Department the role belongs to (its institution is derived from the department). */
+    departmentId: idSchema.nullish(),
     category: employmentTypeSchema.nullish(),
     level: z.number().int().min(0).max(100).nullish(),
     description: optionalText(1000),
@@ -433,9 +450,35 @@ export const updateDesignationSchema = createDesignationSchema
   .partial()
   .strict();
 export const listDesignationsQuerySchema = paginationQuerySchema
-  .extend({ institutionId: idSchema.optional(), status: statusSchema.optional() })
+  .extend({
+    institutionId: idSchema.optional(),
+    /** Designations of this department plus those not tied to any department. */
+    departmentId: idSchema.optional(),
+    status: statusSchema.optional(),
+  })
   .strict();
 export type CreateDesignationInput = z.infer<typeof createDesignationSchema>;
+
+/* --------------------------------- Employee types --------------------------------------- */
+
+export const createEmployeeTypeSchema = z
+  .object({
+    code: codeSchema,
+    name: nameSchema,
+    category: employmentTypeSchema,
+    description: optionalText(1000),
+    status: statusSchema.default('ACTIVE'),
+  })
+  .strict();
+export const updateEmployeeTypeSchema = createEmployeeTypeSchema.partial().strict();
+export const listEmployeeTypesQuerySchema = paginationQuerySchema
+  .extend({ status: statusSchema.optional() })
+  .strict();
+export type CreateEmployeeTypeInput = z.infer<typeof createEmployeeTypeSchema>;
+export type UpdateEmployeeTypeInput = z.infer<typeof updateEmployeeTypeSchema>;
+
+/** Face descriptor (face-api.js, 128 floats) computed in the browser from a photo or selfie. */
+export const faceDescriptorSchema = z.array(z.number().finite().min(-2).max(2)).length(128);
 export type UpdateDesignationInput = z.infer<typeof updateDesignationSchema>;
 
 /** Employee code numbering for one institution (or the org default when null). */

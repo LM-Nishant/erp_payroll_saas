@@ -13,7 +13,7 @@ import {
 } from '../../core/authz';
 import { ConflictError, InvalidReferenceError, NotFoundError } from '../../core/http/errors';
 import { tenantDb, withTenant } from '../../core/tenancy';
-import { toDesignationDto } from './employees.mappers';
+import { designationInclude, toDesignationDto } from './employees.mappers';
 
 type ListQuery = z.infer<typeof listDesignationsQuerySchema>;
 
@@ -59,8 +59,18 @@ async function visible(d: Designation): Promise<boolean> {
   return inGroup > 0;
 }
 
-async function load(id: string): Promise<Designation> {
-  const d = await tenantDb().designation.findUnique({ where: { id } });
+async function departmentOf(id: string | null | undefined) {
+  if (!id) return null;
+  const dept = await tenantDb().department.findUnique({
+    where: { id },
+    select: { id: true, institutionId: true },
+  });
+  if (!dept) throw new InvalidReferenceError('departmentId', 'Department');
+  return dept;
+}
+
+async function load(id: string) {
+  const d = await tenantDb().designation.findUnique({ where: { id }, include: designationInclude });
   if (!d || !(await visible(d))) throw new NotFoundError('Designation');
   return d;
 }
@@ -70,6 +80,7 @@ const auditView = (d: Designation) => ({
   name: d.name,
   groupId: d.groupId,
   institutionId: d.institutionId,
+  departmentId: d.departmentId,
   category: d.category,
   level: d.level,
   status: d.status,
@@ -79,24 +90,26 @@ export const designationService = {
   async list(query: ListQuery): Promise<{ items: DesignationDto[]; total: number }> {
     const where: Prisma.DesignationWhereInput = {
       ...(query.status ? { status: query.status } : {}),
-      ...(query.institutionId
-        ? { OR: [{ institutionId: query.institutionId }, { institutionId: null }] }
-        : {}),
-      ...(query.search
-        ? {
-            AND: [
-              { OR: [{ name: { contains: query.search } }, { code: { contains: query.search } }] },
-            ],
-          }
-        : {}),
+      AND: [
+        ...(query.institutionId
+          ? [{ OR: [{ institutionId: query.institutionId }, { institutionId: null }] }]
+          : []),
+        ...(query.departmentId
+          ? [{ OR: [{ departmentId: query.departmentId }, { departmentId: null }] }]
+          : []),
+        ...(query.search
+          ? [{ OR: [{ name: { contains: query.search } }, { code: { contains: query.search } }] }]
+          : []),
+      ],
     };
     // Designation masters are small; filter per row for scope, then page in memory.
     const rows = await tenantDb().designation.findMany({
       where,
+      include: designationInclude,
       orderBy: [{ level: 'desc' }, { name: 'asc' }],
       take: 5000,
     });
-    const allowed: Designation[] = [];
+    const allowed: typeof rows = [];
     for (const d of rows) if (await visible(d)) allowed.push(d);
     const start = (query.page - 1) * query.pageSize;
     return {
@@ -109,7 +122,11 @@ export const designationService = {
     return toDesignationDto(await load(id));
   },
 
-  async create(input: CreateDesignationInput) {
+  async create(rawInput: CreateDesignationInput) {
+    const department = await departmentOf(rawInput.departmentId);
+    const input = department
+      ? { ...rawInput, institutionId: department.institutionId, groupId: null }
+      : rawInput;
     const resource = await resourceOf({
       groupId: input.institutionId ? null : (input.groupId ?? null),
       institutionId: input.institutionId ?? null,
@@ -125,11 +142,13 @@ export const designationService = {
         name: input.name,
         groupId: (resource.groupId as string | null | undefined) ?? null,
         institutionId: input.institutionId ?? null,
+        departmentId: department?.id ?? null,
         category: input.category ?? null,
         level: input.level ?? null,
         description: input.description ?? null,
         status: input.status,
       }),
+      include: designationInclude,
     });
     await audit.record({
       action: 'designation.create',
@@ -143,6 +162,19 @@ export const designationService = {
   async update(id: string, input: UpdateDesignationInput) {
     const before = await load(id);
     await authorize(currentPrincipal(), 'designation.manage', await resourceOf(before));
+    const department =
+      input.departmentId !== undefined ? await departmentOf(input.departmentId) : undefined;
+    if (department && before.institutionId && before.institutionId !== department.institutionId) {
+      throw new InvalidReferenceError('departmentId', 'Department');
+    }
+    if (department && !before.institutionId) {
+      // An org/group-wide role tied to a department becomes specific to that institution.
+      await authorize(
+        currentPrincipal(),
+        'designation.manage',
+        await resourceOf({ groupId: null, institutionId: department.institutionId }),
+      );
+    }
     if (input.code && input.code !== before.code) {
       const clash = await tenantDb().designation.findFirst({
         where: { code: input.code, id: { not: id } },
@@ -155,11 +187,14 @@ export const designationService = {
       data: {
         ...(input.code !== undefined ? { code: input.code } : {}),
         ...(input.name !== undefined ? { name: input.name } : {}),
+        ...(department !== undefined ? { departmentId: department?.id ?? null } : {}),
+        ...(department ? { institutionId: department.institutionId, groupId: null } : {}),
         ...(input.category !== undefined ? { category: input.category ?? null } : {}),
         ...(input.level !== undefined ? { level: input.level ?? null } : {}),
         ...(input.description !== undefined ? { description: input.description ?? null } : {}),
         ...(input.status !== undefined ? { status: input.status } : {}),
       },
+      include: designationInclude,
     });
     await audit.record({
       action: 'designation.update',

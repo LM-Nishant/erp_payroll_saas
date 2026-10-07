@@ -14,6 +14,8 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import EmployeeLoginCard from '@/components/EmployeeLoginCard.vue';
+import ProfilePhotoCard from '@/components/ProfilePhotoCard.vue';
 import { useAuthStore } from '@/stores/auth';
 import EmployeeFormDialog from './EmployeeFormDialog.vue';
 import MovementDialog from './MovementDialog.vue';
@@ -409,6 +411,12 @@ const personalRows = computed(() => {
   <template v-if="employee">
     <div class="d-flex align-center flex-wrap ga-2 mb-2">
       <v-btn icon="mdi-arrow-left" variant="text" :to="{ name: 'hr-employees' }" />
+      <ProfilePhotoCard
+        :key="employee.id"
+        :base-path="`/api/v1/employees/${employee.id}`"
+        :editable="auth.can('employee.update')"
+        :size="64"
+      />
       <div>
         <h2 class="text-h5">{{ employee.displayName }}</h2>
         <div class="text-medium-emphasis">
@@ -555,6 +563,9 @@ const personalRows = computed(() => {
                 </tbody>
               </v-table>
             </v-card>
+          </v-col>
+          <v-col cols="12" md="6">
+            <EmployeeLoginCard :employee="employee" @changed="loadEmployee" />
           </v-col>
         </v-row>
       </v-window-item>

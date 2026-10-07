@@ -60,6 +60,7 @@ const slugEdited = ref(false);
 const emptyForm = () => ({
   name: '',
   slug: '',
+  kind: 'EDUCATION' as 'EDUCATION' | 'COMPANY',
   planId: plans.value[0]?.id ?? '',
   subscriptionStatus: 'TRIAL' as 'TRIAL' | 'ACTIVE',
   ownerName: '',
@@ -119,6 +120,7 @@ async function create() {
       body: JSON.stringify({
         name: form.name,
         slug: form.slug,
+        kind: form.kind,
         planId: form.planId,
         subscriptionStatus: form.subscriptionStatus,
         owner: { name: form.ownerName, email: form.ownerEmail, role: form.ownerRole },
@@ -206,6 +208,15 @@ const headers = [
             hint="Used at login; cannot be changed later"
             persistent-hint
             @update:model-value="slugEdited = true"
+          />
+          <v-select
+            v-model="form.kind"
+            :items="[
+              { value: 'EDUCATION', title: 'Education (school / college / group)' },
+              { value: 'COMPANY', title: 'Company (HRMS & payroll)' },
+            ]"
+            label="Organization type"
+            class="mt-4"
           />
           <div class="d-flex ga-4 mt-4">
             <v-select

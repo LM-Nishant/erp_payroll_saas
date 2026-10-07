@@ -4,5 +4,5 @@ defineProps<{ title: string }>();
 
 <template>
   <h2 class="text-h5 mb-4">{{ title }}</h2>
-  <v-alert type="info" variant="tonal">Coming in a later layer.</v-alert>
+  <v-btn variant="tonal" prepend-icon="mdi-home" :to="{ name: 'home' }">Back to home</v-btn>
 </template>

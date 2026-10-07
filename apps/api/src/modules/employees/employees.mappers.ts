@@ -6,6 +6,7 @@ import type {
   EmployeeProfileChangeRequestDto,
   EmployeeSalaryRevisionDto,
   EmployeeSensitiveMaskedDto,
+  EmployeeTypeDto,
 } from '@erp/shared';
 import type {
   Designation,
@@ -14,6 +15,7 @@ import type {
   EmployeeMovement,
   EmployeeProfileChangeRequest,
   EmployeeSalaryHistory,
+  EmployeeType,
   Prisma,
 } from '@prisma/client';
 
@@ -42,6 +44,7 @@ export const employeeInclude = {
   campus: ref,
   department: ref,
   designation: ref,
+  employeeType: ref,
   reportingManager: { select: { id: true, employeeCode: true, displayName: true } },
 } satisfies Prisma.EmployeeInclude;
 
@@ -59,6 +62,10 @@ export function toEmployeeDto(e: EmployeeWithRefs): EmployeeDto {
     designationId: e.designationId,
     reportingManagerId: e.reportingManagerId,
     employmentType: e.employmentType,
+    employeeTypeId: e.employeeTypeId,
+    employeeType: e.employeeType,
+    hasPhoto: !!e.photoDocumentId,
+    hasFaceDescriptor: Array.isArray(e.faceDescriptor),
     status: e.status,
     firstName: e.firstName,
     middleName: e.middleName,
@@ -98,6 +105,7 @@ export function employeeAuditView(e: Employee) {
     designationId: e.designationId,
     reportingManagerId: e.reportingManagerId,
     employmentType: e.employmentType,
+    employeeTypeId: e.employeeTypeId,
     status: e.status,
     displayName: e.displayName,
     workEmail: e.workEmail,
@@ -190,18 +198,38 @@ export function toChangeRequestDto(
   };
 }
 
-export function toDesignationDto(d: Designation): DesignationDto {
+export const designationInclude = { department: ref } satisfies Prisma.DesignationInclude;
+
+export function toDesignationDto(
+  d: Designation & { department?: { id: string; name: string; code: string } | null },
+): DesignationDto {
   return {
     id: d.id,
     code: d.code,
     name: d.name,
     groupId: d.groupId,
     institutionId: d.institutionId,
+    departmentId: d.departmentId,
+    department: d.department ?? null,
     category: d.category,
     level: d.level,
     description: d.description,
     status: d.status,
     createdAt: d.createdAt.toISOString(),
     updatedAt: d.updatedAt.toISOString(),
+  };
+}
+
+export function toEmployeeTypeDto(t: EmployeeType, employeeCount = 0): EmployeeTypeDto {
+  return {
+    id: t.id,
+    code: t.code,
+    name: t.name,
+    category: t.category,
+    description: t.description,
+    status: t.status,
+    employeeCount,
+    createdAt: t.createdAt.toISOString(),
+    updatedAt: t.updatedAt.toISOString(),
   };
 }
