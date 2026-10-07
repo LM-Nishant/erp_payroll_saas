@@ -205,6 +205,42 @@ describe('calculateLeaveDays', () => {
       }).days,
     ).toBe(0.5);
   });
+
+  it('sandwiches only the configured day kinds', () => {
+    const weekly = calculateLeaveDays(cal, {
+      startHalf: false,
+      endHalf: false,
+      sandwich: 'WEEKLY_OFFS',
+    });
+    expect(weekly.days).toBe(4);
+    expect(weekly.breakdown.find((d) => d.date === '2026-03-16')?.sandwiched).toBe(false);
+    expect(
+      calculateLeaveDays(cal, { startHalf: false, endHalf: false, sandwich: 'HOLIDAYS' }).days,
+    ).toBe(3);
+    expect(
+      calculateLeaveDays(cal, { startHalf: false, endHalf: false, sandwich: 'NONE' }).days,
+    ).toBe(2);
+  });
+
+  it('applies the sandwich only from the minimum working days', () => {
+    const opts = { startHalf: false, endHalf: false, sandwich: 'BOTH' as const };
+    expect(calculateLeaveDays(cal, { ...opts, sandwichMinDays: 3 }).days).toBe(2);
+    expect(calculateLeaveDays(cal, { ...opts, sandwichMinDays: 2 }).days).toBe(5);
+  });
+
+  it('sandwiches a linked leading gap and keeps half days on the requested range', () => {
+    // Sat + Sun + Holiday before Tuesday's request, Friday already on leave.
+    const linked = cal.slice(1);
+    const r = calculateLeaveDays(linked, {
+      startHalf: true,
+      endHalf: false,
+      sandwich: 'BOTH',
+      linkedBefore: true,
+      range: { start: 3, end: 3 },
+    });
+    expect(r.days).toBe(3.5);
+    expect(r.breakdown.filter((d) => d.sandwiched)).toHaveLength(3);
+  });
 });
 
 describe('accrual', () => {

@@ -223,6 +223,21 @@ const cancellable = (r: LeaveRequestDto) =>
           <div v-if="preview.requiresDocument" class="text-caption">
             A supporting document is required for this leave.
           </div>
+          <ul v-if="preview.rules?.hints.length" class="text-caption mt-1 pl-4">
+            <li v-for="h in preview.rules.hints" :key="h">{{ h }}</li>
+          </ul>
+        </v-alert>
+        <v-alert
+          v-if="preview?.violations.length"
+          type="error"
+          variant="tonal"
+          density="compact"
+          class="my-2"
+          title="This request breaks the leave policy"
+        >
+          <ul class="pl-4">
+            <li v-for="v in preview.violations" :key="v.code">{{ v.message }}</li>
+          </ul>
         </v-alert>
         <v-textarea v-model="form.reason" label="Reason *" rows="2" />
       </v-card-text>
@@ -231,7 +246,7 @@ const cancellable = (r: LeaveRequestDto) =>
         <v-btn variant="text" @click="form.open = false">Close</v-btn>
         <v-btn
           color="primary"
-          :disabled="!preview || form.reason.trim().length < 3"
+          :disabled="!preview || !!preview.violations.length || form.reason.trim().length < 3"
           @click="submit"
         >
           Submit

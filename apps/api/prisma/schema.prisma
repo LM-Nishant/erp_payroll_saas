@@ -241,7 +241,8 @@ model Group {
   studentGuardians StudentGuardian[]
   admissions       AdmissionApplication[]
 
-  employees Employee[]
+  employees     Employee[]
+  leavePolicies LeavePolicy[]
 
   assetCategories AssetCategory[]
   assets          Asset[]
@@ -3049,12 +3050,14 @@ enum AccrualFrequency {
   YEARLY
 }
 
-/// Leave policy for an institution (null = org default) and employment type (null = all).
-/// The most specific active policy applies to an employee.
+/// Leave policy scoped to an institution, else a group, else the organization (both null), and an
+/// employment type (null = all). The most specific active policy applies to an employee:
+/// institution+type > institution > group+type > group > org+type > org.
 model LeavePolicy {
   id             String          @id @default(uuid()) @db.Char(36)
   organizationId String          @map("organization_id") @db.Char(36)
   name           String          @db.VarChar(200)
+  groupId        String?         @map("group_id") @db.Char(36)
   institutionId  String?         @map("institution_id") @db.Char(36)
   employmentType EmploymentType? @map("employment_type")
   status         LeaveStatus     @default(ACTIVE)
@@ -3062,24 +3065,43 @@ model LeavePolicy {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
 
   organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group        Group?            @relation(fields: [groupId], references: [id], onDelete: Restrict)
   institution  Institution?      @relation(fields: [institutionId], references: [id], onDelete: Restrict)
   rules        LeavePolicyRule[]
 
   @@index([organizationId, institutionId, employmentType])
+  @@index([organizationId, groupId])
   @@map("leave_policies")
 }
 
 model LeavePolicyRule {
-  id               String           @id @default(uuid()) @db.Char(36)
-  organizationId   String           @map("organization_id") @db.Char(36)
-  policyId         String           @map("policy_id") @db.Char(36)
-  leaveTypeId      String           @map("leave_type_id") @db.Char(36)
-  accrualFrequency AccrualFrequency @map("accrual_frequency")
-  annualQuota      Decimal          @map("annual_quota") @db.Decimal(6, 2)
-  proRataOnJoining Boolean          @default(true) @map("pro_rata_on_joining")
-  maxCarryForward  Decimal?         @map("max_carry_forward") @db.Decimal(6, 2)
-  createdAt        DateTime         @default(now()) @map("created_at") @db.DateTime(3)
-  updatedAt        DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  id                  String           @id @default(uuid()) @db.Char(36)
+  organizationId      String           @map("organization_id") @db.Char(36)
+  policyId            String           @map("policy_id") @db.Char(36)
+  leaveTypeId         String           @map("leave_type_id") @db.Char(36)
+  accrualFrequency    AccrualFrequency @map("accrual_frequency")
+  annualQuota         Decimal          @map("annual_quota") @db.Decimal(6, 2)
+  proRataOnJoining    Boolean          @default(true) @map("pro_rata_on_joining")
+  maxCarryForward     Decimal?         @map("max_carry_forward") @db.Decimal(6, 2)
+  // Application rules; null = inherit the leave type default (see @erp/shared leave schemas).
+  /// NONE | WEEKLY_OFFS | HOLIDAYS | BOTH (null = LeaveType.sandwichRule).
+  sandwichMode        String?          @map("sandwich_mode") @db.VarChar(16)
+  sandwichMinDays     Decimal?         @map("sandwich_min_days") @db.Decimal(6, 2)
+  sandwichAdjacent    Boolean?         @map("sandwich_adjacent")
+  minNoticeDays       Int?             @map("min_notice_days")
+  /// `[{ minDays, noticeDays }]`
+  noticeTiers         Json?            @map("notice_tiers")
+  maxAdvanceDays      Int?             @map("max_advance_days")
+  allowBackdated      Boolean?         @map("allow_backdated")
+  backdatedMaxDays    Int?             @map("backdated_max_days")
+  minDaysPerRequest   Decimal?         @map("min_days_per_request") @db.Decimal(6, 2)
+  maxConsecutiveDays  Decimal?         @map("max_consecutive_days") @db.Decimal(6, 2)
+  maxRequestsPerMonth Int?             @map("max_requests_per_month")
+  maxDaysPerMonth     Decimal?         @map("max_days_per_month") @db.Decimal(6, 2)
+  /// Leave type codes, e.g. `["EL"]`.
+  notClubbableWith    Json?            @map("not_clubbable_with")
+  createdAt           DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   policy       LeavePolicy  @relation(fields: [policyId], references: [id], onDelete: Cascade)
@@ -3155,6 +3177,8 @@ model LeaveRequest {
   status             LeaveRequestStatus @default(PENDING_APPROVAL)
   workflowInstanceId String?            @map("workflow_instance_id") @db.Char(36)
   appliedByUserId    String?            @map("applied_by_user_id") @db.Char(36)
+  /// HR override of leave policy rule violations (reason; violations are in the audit log).
+  ruleOverrideReason String?            @map("rule_override_reason") @db.VarChar(500)
   decidedComment     String?            @map("decided_comment") @db.VarChar(1000)
   cancelReason       String?            @map("cancel_reason") @db.VarChar(1000)
   cancelledAt        DateTime?          @map("cancelled_at") @db.DateTime(3)

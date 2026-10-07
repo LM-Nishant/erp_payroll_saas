@@ -451,6 +451,56 @@ export const updateLeaveTypeSchema = z
   .strict();
 export type UpdateLeaveTypeInput = z.infer<typeof updateLeaveTypeSchema>;
 
+/**
+ * Sandwich counting of non-working days enclosed by leave: NONE, only weekly offs, only
+ * holidays, or BOTH. `LeaveType.sandwichRule` is the default (true = BOTH, false = NONE).
+ */
+export const SANDWICH_MODES = ['NONE', 'WEEKLY_OFFS', 'HOLIDAYS', 'BOTH'] as const;
+export const sandwichModeSchema = z.enum(SANDWICH_MODES);
+export type SandwichMode = z.infer<typeof sandwichModeSchema>;
+
+/** Notice tier: leave of at least `minDays` days must be applied `noticeDays` days ahead. */
+export const leaveNoticeTierSchema = z
+  .object({
+    minDays: z.number().min(0.5).max(366).multipleOf(0.5),
+    noticeDays: z.number().int().min(0).max(365),
+  })
+  .strict();
+export type LeaveNoticeTier = z.infer<typeof leaveNoticeTierSchema>;
+
+const wholeDays = (max: number) => z.number().int().min(0).max(max);
+
+/**
+ * Leave application rules of a policy rule (policy × leave type). Every field is optional;
+ * null / omitted = inherit the leave type default (no restriction, sandwich per type).
+ */
+export const leaveRuleOverridesShape = {
+  sandwichMode: sandwichModeSchema.nullish(),
+  /** Sandwich applies only when the request has at least this many working leave days. */
+  sandwichMinDays: dayAmount.nullish(),
+  /**
+   * Also sandwich across adjacent requests (e.g. Friday + Monday applied separately): the
+   * weekly offs / holidays between them are charged to the later request.
+   */
+  sandwichAdjacent: z.boolean().nullish(),
+  /** Days in advance a request must be applied (calendar days before the start date). */
+  minNoticeDays: wholeDays(365).nullish(),
+  /** Longer leave may need more notice; the highest matching tier (and minNoticeDays) applies. */
+  noticeTiers: z.array(leaveNoticeTierSchema).max(10).nullish(),
+  /** A request may not start more than this many days ahead. */
+  maxAdvanceDays: wholeDays(730).nullish(),
+  /** Past-dated requests (null = allowed). */
+  allowBackdated: z.boolean().nullish(),
+  /** How far back a past-dated request may start. */
+  backdatedMaxDays: wholeDays(365).nullish(),
+  minDaysPerRequest: dayAmount.nullish(),
+  maxConsecutiveDays: dayAmount.nullish(),
+  maxRequestsPerMonth: z.number().int().min(1).max(31).nullish(),
+  maxDaysPerMonth: dayAmount.nullish(),
+  /** Leave type codes that may not be taken adjacent to this leave type. */
+  notClubbableWith: z.array(codeSchema).max(20).nullish(),
+};
+
 export const leavePolicyRuleSchema = z
   .object({
     leaveTypeId: idSchema,
@@ -461,20 +511,56 @@ export const leavePolicyRuleSchema = z
     proRataOnJoining: z.boolean().default(true),
     /** Overrides the leave type's carry-forward cap. */
     maxCarryForward: dayAmount.nullish(),
+    ...leaveRuleOverridesShape,
   })
-  .strict();
+  .strict()
+  .superRefine((r, ctx) => {
+    const tiers = r.noticeTiers ?? [];
+    if (new Set(tiers.map((t) => t.minDays)).size !== tiers.length) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Notice tiers must have distinct minimum days',
+        path: ['noticeTiers'],
+      });
+    }
+    if (
+      r.minDaysPerRequest != null &&
+      r.maxConsecutiveDays != null &&
+      r.minDaysPerRequest > r.maxConsecutiveDays
+    ) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'Minimum days per request exceeds the maximum consecutive days',
+        path: ['minDaysPerRequest'],
+      });
+    }
+    if (r.allowBackdated === false && r.backdatedMaxDays != null) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'backdatedMaxDays requires backdated requests to be allowed',
+        path: ['backdatedMaxDays'],
+      });
+    }
+  });
 export type LeavePolicyRuleInput = z.infer<typeof leavePolicyRuleSchema>;
 
+/** Policy scope: organization default (both null), a group, or an institution — not both. */
 export const createLeavePolicySchema = z
   .object({
     name: nameSchema,
-    /** null = organization-wide default. */
+    /** Group (head office) scope; null = not group-scoped. */
+    groupId: idSchema.nullish(),
+    /** Institution (college / company) scope; null = not institution-scoped. */
     institutionId: idSchema.nullish(),
     /** null = all employment types. */
     employmentType: employmentTypeSchema.nullish(),
     rules: z.array(leavePolicyRuleSchema).max(50).default([]),
   })
-  .strict();
+  .strict()
+  .refine((v) => !(v.groupId && v.institutionId), {
+    message: 'A policy applies to either a group or an institution, not both',
+    path: ['groupId'],
+  });
 export type CreateLeavePolicyInput = z.infer<typeof createLeavePolicySchema>;
 
 export const updateLeavePolicySchema = z
@@ -497,6 +583,11 @@ const leaveRequestFields = {
   reason: text(1000).min(3),
   /** Supporting document (core documents) when the leave type requires one. */
   documentId: idSchema.nullish(),
+  /**
+   * Apply despite leave policy rule violations (notice, limits, clubbing). Requires
+   * `leave.manage` on the employee; audited.
+   */
+  ruleOverrideReason: text(500).min(3).nullish(),
 };
 const leaveRangeRefine = <T extends { fromDate: string; toDate: string }>(v: T) =>
   v.fromDate <= v.toDate;
