@@ -162,7 +162,9 @@ export type ScopedModel =
   | 'classSection'
   | 'userScope'
   | 'document'
-  | 'employee';
+  | 'employee'
+  | 'student'
+  | 'admission';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -194,6 +196,17 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
     groupIds: 'groupId',
     institutionIds: 'institutionId',
     campusIds: 'campusId',
+    departmentIds: 'departmentId',
+  },
+  student: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
+    campusIds: 'campusId',
+    departmentIds: 'departmentId',
+  },
+  admission: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
     departmentIds: 'departmentId',
   },
 };

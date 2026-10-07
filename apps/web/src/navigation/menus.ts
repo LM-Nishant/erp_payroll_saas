@@ -16,7 +16,7 @@ export interface MenuItem {
 
 export type OrgKind = 'EDUCATION' | 'COMPANY';
 
-export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee';
+export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee' | 'portal';
 
 /**
  * Menus are data-driven and filtered by the permissions AND enabled modules (features) returned
@@ -58,6 +58,22 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       icon: 'mdi-school',
       to: '/group/institutions',
       permission: 'institution.view',
+    },
+    {
+      title: 'Students',
+      icon: 'mdi-account-school',
+      to: '/group/students',
+      permission: 'student.view',
+      feature: 'education',
+      educationOnly: true,
+    },
+    {
+      title: 'Admissions',
+      icon: 'mdi-file-account',
+      to: '/group/admissions',
+      permission: 'admission.view',
+      feature: 'education',
+      educationOnly: true,
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/group/approvals' },
@@ -121,6 +137,22 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       icon: 'mdi-account-group',
       to: '/institution/users',
       permission: 'user.view',
+    },
+    {
+      title: 'Students',
+      icon: 'mdi-account-school',
+      to: '/institution/students',
+      permission: 'student.view',
+      feature: 'education',
+      educationOnly: true,
+    },
+    {
+      title: 'Admissions',
+      icon: 'mdi-file-account',
+      to: '/institution/admissions',
+      permission: 'admission.view',
+      feature: 'education',
+      educationOnly: true,
     },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/institution/approvals' },
     {
@@ -292,6 +324,29 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       feature: 'documents',
     },
   ],
+  portal: [
+    {
+      title: 'My profile',
+      icon: 'mdi-account-school',
+      to: '/portal/profile',
+      permission: 'student.view_own',
+      feature: 'education',
+    },
+    {
+      title: 'My children',
+      icon: 'mdi-human-male-child',
+      to: '/portal/wards',
+      permission: 'ward.view',
+      feature: 'education',
+    },
+    {
+      title: 'Documents',
+      icon: 'mdi-file-document-multiple',
+      to: '/portal/documents',
+      permission: 'document.view_own',
+      feature: 'documents',
+    },
+  ],
 };
 
 /** Workspaces offered on the home page, each gated by the permission of its layout route. */
@@ -328,6 +383,22 @@ export const WORKSPACES: Array<MenuItem & { layout: LayoutKey }> = [
     feature: 'hr',
   },
   { layout: 'employee', title: 'Employee', to: '/employee', icon: 'mdi-account' },
+  {
+    layout: 'portal',
+    title: 'Student / Parent',
+    to: '/portal',
+    icon: 'mdi-account-school',
+    permission: 'student.view_own',
+    feature: 'education',
+  },
+  {
+    layout: 'portal',
+    title: 'Parent portal',
+    to: '/portal/wards',
+    icon: 'mdi-human-male-child',
+    permission: 'ward.view',
+    feature: 'education',
+  },
 ];
 
 export function visibleMenu<T extends MenuItem>(

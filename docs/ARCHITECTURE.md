@@ -1115,3 +1115,11 @@ finalize, payments, reports, reopen), `/employee/payslips` (payslips + Form 16),
 6. HR employee master
 7. Attendance / leave / holiday / shift
 8. Payroll rule engine
+
+## 15. Students, guardians and admissions
+
+Module `apps/api/src/modules/students` is mounted under `/api/v1/students` and `/api/v1/admissions` with `requireFeature('education')`. It follows the same tenant rules as HR: every student, enrollment, guardian link and admission application carries `organizationId` plus hierarchy FKs derived server-side from the class section / program; services use only `tenantDb()` / `withTenant()`, validate parent references through the tenant client, and audit every mutation.
+
+Data model: `Student` (unique `admissionNo` per organization, optional linked student login), `StudentEnrollment` effective-dated history, `Guardian` and `StudentGuardian` sibling-safe parent links, `AdmissionApplication` with staff-managed status transitions and enrollment that creates the student, guardian link and initial enrollment. Student creation consumes the `students` license limit; soft delete releases it. Registrations live in `students.registrations.ts`: domain events, usage recount, and document owner types for `student` and `admission_application`.
+
+Permissions: `student.view|create|update|delete|import|view_own|lifecycle`, `admission.view|manage`, `guardian.manage`, and `ward.view`. Academic administrators and registrars manage students/admissions in scope; teachers view students; student and parent roles get only self-service / ward access. Web pages live in `apps/web/src/pages/students` and the `/portal` layout.

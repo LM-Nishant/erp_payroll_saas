@@ -49,9 +49,16 @@ const INSTITUTION_ADMIN = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('campus', 'department', 'program', 'class_section'),
   'institution.update',
-  ...pick('user', 'student', 'employee', 'asset', 'document', 'message').filter(
-    (c) => c !== 'employee.view_sensitive',
-  ),
+  ...pick(
+    'user',
+    'student',
+    'admission',
+    'guardian',
+    'employee',
+    'asset',
+    'document',
+    'message',
+  ).filter((c) => c !== 'employee.view_sensitive'),
   'designation.view',
   ...TIME_OFFICE,
   'role.view',
@@ -120,6 +127,7 @@ const FINANCE = [
 const ACADEMIC_LEAD = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('student', 'program', 'class_section'),
+  ...pick('admission', 'guardian'),
   'employee.view',
   'attendance.view',
   'leave.view',
@@ -149,6 +157,8 @@ const TEACHING = [
  * never every document of their institution.
  */
 const SELF_SERVICE = ['organization.view', 'document.view_own', 'ai.use'] as PermissionCode[];
+const STUDENT_SELF_SERVICE = [...SELF_SERVICE, 'student.view_own'] as PermissionCode[];
+const PARENT_SELF_SERVICE = [...SELF_SERVICE, 'ward.view'] as PermissionCode[];
 
 /** Employee self-service adds the own-profile APIs (`/employees/me`). */
 const EMPLOYEE_SELF_SERVICE = [
@@ -357,14 +367,14 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Student',
       description: 'Student self-service',
       typicalScope: 'INSTITUTION',
-      permissions: SELF_SERVICE,
+      permissions: STUDENT_SELF_SERVICE,
     },
     {
       key: 'parent',
       name: 'Parent',
       description: 'Parent / guardian self-service',
       typicalScope: 'INSTITUTION',
-      permissions: SELF_SERVICE,
+      permissions: PARENT_SELF_SERVICE,
     },
     {
       key: 'employee',
