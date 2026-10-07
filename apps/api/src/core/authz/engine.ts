@@ -168,7 +168,8 @@ export type ScopedModel =
   | 'finance'
   | 'asset'
   | 'assetCategory'
-  | 'library';
+  | 'library'
+  | 'academicUnit';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -224,6 +225,13 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
   },
   assetCategory: { groupIds: 'groupId', institutionIds: 'institutionId' },
   library: { groupIds: 'groupId', institutionIds: 'institutionId', campusIds: 'campusId' },
+  /** Academics rows carrying group/institution/campus/department (subjects, timetable, exams…). */
+  academicUnit: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
+    campusIds: 'campusId',
+    departmentIds: 'departmentId',
+  },
 };
 
 /** Prisma `where` fragment restricting `model` rows to the access set (undefined = no filter). */

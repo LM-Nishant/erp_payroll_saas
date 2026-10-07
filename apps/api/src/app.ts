@@ -50,6 +50,13 @@ import { payrollRouter } from './modules/payroll/payroll.routes';
 import { feesRouter, feesWebhookRouter } from './modules/fees/fees.routes';
 import { financeRouter } from './modules/finance/finance.routes';
 import { shiftsRouter } from './modules/shifts/shifts.routes';
+import {
+  allocationsRouter,
+  studentAttendanceRouter,
+  subjectsRouter,
+} from './modules/academics/academics.routes';
+import { examsRouter } from './modules/exams/exams.routes';
+import { timetableRouter } from './modules/timetable/timetable.routes';
 import { admissionsRouter, studentsRouter } from './modules/students/students.routes';
 import { aiRouter } from './modules/ai/ai.routes';
 import { assetsRouter } from './modules/assets/assets.routes';
@@ -161,6 +168,11 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/students', requireFeature('education'), studentsRouter);
   api.use('/admissions', requireFeature('education'), admissionsRouter);
   api.use('/library', requireFeature('library'), libraryRouter);
+  api.use('/subjects', requireFeature('education'), subjectsRouter);
+  api.use('/subject-allocations', requireFeature('education'), allocationsRouter);
+  api.use('/student-attendance', requireFeature('education'), studentAttendanceRouter);
+  api.use('/timetable', requireFeature('education'), timetableRouter);
+  api.use('/exams', requireFeature('education'), examsRouter);
   api.use('/employees', requireFeature('hr'), employeesRouter);
   api.use('/designations', requireFeature('hr'), designationsRouter);
   api.use('/employee-types', requireFeature('hr'), employeeTypesRouter);
