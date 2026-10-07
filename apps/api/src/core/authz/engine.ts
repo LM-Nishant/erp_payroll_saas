@@ -164,7 +164,8 @@ export type ScopedModel =
   | 'document'
   | 'employee'
   | 'student'
-  | 'admission';
+  | 'admission'
+  | 'academicUnit';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -207,6 +208,13 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
   admission: {
     groupIds: 'groupId',
     institutionIds: 'institutionId',
+    departmentIds: 'departmentId',
+  },
+  /** Academics rows carrying group/institution/campus/department (subjects, timetable, exams…). */
+  academicUnit: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
+    campusIds: 'campusId',
     departmentIds: 'departmentId',
   },
 };

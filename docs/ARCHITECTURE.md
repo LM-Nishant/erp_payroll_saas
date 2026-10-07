@@ -1173,3 +1173,38 @@ To use a real model:
 1. In Secrets, add kind `ai.openai` with the API key as the value.
 2. Optionally add metadata `{"model":"gpt-4o-mini","baseUrl":"https://…/v1","apiVersion":"…"}`.
 3. In AI settings, set provider `openai` and turn on data sharing.
+## 17. Academics, timetable, student attendance and exams
+
+Three API modules behind `requireFeature('education')`:
+
+- `modules/academics`: `/subjects`, `/subject-allocations` (teacher allocation, class teacher, `my-classes`, `teacher-options`) and `/student-attendance`.
+- `modules/timetable`: `/timetable`, covering the bell schedule, section grids, clashes, substitutions, and the teacher and own views.
+- `modules/exams`: `/exams`, covering grading scales, terms, schedules, marks, compute/publish, results and report cards.
+
+Registrations are in `academics.registrations.ts`, which is imported by `engines.ts`. Every tenant row carries `organizationId` plus hierarchy FKs (`groupId`, `institutionId`, `departmentId`). The hierarchy FKs are derived server-side from the program or class section.
+
+Data model:
+
+- `Subject` belongs to a program. It has a type (theory, practical or elective), credits, and max/pass marks.
+- `SubjectAllocation` is unique per (section, subject) and points to a teacher user. `ClassTeacher` holds one teacher per section.
+- `BellPeriod` is unique per (institution, seq) and has `isBreak`.
+- `TimetableEntry` is unique per (section, day, period) and records subject, teacher and room. `TimetableSubstitution` is unique per (entry, date).
+- `StudentAttendance` is unique per (student, date, periodKey). Daily attendance uses `periodKey = ''`; period-wise attendance uses the period id as `periodKey`.
+- `GradingScale` stores its bands as JSON.
+- `ExamTerm` moves through `DRAFT → SCHEDULED → MARKS_ENTRY → RESULTS_COMPUTED → PUBLISHED`.
+- `ExamSchedule` is one paper per (term, section, subject), with `marksStatus` set to OPEN or LOCKED.
+- `ExamMark` holds one mark per (schedule, student).
+- `ExamResult` is unique per (term, student). It stores a subject snapshot JSON, total, %, grade, GPA, rank and pass/fail.
+
+Rules:
+
+- **Scope.** Teachers act only on sections they are allocated to, either as a subject teacher or as class teacher. `assertSectionActor` enforces this; a `*.manage` permission in scope overrides it. Teachers get `student_attendance.mark` and `exam.marks_entry` but not manage. Principals, academic coordinators and institution/group admins manage. Student and parent roles hold `*.view_own` and are resolved through `ownStudents()` (self or wards).
+- **Timetable.** Replacing a section's grid validates periods, program subjects and teachers. It returns 409 `TIMETABLE_CLASH` (details `{clashes}`) when a teacher or room is double-booked with another section, unless `allowClashes` is set. Substitutions must match the entry weekday, and the substitute must be free in that period.
+- **Attendance.** Non-managers can edit only for 3 days. Newly absent records trigger `publish('student_attendance.absent')` to the guardians' linked users. Percentage counts PRESENT/LATE as 1, HALF_DAY as 0.5, and ABSENT/LEAVE as 0 over all marked days (`attendance.logic.ts`).
+- **Exams.**
+  - Marks are validated against max marks. The allocated teacher can lock a paper; unlocking needs `exam.publish`.
+  - Compute uses `computeStudentResult` and `rankResults` (`exams.logic.ts`, unit-tested). A subject is failed when marks are below pass marks or the student was absent. GPA is the credit-weighted mean of the band points, and ranks are competition style.
+  - Publish requires computed results and every paper locked. It notifies students and guardians (`exam.results_published`).
+  - Report cards are PDFs rendered with `registerPdfTemplate('report_card')` and tenant branding. They are served to staff (`/exams/terms/:id/report-card/:studentId`) and, once published, to the student or parent (`/exams/my-results/:termId/report-card/:studentId`).
+
+Web: Academics pages are under `apps/web/src/pages/academics`. They include Subjects, Allocation, Timetable, Student attendance, Exams, Marks entry, Results, Report cards, and My classes for teachers. Portal pages (Timetable, Attendance, Results) are under `pages/academics/portal`. Demo data comes from `scripts/demo/seed-academics_exams.mjs`.

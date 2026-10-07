@@ -152,6 +152,22 @@ export const PERMISSIONS = {
   // ===== AI =====
   'ai.manage': 'Manage organization AI settings (provider, model, enabled features, limits)',
   'ai.view_usage': 'View AI usage dashboards (tokens by feature / user / day)',
+
+  // Academics, timetable, student attendance & exams
+  'subject.view': 'View subjects and teacher allocations',
+  'subject.manage': 'Manage subjects, subject-teacher and class-teacher allocations',
+  'timetable.view': 'View bell schedules, timetables and substitutions',
+  'timetable.manage': 'Manage bell schedules, timetables and substitutions',
+  'timetable.view_own': 'View own / ward timetable (student & parent self-service)',
+  'student_attendance.view': 'View student attendance and monthly registers',
+  'student_attendance.mark': 'Mark student attendance (teachers: allocated sections only)',
+  'student_attendance.manage': 'Mark any section and edit attendance outside the edit window',
+  'student_attendance.view_own': 'View own / ward attendance (student & parent self-service)',
+  'exam.view': 'View exam terms, schedules, marks and results',
+  'exam.manage': 'Manage exam terms, schedules and grading scales; compute results',
+  'exam.marks_entry': 'Enter marks (teachers: allocated subjects only)',
+  'exam.publish': 'Lock/unlock marks and publish results',
+  'exam.view_own': 'View own / ward results and report cards (self-service)',
 } as const satisfies Record<string, string>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;

@@ -120,6 +120,19 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'AiConversation',
   'AiMessage',
   'AiUsageLog',
+  // Academics & Exams
+  'Subject',
+  'SubjectAllocation',
+  'ClassTeacherAssignment',
+  'BellPeriod',
+  'TimetableEntry',
+  'TimetableSubstitution',
+  'StudentAttendance',
+  'GradingScale',
+  'ExamTerm',
+  'ExamSchedule',
+  'ExamMark',
+  'ExamResult',
 ]);
 
 /**
@@ -156,6 +169,10 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'AdmissionApplication',
   // AI
   'AiConversation',
+  // Academics & Exams
+  'Subject',
+  'GradingScale',
+  'ExamTerm',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */
