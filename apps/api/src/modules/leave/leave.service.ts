@@ -10,6 +10,7 @@ import type {
 import type { LeavePolicy, LeavePolicyRule, Prisma } from '@prisma/client';
 import { audit } from '../../core/audit';
 import {
+  accessFor,
   andScope,
   assertPermission,
   authorize,
@@ -33,16 +34,20 @@ import {
   institutionWhere,
   loadEmployeeWith,
 } from '../attendance/attendance.access';
-import { type Coordinates, AttendanceContext } from '../attendance/attendance.context';
+import { AttendanceContext } from '../attendance/attendance.context';
 import { accrualCredit, accrualPeriods } from '../attendance/attendance.engine';
 import { dateToStr, round2, strToDate } from '../attendance/time';
 import { toLeavePolicyDto, toLeaveTypeDto, toLedgerDto } from './leave.mappers';
+import { pickPolicy } from './leave.rules';
+
+export { pickPolicy };
 
 /*
  * Leave masters + balance ledger (Layer 7).
  * - Leave types are organization-wide masters (`leave.manage` at org level).
- * - Leave policies apply per institution (null = org default) × employment type (null = all);
- *   the most specific ACTIVE policy for the employee's as-of assignment applies.
+ * - Leave policies apply per institution, group or organization × employment type (null = all);
+ *   the most specific ACTIVE policy for the employee's as-of assignment applies (see
+ *   `pickPolicy`). Policy rules may override application rules (sandwich / notice / limits).
  * - Balances are derived from the append-only `leave_ledger_entries` ledger. The leave year is
  *   the calendar year: balance(year) = Σ entries effective in that year. Year-end closes a year
  *   with ENCASHMENT / LAPSE entries (effective Dec 31) and opens the next with a CARRY_FORWARD
@@ -65,8 +70,17 @@ async function authorizeOrgManage() {
   await authorize(currentPrincipal(), 'leave.manage', {});
 }
 
-async function policyResource(institutionId: string | null) {
-  return institutionId ? institutionResource(institutionId) : {};
+async function policyResource(scope: { groupId: string | null; institutionId: string | null }) {
+  if (scope.institutionId) return institutionResource(scope.institutionId);
+  return scope.groupId ? hierarchyResource.group({ id: scope.groupId }) : {};
+}
+
+async function validateGroup(groupId: string) {
+  const g = await tenantDb().group.findFirst({
+    where: { id: groupId, deletedAt: null },
+    select: { id: true },
+  });
+  if (!g) throw new InvalidReferenceError('groupId', 'Group');
 }
 
 async function validateRules(rules: LeavePolicyRuleInput[]) {
@@ -74,9 +88,24 @@ async function validateRules(rules: LeavePolicyRuleInput[]) {
   if (ids.length !== rules.length) {
     throw new ConflictError('A leave type may appear only once per policy');
   }
-  const found = await tenantDb().leaveType.count({ where: { id: { in: ids } } });
+  const db = tenantDb();
+  const found = await db.leaveType.count({ where: { id: { in: ids } } });
   if (found !== ids.length) throw new InvalidReferenceError('rules.leaveTypeId', 'Leave type');
+  const codes = [...new Set(rules.flatMap((r) => r.notClubbableWith ?? []))];
+  if (codes.length) {
+    const known = await db.leaveType.findMany({
+      where: { code: { in: codes } },
+      select: { code: true },
+    });
+    const upper = new Set(known.map((k) => k.code.toUpperCase()));
+    if (codes.some((c) => !upper.has(c.toUpperCase()))) {
+      throw new InvalidReferenceError('rules.notClubbableWith', 'Leave type');
+    }
+  }
 }
+
+const jsonOrNull = (v: unknown[] | null | undefined) =>
+  v == null ? DbNull : (v as Prisma.InputJsonValue);
 
 const ruleData = (r: LeavePolicyRuleInput) => ({
   leaveTypeId: r.leaveTypeId,
@@ -84,29 +113,24 @@ const ruleData = (r: LeavePolicyRuleInput) => ({
   annualQuota: r.annualQuota,
   proRataOnJoining: r.proRataOnJoining,
   maxCarryForward: r.maxCarryForward ?? null,
+  sandwichMode: r.sandwichMode ?? null,
+  sandwichMinDays: r.sandwichMinDays ?? null,
+  sandwichAdjacent: r.sandwichAdjacent ?? null,
+  minNoticeDays: r.minNoticeDays ?? null,
+  noticeTiers: jsonOrNull(
+    r.noticeTiers?.length ? [...r.noticeTiers].sort((a, b) => a.minDays - b.minDays) : null,
+  ),
+  maxAdvanceDays: r.maxAdvanceDays ?? null,
+  allowBackdated: r.allowBackdated ?? null,
+  backdatedMaxDays: r.backdatedMaxDays ?? null,
+  minDaysPerRequest: r.minDaysPerRequest ?? null,
+  maxConsecutiveDays: r.maxConsecutiveDays ?? null,
+  maxRequestsPerMonth: r.maxRequestsPerMonth ?? null,
+  maxDaysPerMonth: r.maxDaysPerMonth ?? null,
+  notClubbableWith: jsonOrNull(
+    r.notClubbableWith?.length ? r.notClubbableWith.map((c) => c.toUpperCase()) : null,
+  ),
 });
-
-/** Most specific ACTIVE policy: institution+type > institution > type > org default. */
-export function pickPolicy<P extends Pick<LeavePolicy, 'institutionId' | 'employmentType'>>(
-  policies: P[],
-  coords: Pick<Coordinates, 'institutionId' | 'employmentType'>,
-): P | null {
-  const rank = (p: P) => {
-    if (p.institutionId && p.institutionId !== coords.institutionId) return -1;
-    if (p.employmentType && p.employmentType !== coords.employmentType) return -1;
-    return (p.institutionId ? 2 : 0) + (p.employmentType ? 1 : 0);
-  };
-  let best: P | null = null;
-  let bestRank = -1;
-  for (const p of policies) {
-    const r = rank(p);
-    if (r > bestRank) {
-      best = p;
-      bestRank = r;
-    }
-  }
-  return best;
-}
 
 export async function activePolicies(): Promise<PolicyWithRules[]> {
   return tenantDb().leavePolicy.findMany({ where: { status: 'ACTIVE' }, include: policyInclude });
@@ -410,43 +434,57 @@ export const leaveService = {
 
   async listPolicies() {
     const scope = await institutionWhere('leave.view');
+    let where: Prisma.LeavePolicyWhereInput = {};
+    if (scope) {
+      // Org defaults, groups the caller covers (directly or through an institution) and
+      // institutions in scope.
+      const access = await accessFor(currentPrincipal(), 'leave.view');
+      const groups = await tenantDb().institution.findMany({
+        where: { id: { in: [...access.institutionIds] }, groupId: { not: null } },
+        select: { groupId: true },
+      });
+      const groupIds = [
+        ...new Set([...access.groupIds, ...groups.map((g) => g.groupId as string)]),
+      ];
+      where = {
+        OR: [
+          { institutionId: null, groupId: null },
+          { institutionId: null, groupId: { in: groupIds } },
+          scope,
+        ],
+      };
+    }
     const rows = await tenantDb().leavePolicy.findMany({
-      where: scope ? { OR: [{ institutionId: null }, scope] } : {},
+      where,
       include: policyInclude,
-      orderBy: [{ institutionId: 'asc' }, { name: 'asc' }],
+      orderBy: [{ institutionId: 'asc' }, { groupId: 'asc' }, { name: 'asc' }],
     });
     return rows.map(toLeavePolicyDto);
   },
 
   async getPolicy(id: string) {
     const p = await tenantDb().leavePolicy.findFirst({ where: { id }, include: policyInclude });
-    if (
-      !p ||
-      !(await can(currentPrincipal(), 'leave.view', await policyResource(p.institutionId)))
-    ) {
+    if (!p || !(await can(currentPrincipal(), 'leave.view', await policyResource(p)))) {
       throw new NotFoundError('Leave policy');
     }
     return toLeavePolicyDto(p);
   },
 
   async createPolicy(input: CreateLeavePolicyInput) {
-    await authorize(
-      currentPrincipal(),
-      'leave.manage',
-      await policyResource(input.institutionId ?? null),
-    );
+    const scope = {
+      groupId: input.institutionId ? null : (input.groupId ?? null),
+      institutionId: input.institutionId ?? null,
+    };
+    if (scope.groupId) await validateGroup(scope.groupId);
+    await authorize(currentPrincipal(), 'leave.manage', await policyResource(scope));
     await validateRules(input.rules);
     const db = tenantDb();
     const dup = await db.leavePolicy.findFirst({
-      where: {
-        institutionId: input.institutionId ?? null,
-        employmentType: input.employmentType ?? null,
-        status: 'ACTIVE',
-      },
+      where: { ...scope, employmentType: input.employmentType ?? null, status: 'ACTIVE' },
       select: { id: true },
     });
     if (dup) {
-      throw new ConflictError('An active policy already exists for this institution / type', {
+      throw new ConflictError('An active policy already exists for this scope / employment type', {
         policyId: dup.id,
       });
     }
@@ -454,7 +492,7 @@ export const leaveService = {
       const created = await tx.leavePolicy.create({
         data: withTenant({
           name: input.name,
-          institutionId: input.institutionId ?? null,
+          ...scope,
           employmentType: input.employmentType ?? null,
         }),
       });
@@ -479,12 +517,13 @@ export const leaveService = {
     const db = tenantDb();
     const before = await db.leavePolicy.findFirst({ where: { id }, include: policyInclude });
     if (!before) throw new NotFoundError('Leave policy');
-    await authorize(currentPrincipal(), 'leave.manage', await policyResource(before.institutionId));
+    await authorize(currentPrincipal(), 'leave.manage', await policyResource(before));
     if (input.rules) await validateRules(input.rules);
     if (input.status === 'ACTIVE' && before.status !== 'ACTIVE') {
       const dup = await db.leavePolicy.findFirst({
         where: {
           id: { not: id },
+          groupId: before.groupId,
           institutionId: before.institutionId,
           employmentType: before.employmentType,
           status: 'ACTIVE',

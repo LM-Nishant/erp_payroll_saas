@@ -1,6 +1,7 @@
 import type {
   ApplyLeaveInput,
   LeavePreviewDto,
+  LeaveRuleViolationDto,
   LeavePreviewInput,
   ListLeaveRequestsQuery,
 } from '@erp/shared';
@@ -31,17 +32,32 @@ import { assertActionable, loadEmployeeWith, ownEmployee } from '../attendance/a
 import { computeAttendance } from '../attendance/attendance.compute';
 import { AttendanceContext } from '../attendance/attendance.context';
 import { calculateLeaveDays, type LeaveCalendarDay } from '../attendance/attendance.engine';
-import { dateToStr, eachDate, isWeeklyOff, localToday, strToDate } from '../attendance/time';
+import {
+  addDays,
+  dateToStr,
+  eachDate,
+  isWeeklyOff,
+  localToday,
+  strToDate,
+} from '../attendance/time';
 import { managerUserId, notify } from '../employees/employees.service';
 import { shiftWeeklyOffs } from '../shifts/shifts.resolver';
 import { toLeaveRequestDto } from './leave.mappers';
-import { computeBalances } from './leave.service';
+import {
+  checkRules,
+  describeRules,
+  effectiveRules,
+  pickPolicy,
+  type EffectiveLeaveRules,
+} from './leave.rules';
+import { activePolicies, computeBalances } from './leave.service';
 
 /*
  * Leave requests (workflow `leave_request`, requester = the employee's user so
  * `reporting_manager` steps route to their manager; auto-approved without a definition).
  * Day count honours the employee's as-of holiday calendar, shift / calendar weekly offs, half
- * days and the leave type's sandwich rule. Approval posts a CONSUMPTION ledger entry (paid
+ * days and the sandwich rule (policy rule override, else leave type). Policy rules (notice,
+ * limits, clubbing) are enforced on apply (422) unless HR overrides with an audited reason. Approval posts a CONSUMPTION ledger entry (paid
  * types) and recomputes attendance; cancelling an approved request posts a REVERSAL.
  */
 
@@ -54,14 +70,29 @@ const requestInclude = {
 
 interface Computed {
   type: LeaveType;
+  /** Effective range (may include charged adjacent sandwich days). */
+  fromDate: string;
+  toDate: string;
   days: number;
   breakdown: (LeaveCalendarDay & { days: number; sandwiched: boolean })[];
   institutionId: string;
   coords: { groupId: string | null; campusId: string | null; departmentId: string | null };
   requiresDocument: boolean;
+  rules: EffectiveLeaveRules;
+  violations: LeaveRuleViolationDto[];
 }
 
-/** Leave-day calculation + eligibility for `employee` (no persistence). */
+/** Max non-working days walked to find leave adjacent to a request (long holiday breaks). */
+const ADJACENT_GAP_LIMIT = 14;
+const ACTIVE_REQUEST_STATUSES = ['PENDING_APPROVAL', 'APPROVED'] as const;
+type DayBreakdown = { date: string; days: number }[];
+
+const monthEnd = (month: string) => {
+  const [y, m] = month.split('-').map(Number) as [number, number];
+  return `${month}-${String(new Date(Date.UTC(y, m, 0)).getUTCDate()).padStart(2, '0')}`;
+};
+
+/** Leave-day calculation, eligibility and policy rule checks for `employee` (no persistence). */
 async function computeRequest(
   employee: Employee,
   input: Pick<ApplyLeaveInput, 'leaveTypeId' | 'fromDate' | 'toDate' | 'startHalf' | 'endHalf'>,
@@ -87,21 +118,28 @@ async function computeRequest(
     });
   }
   const timeline = await ctx.timeline(employee.id);
+  /** Calendar kind of a date; null when not employed / no assignment. */
+  const resolveDay = async (date: string): Promise<LeaveCalendarDay | null> => {
+    const coords = timeline?.at(date);
+    if (!coords || !timeline?.employedOn(date)) return null;
+    const day = await ctx.holidays.resolve(coords, date);
+    const shift = await ctx.shifts.resolve(employee.id, coords, date);
+    const shiftOffs = shiftWeeklyOffs(shift.shift);
+    if (day.holiday) return { date, kind: 'HOLIDAY', name: day.holiday.name };
+    if (shiftOffs ? isWeeklyOff(shiftOffs, date) : day.weeklyOff) {
+      return { date, kind: 'WEEKLY_OFF', name: 'Weekly off' };
+    }
+    return { date, kind: 'WORKING' };
+  };
   const calendar: LeaveCalendarDay[] = [];
   for (const date of dates) {
-    const coords = timeline?.at(date);
-    if (!coords || !timeline?.employedOn(date)) {
+    const day = await resolveDay(date);
+    if (!day) {
       throw new ValidationError('The leave falls outside the employment period', {
         fields: [{ path: 'toDate', message: `Not employed on ${date}` }],
       });
     }
-    const day = await ctx.holidays.resolve(coords, date);
-    const shift = await ctx.shifts.resolve(employee.id, coords, date);
-    const shiftOffs = shiftWeeklyOffs(shift.shift);
-    if (day.holiday) calendar.push({ date, kind: 'HOLIDAY', name: day.holiday.name });
-    else if (shiftOffs ? isWeeklyOff(shiftOffs, date) : day.weeklyOff) {
-      calendar.push({ date, kind: 'WEEKLY_OFF', name: 'Weekly off' });
-    } else calendar.push({ date, kind: 'WORKING' });
+    calendar.push(day);
   }
   const first = timeline?.at(input.fromDate);
   if (!first) throw new ValidationError('No assignment on the start date');
@@ -124,18 +162,117 @@ async function computeRequest(
       throw new AppError(422, 'LEAVE_NOT_ELIGIBLE', 'Not eligible for this leave type (gender)');
     }
   }
-  const { days, breakdown } = calculateLeaveDays(calendar, {
+
+  // Policy rules in force (as of the start date).
+  const policy = pickPolicy(await activePolicies(), first);
+  const rules = effectiveRules(
+    type,
+    policy?.rules.find((r) => r.leaveTypeId === type.id),
+    policy,
+  );
+
+  // Existing leave around the request: adjacency (clubbing / cross-request sandwich).
+  const nearby = await db.leaveRequest.findMany({
+    where: {
+      employeeId: employee.id,
+      status: { in: [...ACTIVE_REQUEST_STATUSES] },
+      fromDate: { lte: strToDate(addDays(input.toDate, ADJACENT_GAP_LIMIT + 1)) },
+      toDate: { gte: strToDate(addDays(input.fromDate, -(ADJACENT_GAP_LIMIT + 1))) },
+    },
+    include: { leaveType: { select: { code: true } } },
+  });
+  const coveringCode = (date: string) =>
+    nearby.find((r) => dateToStr(r.fromDate) <= date && dateToStr(r.toDate) >= date)?.leaveType
+      .code ?? null;
+  /** Walk non-working days away from the request; stop at the first working / leave day. */
+  const walk = async (from: string, step: 1 | -1) => {
+    const gap: LeaveCalendarDay[] = [];
+    let d = addDays(from, step);
+    for (let i = 0; i <= ADJACENT_GAP_LIMIT; i += 1) {
+      const code = coveringCode(d);
+      if (code) return { gap, adjacentCode: code };
+      const day = await resolveDay(d);
+      if (!day || day.kind === 'WORKING') break;
+      gap.push(day);
+      d = addDays(d, step);
+    }
+    return { gap, adjacentCode: null as string | null };
+  };
+  const before = await walk(input.fromDate, -1);
+  const after = await walk(input.toDate, 1);
+  const adjacent = rules.sandwichAdjacent && rules.sandwichMode !== 'NONE';
+  const linkedBefore = adjacent && !!before.adjacentCode && before.gap.length > 0;
+  const linkedAfter = adjacent && !!after.adjacentCode && after.gap.length > 0;
+  const prefix = linkedBefore ? [...before.gap].reverse() : [];
+  const suffix = linkedAfter ? after.gap : [];
+  const computed = calculateLeaveDays([...prefix, ...calendar, ...suffix], {
     startHalf: input.startHalf,
     endHalf: input.endHalf,
-    sandwich: type.sandwichRule,
+    sandwich: rules.sandwichMode,
+    sandwichMinDays: rules.sandwichMinDays,
+    linkedBefore,
+    linkedAfter,
+    range: { start: prefix.length, end: prefix.length + calendar.length - 1 },
+  });
+  // Drop linked gap days that were not charged (e.g. holidays under WEEKLY_OFFS mode).
+  let lo = 0;
+  let hi = computed.breakdown.length - 1;
+  while (lo < prefix.length && computed.breakdown[lo]?.days === 0) lo += 1;
+  while (hi > prefix.length + calendar.length - 1 && computed.breakdown[hi]?.days === 0) hi -= 1;
+  const breakdown = computed.breakdown.slice(lo, hi + 1);
+  const days = computed.days;
+  const fromDate = breakdown[0]?.date ?? input.fromDate;
+  const toDate = breakdown[breakdown.length - 1]?.date ?? input.toDate;
+
+  // Monthly usage of this leave type (pending + approved) for the months touched.
+  const months = [...new Set(breakdown.map((d) => d.date.slice(0, 7)))];
+  const firstMonth = months[0] ?? fromDate.slice(0, 7);
+  const lastMonth = months[months.length - 1] ?? firstMonth;
+  const monthly =
+    rules.maxRequestsPerMonth != null || rules.maxDaysPerMonth != null
+      ? await db.leaveRequest.findMany({
+          where: {
+            employeeId: employee.id,
+            leaveTypeId: type.id,
+            status: { in: [...ACTIVE_REQUEST_STATUSES] },
+            fromDate: { lte: strToDate(monthEnd(lastMonth)) },
+            toDate: { gte: strToDate(`${firstMonth}-01`) },
+          },
+          select: { fromDate: true, breakdown: true },
+        })
+      : [];
+  const monthUsage = months.map((month) => ({
+    month,
+    existingRequests: monthly.filter((r) => dateToStr(r.fromDate).startsWith(month)).length,
+    existingDays: monthly
+      .flatMap((r) => r.breakdown as DayBreakdown)
+      .filter((d) => d.date.startsWith(month))
+      .reduce((a, d) => a + d.days, 0),
+    newDays: breakdown.filter((d) => d.date.startsWith(month)).reduce((a, d) => a + d.days, 0),
+  }));
+
+  const today = localToday(await ctx.timezone(first.institutionId));
+  const violations = checkRules(rules, {
+    typeCode: type.code,
+    fromDate,
+    today,
+    days,
+    months: monthUsage,
+    adjacentCodes: [before.adjacentCode, after.adjacentCode].filter(
+      (c): c is string => !!c && c !== type.code,
+    ),
   });
   return {
     type,
+    fromDate,
+    toDate,
     days,
     breakdown,
     institutionId: first.institutionId,
     coords: { groupId: first.groupId, campusId: first.campusId, departmentId: first.departmentId },
     requiresDocument: type.requiresDocument && days > Number(type.documentAfterDays),
+    rules,
+    violations,
   };
 }
 
@@ -268,6 +405,16 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
   if (c.days <= 0) {
     throw new AppError(422, 'NO_LEAVE_DAYS', 'The selected dates contain no working days');
   }
+  let ruleOverrideReason: string | null = null;
+  const [violation] = c.violations;
+  if (violation) {
+    if (!input.ruleOverrideReason) {
+      throw new AppError(422, violation.code, violation.message, { violations: c.violations });
+    }
+    // Only HR (leave.manage on the employee) may apply despite policy rule violations.
+    await authorize(principal, 'leave.manage', hierarchyResource.employee(employee));
+    ruleOverrideReason = input.ruleOverrideReason;
+  }
   if (c.requiresDocument && !input.documentId) {
     throw new ValidationError('A supporting document is required', {
       fields: [{ path: 'documentId', message: 'Required for this leave' }],
@@ -285,8 +432,8 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
     where: {
       employeeId: employee.id,
       status: { in: ['PENDING_APPROVAL', 'APPROVED'] },
-      fromDate: { lte: strToDate(input.toDate) },
-      toDate: { gte: strToDate(input.fromDate) },
+      fromDate: { lte: strToDate(c.toDate) },
+      toDate: { gte: strToDate(c.fromDate) },
     },
   });
   if (overlap) {
@@ -307,7 +454,7 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
     c.breakdown.filter((d) => d.days > 0).map((d) => d.date),
   );
   if (c.type.isPaid && !c.type.allowNegativeBalance) {
-    const [balance] = await computeBalances(employee.id, input.fromDate, c.type.id);
+    const [balance] = await computeBalances(employee.id, c.fromDate, c.type.id);
     if (!balance || balance.available < c.days) {
       throw new AppError(422, 'INSUFFICIENT_LEAVE_BALANCE', 'Insufficient leave balance', {
         available: balance?.available ?? 0,
@@ -321,8 +468,8 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
       leaveTypeId: c.type.id,
       institutionId: c.institutionId,
       ...c.coords,
-      fromDate: strToDate(input.fromDate),
-      toDate: strToDate(input.toDate),
+      fromDate: strToDate(c.fromDate),
+      toDate: strToDate(c.toDate),
       startHalf: input.startHalf,
       endHalf: input.endHalf,
       days: c.days,
@@ -330,6 +477,7 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
       reason: input.reason,
       documentId: input.documentId ?? null,
       appliedByUserId: principal.userId,
+      ruleOverrideReason,
     }),
   });
   await audit.record({
@@ -339,28 +487,37 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
     after: {
       employeeId: employee.id,
       leaveTypeId: c.type.id,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
+      fromDate: c.fromDate,
+      toDate: c.toDate,
       days: c.days,
       onBehalf,
     },
     reason: input.reason,
   });
+  if (ruleOverrideReason) {
+    await audit.record({
+      action: 'leave.rules_override',
+      entityType: 'leave_request',
+      entityId: r.id,
+      after: { violations: c.violations, policyId: c.rules.policyId },
+      reason: ruleOverrideReason,
+    });
+  }
   await emit(
     'leave.applied',
     {
       leaveRequestId: r.id,
       employeeId: employee.id,
       leaveTypeId: c.type.id,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
+      fromDate: c.fromDate,
+      toDate: c.toDate,
       days: c.days,
     },
     { institutionId: c.institutionId },
   );
   await notify('leave.applied', [await managerUserId(employee.reportingManagerId)], {
     title: `${employee.displayName} applied for ${c.type.code} leave`,
-    body: `${input.fromDate} to ${input.toDate} (${c.days} day(s))`,
+    body: `${c.fromDate} to ${c.toDate} (${c.days} day(s))`,
     link: '/hr/leave/requests',
     institutionId: c.institutionId,
     data: { leaveRequestId: r.id },
@@ -368,7 +525,7 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
   const instance = await submitWorkflow({
     entityType: LEAVE_WORKFLOW,
     entityId: r.id,
-    title: `${c.type.code} leave ${input.fromDate}..${input.toDate}: ${employee.displayName} (${employee.employeeCode})`,
+    title: `${c.type.code} leave ${c.fromDate}..${c.toDate}: ${employee.displayName} (${employee.employeeCode})`,
     requesterUserId: employee.userId ?? principal.userId,
     institutionId: c.institutionId,
     groupId: c.coords.groupId,
@@ -378,8 +535,8 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
       leaveTypeId: c.type.id,
       leaveTypeCode: c.type.code,
       days: c.days,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
+      fromDate: c.fromDate,
+      toDate: c.toDate,
     },
   });
   if (instance) {
@@ -408,16 +565,18 @@ export const leaveRequestService = {
       ? await loadEmployeeWith(input.employeeId, 'leave.view', 'leave.view_own')
       : await ownEmployee('leave.view_own');
     const c = await computeRequest(employee, input, new AttendanceContext());
-    const [balance] = await computeBalances(employee.id, input.fromDate, c.type.id);
+    const [balance] = await computeBalances(employee.id, c.fromDate, c.type.id);
     return {
       employeeId: employee.id,
       leaveTypeId: c.type.id,
-      fromDate: input.fromDate,
-      toDate: input.toDate,
+      fromDate: c.fromDate,
+      toDate: c.toDate,
       days: c.days,
       breakdown: c.breakdown,
       balance: balance ?? null,
       requiresDocument: c.requiresDocument,
+      rules: { ...c.rules, hints: describeRules(c.rules, c.type.code) },
+      violations: c.violations,
     };
   },
 

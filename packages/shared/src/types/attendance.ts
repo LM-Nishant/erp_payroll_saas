@@ -4,9 +4,11 @@ import type {
   HolidayCalendarScope,
   HolidayType,
   LeaveLedgerEntryType,
+  LeaveNoticeTier,
   LeaveRequestStatus,
   PunchDirection,
   PunchSource,
+  SandwichMode,
   WeeklyOffRule,
 } from '../schemas/attendance';
 import type { EmploymentType } from '../schemas/hr';
@@ -257,7 +259,24 @@ export interface LeaveTypeDto {
   updatedAt: string;
 }
 
-export interface LeavePolicyRuleDto {
+/** Leave application rule overrides of a policy rule; null = inherit the leave type default. */
+export interface LeaveRuleOverridesDto {
+  sandwichMode: SandwichMode | null;
+  sandwichMinDays: number | null;
+  sandwichAdjacent: boolean | null;
+  minNoticeDays: number | null;
+  noticeTiers: LeaveNoticeTier[] | null;
+  maxAdvanceDays: number | null;
+  allowBackdated: boolean | null;
+  backdatedMaxDays: number | null;
+  minDaysPerRequest: number | null;
+  maxConsecutiveDays: number | null;
+  maxRequestsPerMonth: number | null;
+  maxDaysPerMonth: number | null;
+  notClubbableWith: string[] | null;
+}
+
+export interface LeavePolicyRuleDto extends LeaveRuleOverridesDto {
   id: string;
   leaveTypeId: string;
   accrualFrequency: AccrualFrequency;
@@ -269,6 +288,8 @@ export interface LeavePolicyRuleDto {
 export interface LeavePolicyDto {
   id: string;
   name: string;
+  /** Scope: institution, else group, else organization default (both null). */
+  groupId: string | null;
   institutionId: string | null;
   employmentType: EmploymentType | null;
   status: 'ACTIVE' | 'INACTIVE';
@@ -314,15 +335,47 @@ export interface LeaveDayDto {
   name?: string;
 }
 
+/** Rules in force for an employee × leave type (policy overrides merged over type defaults). */
+export interface EffectiveLeaveRulesDto {
+  /** Policy supplying the rule; null = leave type defaults only. */
+  policyId: string | null;
+  policyName: string | null;
+  sandwichMode: SandwichMode;
+  sandwichMinDays: number | null;
+  sandwichAdjacent: boolean;
+  minNoticeDays: number | null;
+  noticeTiers: LeaveNoticeTier[];
+  maxAdvanceDays: number | null;
+  allowBackdated: boolean;
+  backdatedMaxDays: number | null;
+  minDaysPerRequest: number | null;
+  maxConsecutiveDays: number | null;
+  maxRequestsPerMonth: number | null;
+  maxDaysPerMonth: number | null;
+  notClubbableWith: string[];
+  /** Human-readable summary lines. */
+  hints: string[];
+}
+
+export interface LeaveRuleViolationDto {
+  /** e.g. LEAVE_NOTICE_REQUIRED, LEAVE_MAX_CONSECUTIVE. */
+  code: string;
+  message: string;
+}
+
 export interface LeavePreviewDto {
   employeeId: string;
   leaveTypeId: string;
+  /** Effective range: may start earlier / end later when adjacent sandwich days are charged. */
   fromDate: string;
   toDate: string;
   days: number;
   breakdown: LeaveDayDto[];
   balance: LeaveBalanceDto | null;
   requiresDocument: boolean;
+  rules: EffectiveLeaveRulesDto;
+  /** Rule violations: submitting returns 422 unless HR overrides with a reason. */
+  violations: LeaveRuleViolationDto[];
 }
 
 export interface LeaveRequestDto {
@@ -346,6 +399,8 @@ export interface LeaveRequestDto {
   decidedComment: string | null;
   cancelReason: string | null;
   appliedByUserId: string | null;
+  /** Set when HR applied despite policy rule violations. */
+  ruleOverrideReason: string | null;
   createdAt: string;
   updatedAt: string;
 }

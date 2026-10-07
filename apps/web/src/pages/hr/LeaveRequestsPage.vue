@@ -65,14 +65,21 @@ const apply = reactive({
   startHalf: false,
   endHalf: false,
   reason: '',
+  ruleOverrideReason: '',
 });
 async function saveApply() {
   await run(async () => {
     await apiFetch('/api/v1/leave/requests', {
       method: 'POST',
-      body: JSON.stringify({ ...apply, open: undefined, reason: apply.reason.trim() }),
+      body: JSON.stringify({
+        ...apply,
+        open: undefined,
+        reason: apply.reason.trim(),
+        ruleOverrideReason: apply.ruleOverrideReason.trim() || null,
+      }),
     });
     apply.open = false;
+    apply.ruleOverrideReason = '';
     await loadRequests();
   });
 }
@@ -294,6 +301,13 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
         <v-checkbox v-model="apply.startHalf" label="Start from second half" hide-details />
         <v-checkbox v-model="apply.endHalf" label="End after first half" hide-details />
         <v-textarea v-model="apply.reason" label="Reason *" rows="2" />
+        <v-text-field
+          v-if="auth.can('leave.manage')"
+          v-model="apply.ruleOverrideReason"
+          label="Override policy rules — reason (only if notice / limit rules block the request)"
+          hint="Recorded in the audit log"
+          persistent-hint
+        />
       </v-card-text>
       <v-card-actions>
         <v-spacer />

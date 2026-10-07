@@ -237,33 +237,64 @@ export interface LeaveDay extends LeaveCalendarDay {
   sandwiched: boolean;
 }
 
+export type SandwichMode = 'NONE' | 'WEEKLY_OFFS' | 'HOLIDAYS' | 'BOTH';
+
+export interface LeaveDayOptions {
+  startHalf: boolean;
+  endHalf: boolean;
+  /** `true` = BOTH, `false` = NONE. */
+  sandwich: boolean | SandwichMode;
+  /** Sandwich only when the request has at least this many working leave days. */
+  sandwichMinDays?: number | null;
+  /**
+   * The calendar starts / ends with a gap of non-working days that joins an existing adjacent
+   * leave (e.g. Sat + Sun before a Monday request when Friday is already on leave): those
+   * leading / trailing days are sandwiched as well.
+   */
+  linkedBefore?: boolean;
+  linkedAfter?: boolean;
+  /** Indexes of the requested first / last date (default: whole calendar) for half days. */
+  range?: { start: number; end: number };
+}
+
+const sandwichable = (mode: SandwichMode, kind: LeaveCalendarDay['kind']) =>
+  (kind === 'WEEKLY_OFF' && (mode === 'WEEKLY_OFFS' || mode === 'BOTH')) ||
+  (kind === 'HOLIDAY' && (mode === 'HOLIDAYS' || mode === 'BOTH'));
+
 /**
  * Leave days of a request: working days count 1 (first / last 0.5 with `startHalf` /
- * `endHalf`); holidays and weekly offs count 0 — unless `sandwich` is on and they lie BETWEEN
- * two leave days of the request, in which case they count 1.
+ * `endHalf`); holidays and weekly offs count 0 — unless the sandwich mode covers their kind and
+ * they lie BETWEEN two leave days of the request (or in a linked leading / trailing gap), in
+ * which case they count 1.
  */
 export function calculateLeaveDays(
   calendar: LeaveCalendarDay[],
-  options: { startHalf: boolean; endHalf: boolean; sandwich: boolean },
+  options: LeaveDayOptions,
 ): { days: number; breakdown: LeaveDay[] } {
   const n = calendar.length;
+  const firstWorkingIdx = calendar.findIndex((d) => d.kind === 'WORKING');
+  const lastWorkingIdx = calendar.map((d) => d.kind).lastIndexOf('WORKING');
   const breakdown: LeaveDay[] = calendar.map((d, i) => {
     if (d.kind !== 'WORKING') return { ...d, days: 0, sandwiched: false };
     let days = 1;
-    if (i === 0 && options.startHalf) days = 0.5;
-    if (i === n - 1 && options.endHalf) days = 0.5;
+    if (i === (options.range?.start ?? 0) && options.startHalf) days = 0.5;
+    if (i === (options.range?.end ?? n - 1) && options.endHalf) days = 0.5;
     return { ...d, days, sandwiched: false };
   });
-  if (options.sandwich) {
-    const working = breakdown.map((d, i) => (d.kind === 'WORKING' ? i : -1)).filter((i) => i >= 0);
-    if (working.length >= 2) {
-      const firstWorking = working[0] ?? 0;
-      const lastWorking = working[working.length - 1] ?? 0;
-      for (let i = firstWorking + 1; i < lastWorking; i += 1) {
-        const d = breakdown[i];
-        if (d && d.kind !== 'WORKING') {
-          breakdown[i] = { ...d, days: 1, sandwiched: true };
-        }
+  const mode: SandwichMode =
+    options.sandwich === true ? 'BOTH' : options.sandwich === false ? 'NONE' : options.sandwich;
+  const workingDays = breakdown.reduce((a, d) => a + (d.kind === 'WORKING' ? d.days : 0), 0);
+  if (
+    mode !== 'NONE' &&
+    firstWorkingIdx >= 0 &&
+    (options.sandwichMinDays == null || workingDays >= options.sandwichMinDays)
+  ) {
+    const lo = options.linkedBefore ? 0 : firstWorkingIdx + 1;
+    const hi = options.linkedAfter ? n - 1 : lastWorkingIdx - 1;
+    for (let i = lo; i <= hi; i += 1) {
+      const d = breakdown[i];
+      if (d && d.kind !== 'WORKING' && sandwichable(mode, d.kind)) {
+        breakdown[i] = { ...d, days: 1, sandwiched: true };
       }
     }
   }

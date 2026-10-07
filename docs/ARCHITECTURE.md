@@ -850,20 +850,20 @@ values are minutes after midnight.
 
 ### 10.1 Data model
 
-| Model                             | Purpose                                                                                                                                                                                                                                                                                   |
-| --------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `HolidayCalendar` / `Holiday`     | Per-year calendar at scope ORGANIZATION / GROUP / INSTITUTION / CAMPUS with optional `weeklyOffs` pattern; holidays typed PUBLIC / RESTRICTED / OPTIONAL; `removed=true` suppresses an inherited holiday.                                                                                 |
-| `Shift` / `ShiftAssignment`       | Shift per institution (start/end minute, cross-midnight, grace in/out, half-day & full-day minimum minutes, break, overtime threshold, weekly offs, `isDefault`). Assignments are effective-dated per employee **or** department, optional rotation (`rotationShiftIds`, `rotationDays`). |
-| `AttendancePunch`                 | Raw punches: source WEB / MOBILE / BIOMETRIC / API, direction, device id, geo (lat/lng/accuracy), import job id. Never mutated by computation.                                                                                                                                            |
-| `AttendanceRecord`                | One derived row per employee per date: status (PRESENT, ABSENT, HALF_DAY, LATE, ON_LEAVE, HOLIDAY, WEEKLY_OFF, ON_DUTY, LOP), first in / last out, worked / late / early-exit / overtime minutes, shift + institution as of that date, leave link, `manualOverride`.                      |
-| `AttendanceRegularization`        | Employee correction requests (workflow `attendance_regularization`).                                                                                                                                                                                                                      |
-| `AttendancePeriodLock`            | LOCKED / UNLOCKED per institution + period, with lock/unlock actor + reason.                                                                                                                                                                                                              |
-| `AttendancePolicy`                | Per institution: `lateMarksPerHalfDay`, `absentIsLop`, etc.                                                                                                                                                                                                                               |
-| `AttendanceImportJob`             | Biometric CSV / API import batches with per-row errors.                                                                                                                                                                                                                                   |
-| `LeaveType`                       | Paid/unpaid, half-day allowed, gender & employment-type eligibility, documents required (after N days), sandwich rule, encashable, carry-forward cap, max consecutive days.                                                                                                               |
-| `LeavePolicy` / `LeavePolicyRule` | Per institution (or org-wide) and optional employment type; rule per leave type: accrual frequency (MONTHLY / QUARTERLY / YEARLY / NONE), amount, joining pro-rata, carry-forward cap, encash cap. Most specific policy wins (`pickPolicy`).                                              |
-| `LeaveLedgerEntry`                | Append-only ledger: ACCRUAL, CONSUMPTION, ADJUSTMENT, CARRY_FORWARD, LAPSE, ENCASHMENT, REVERSAL. **Balance is always derived** from the ledger (sum of entries effective in the leave year up to the as-of date).                                                                        |
-| `LeaveRequest`                    | Leave application with half-day flags, computed day breakdown, workflow `leave_request`.                                                                                                                                                                                                  |
+| Model                             | Purpose                                                                                                                                                                                                                                                                                    |
+| --------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `HolidayCalendar` / `Holiday`     | Per-year calendar at scope ORGANIZATION / GROUP / INSTITUTION / CAMPUS with optional `weeklyOffs` pattern; holidays typed PUBLIC / RESTRICTED / OPTIONAL; `removed=true` suppresses an inherited holiday.                                                                                  |
+| `Shift` / `ShiftAssignment`       | Shift per institution (start/end minute, cross-midnight, grace in/out, half-day & full-day minimum minutes, break, overtime threshold, weekly offs, `isDefault`). Assignments are effective-dated per employee **or** department, optional rotation (`rotationShiftIds`, `rotationDays`).  |
+| `AttendancePunch`                 | Raw punches: source WEB / MOBILE / BIOMETRIC / API, direction, device id, geo (lat/lng/accuracy), import job id. Never mutated by computation.                                                                                                                                             |
+| `AttendanceRecord`                | One derived row per employee per date: status (PRESENT, ABSENT, HALF_DAY, LATE, ON_LEAVE, HOLIDAY, WEEKLY_OFF, ON_DUTY, LOP), first in / last out, worked / late / early-exit / overtime minutes, shift + institution as of that date, leave link, `manualOverride`.                       |
+| `AttendanceRegularization`        | Employee correction requests (workflow `attendance_regularization`).                                                                                                                                                                                                                       |
+| `AttendancePeriodLock`            | LOCKED / UNLOCKED per institution + period, with lock/unlock actor + reason.                                                                                                                                                                                                               |
+| `AttendancePolicy`                | Per institution: `lateMarksPerHalfDay`, `absentIsLop`, etc.                                                                                                                                                                                                                                |
+| `AttendanceImportJob`             | Biometric CSV / API import batches with per-row errors.                                                                                                                                                                                                                                    |
+| `LeaveType`                       | Paid/unpaid, half-day allowed, gender & employment-type eligibility, documents required (after N days), sandwich rule, encashable, carry-forward cap, max consecutive days.                                                                                                                |
+| `LeavePolicy` / `LeavePolicyRule` | Per institution, group or org-wide and optional employment type; rule per leave type: accrual frequency (MONTHLY / QUARTERLY / YEARLY / NONE), amount, joining pro-rata, carry-forward cap, encash cap, plus optional application rules (§10.5). Most specific policy wins (`pickPolicy`). |
+| `LeaveLedgerEntry`                | Append-only ledger: ACCRUAL, CONSUMPTION, ADJUSTMENT, CARRY_FORWARD, LAPSE, ENCASHMENT, REVERSAL. **Balance is always derived** from the ledger (sum of entries effective in the leave year up to the as-of date).                                                                         |
+| `LeaveRequest`                    | Leave application with half-day flags, computed day breakdown, workflow `leave_request`.                                                                                                                                                                                                   |
 
 ### 10.2 Holiday resolution
 
@@ -908,9 +908,19 @@ and is audited (`attendance.period_unlock`). Payroll should lock the period befo
 ### 10.5 Leave
 
 - **Day calculation** (`calculateLeaveDays`): working days count 1 (0.5 for the start/end half);
-  holidays / weekly offs count 0 unless the type's sandwich rule is on and they lie between
+  holidays / weekly offs count 0 unless the sandwich mode covers their kind and they lie between
   leave days. Uses the employee's as-of calendar and shift per date. `POST /leave/preview` returns
-  the breakdown.
+  the breakdown, the effective rules (+ hints) and any rule violations.
+- **Policy rules** (`leave.rules.ts`): the applicable policy is the most specific ACTIVE one —
+  institution+employment type > institution > group+type > group > org+type > org. Its rule for
+  the leave type may override (null = inherit): sandwich mode (NONE / WEEKLY_OFFS / HOLIDAYS /
+  BOTH; default from `LeaveType.sandwichRule` → BOTH), sandwich only from N working days, sandwich
+  across adjacent requests (Fri + Mon: the gap extends the new request), minimum notice + notice
+  tiers by leave length (strictest matching applies), max days ahead, past-dated allowed / window,
+  min / max days per request, max requests / days per month, not clubbable with (type codes).
+  Violations return 422 (`LEAVE_NOTICE_REQUIRED`, `LEAVE_ADVANCE_LIMIT`, …, details.violations);
+  a caller with `leave.manage` on the employee may pass `ruleOverrideReason` (audited as
+  `leave.rules_override`).
 - **Validation:** eligibility (gender, employment type), half-day allowed, max consecutive days,
   overlap with pending/approved requests, sufficient balance for paid types (unpaid types never
   check balance), documents if required, employee ACTIVE / ON_NOTICE.

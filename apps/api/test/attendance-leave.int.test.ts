@@ -802,6 +802,113 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
       const cals = (await bcc.get('/api/v1/holidays/calendars').expect(200)).body.data;
       expect(cals).toEqual([]);
     });
+
+    it('applies group / institution policy rules and lets HR override them (audited)', async () => {
+      const rule = (extra: Record<string, unknown>) => ({
+        leaveTypeId: cl.id,
+        accrualFrequency: 'MONTHLY',
+        annualQuota: 12,
+        ...extra,
+      });
+      await owner
+        .post('/api/v1/leave/policies', {
+          name: 'Both scopes',
+          groupId,
+          institutionId: eng,
+          rules: [],
+        })
+        .expect(400);
+      const badGroup = await owner
+        .post('/api/v1/leave/policies', {
+          name: 'Bad group',
+          groupId: '00000000-0000-4000-8000-000000000000',
+          rules: [],
+        })
+        .expect(422);
+      expect(badGroup.body.error.details).toMatchObject({ field: 'groupId' });
+
+      const groupPolicy = (
+        await owner
+          .post('/api/v1/leave/policies', {
+            name: 'Group rules',
+            groupId,
+            rules: [rule({ allowBackdated: false, maxConsecutiveDays: 2, sandwichMode: 'NONE' })],
+          })
+          .expect(201)
+      ).body.data;
+      expect(groupPolicy.groupId).toBe(groupId);
+      let instPolicy: { id: string } | null = null;
+      try {
+        const preview = async () =>
+          (
+            await self
+              .post('/api/v1/leave/preview', {
+                leaveTypeId: cl.id,
+                fromDate: '2025-03-12',
+                toDate: '2025-03-12',
+              })
+              .expect(200)
+          ).body.data;
+        const p1 = await preview();
+        expect(p1.rules).toMatchObject({ policyName: 'Group rules', allowBackdated: false });
+        expect(p1.violations.map((v: { code: string }) => v.code)).toEqual([
+          'LEAVE_BACKDATED_NOT_ALLOWED',
+        ]);
+        expect(p1.rules.hints).toContain('Past-dated requests are not allowed');
+
+        const blocked = await owner
+          .post('/api/v1/leave/requests', {
+            employeeId: A.id,
+            leaveTypeId: cl.id,
+            fromDate: '2025-03-12',
+            toDate: '2025-03-12',
+            reason: 'Backdated',
+          })
+          .expect(422);
+        expect(blocked.body.error.code).toBe('LEAVE_BACKDATED_NOT_ALLOWED');
+
+        const overridden = (
+          await owner
+            .post('/api/v1/leave/requests', {
+              employeeId: A.id,
+              leaveTypeId: cl.id,
+              fromDate: '2025-03-12',
+              toDate: '2025-03-12',
+              reason: 'Backdated',
+              ruleOverrideReason: 'Forgot to apply, approved by HR',
+            })
+            .expect(201)
+        ).body.data;
+        expect(overridden.ruleOverrideReason).toBe('Forgot to apply, approved by HR');
+        const audit = await prisma.auditLog.findFirst({
+          where: { action: 'leave.rules_override', entityId: overridden.id },
+        });
+        expect(audit?.reason).toBe('Forgot to apply, approved by HR');
+        await owner
+          .post(`/api/v1/leave/requests/${overridden.id}/cancel`, { reason: 'Test cleanup' })
+          .expect(200);
+
+        // An institution policy is more specific than the group policy.
+        instPolicy = (
+          await owner
+            .post('/api/v1/leave/policies', {
+              name: 'Institution rules',
+              institutionId: eng,
+              rules: [rule({})],
+            })
+            .expect(201)
+        ).body.data;
+        const p2 = await preview();
+        expect(p2.rules.policyName).toBe('Institution rules');
+        expect(p2.violations).toEqual([]);
+      } finally {
+        for (const id of [groupPolicy.id, instPolicy?.id]) {
+          if (id) {
+            await owner.patch(`/api/v1/leave/policies/${id}`, { status: 'INACTIVE' }).expect(200);
+          }
+        }
+      }
+    });
   });
 
   describe('regularization', () => {

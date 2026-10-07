@@ -1,9 +1,11 @@
 import type {
   LeaveDayDto,
   LeaveLedgerEntryDto,
+  LeaveNoticeTier,
   LeavePolicyDto,
   LeaveRequestDto,
   LeaveTypeDto,
+  SandwichMode,
 } from '@erp/shared';
 import type {
   LeaveLedgerEntry,
@@ -44,6 +46,7 @@ export const toLeavePolicyDto = (
 ): LeavePolicyDto => ({
   id: p.id,
   name: p.name,
+  groupId: p.groupId,
   institutionId: p.institutionId,
   employmentType: p.employmentType,
   status: p.status,
@@ -54,6 +57,21 @@ export const toLeavePolicyDto = (
     annualQuota: num(r.annualQuota),
     proRataOnJoining: r.proRataOnJoining,
     maxCarryForward: numOrNull(r.maxCarryForward),
+    sandwichMode: r.sandwichMode as SandwichMode | null,
+    sandwichMinDays: numOrNull(r.sandwichMinDays),
+    sandwichAdjacent: r.sandwichAdjacent,
+    minNoticeDays: r.minNoticeDays,
+    noticeTiers: Array.isArray(r.noticeTiers)
+      ? (r.noticeTiers as unknown as LeaveNoticeTier[])
+      : null,
+    maxAdvanceDays: r.maxAdvanceDays,
+    allowBackdated: r.allowBackdated,
+    backdatedMaxDays: r.backdatedMaxDays,
+    minDaysPerRequest: numOrNull(r.minDaysPerRequest),
+    maxConsecutiveDays: numOrNull(r.maxConsecutiveDays),
+    maxRequestsPerMonth: r.maxRequestsPerMonth,
+    maxDaysPerMonth: numOrNull(r.maxDaysPerMonth),
+    notClubbableWith: strList(r.notClubbableWith),
   })),
   createdAt: p.createdAt.toISOString(),
   updatedAt: p.updatedAt.toISOString(),
@@ -100,6 +118,7 @@ export const toLeaveRequestDto = (
   decidedComment: r.decidedComment,
   cancelReason: r.cancelReason,
   appliedByUserId: r.appliedByUserId,
+  ruleOverrideReason: r.ruleOverrideReason,
   createdAt: r.createdAt.toISOString(),
   updatedAt: r.updatedAt.toISOString(),
 });
