@@ -264,8 +264,16 @@ to read, `platform.organization.manage` to write; UI: Platform → Organizations
   trial end, period dates, add-on features and limit overrides. A subscription **licenses
   modules** when ACTIVE, PAST_DUE, or TRIAL with `trialEndsAt` in the future. No subscription ⇒
   no modules and every limit is 0.
-- `Invoice` models billing minimally (amount, period, status `DRAFT|OPEN|PAID|OVERDUE|
-VOID`, paid-at); no payment gateway.
+- `Invoice`: period, line items, subtotal + GST (`taxRateBps`, default from settings) = amount,
+  status `DRAFT|OPEN|PAYMENT_SUBMITTED|PAID|OVERDUE|VOID`. Drafts are hidden from the tenant.
+- **Payments are manual UPI** (no gateway). `PlatformBillingSettings` (global single row:
+  seller name/address/GSTIN, UPI ID + payee, default GST %, terms; `GET|PUT
+/platform/billing-settings`). Tenants get a `upi://pay` link + QR (`GET
+/subscription/invoices/:id/upi`), download the PDF (`/pdf`, also on the platform side), and
+  report the UTR (`POST /subscription/invoices/:id/payment`, `billing.pay`) → `PAYMENT_SUBMITTED`.
+  The platform verifies in `GET /platform/invoices?status=PAYMENT_SUBMITTED` and PATCHes the
+  invoice to `PAID` (method/reference default to `UPI` / the submitted UTR) or back to `OPEN`.
+  Invoice PDFs are rendered in `core/features/invoicing.ts` (PDF `image` block for the QR).
 - Platform admins manage plans / subscriptions / invoices under `/api/v1/platform/{plans,
 organizations/:id/subscription, organizations/:id/invoices}` (`platform.plan.manage`,
   `platform.subscription.manage`). Tenant-scoped writes go through `runAsPlatform` and are

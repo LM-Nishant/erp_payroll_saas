@@ -42,6 +42,24 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/platform/OrganizationDetailPage.vue'),
       },
       {
+        path: 'plans',
+        name: 'platform-plans',
+        meta: { permission: 'platform.plan.manage' },
+        component: () => import('@/pages/platform/PlansPage.vue'),
+      },
+      {
+        path: 'invoices',
+        name: 'platform-invoices',
+        meta: { permission: 'platform.subscription.manage' },
+        component: () => import('@/pages/platform/InvoicesPage.vue'),
+      },
+      {
+        path: 'billing-settings',
+        name: 'platform-billing-settings',
+        meta: { permission: 'platform.subscription.manage' },
+        component: () => import('@/pages/platform/BillingSettingsPage.vue'),
+      },
+      {
         path: 'notifications',
         name: 'platform-notifications',
         component: () => import('@/pages/NotificationsPage.vue'),

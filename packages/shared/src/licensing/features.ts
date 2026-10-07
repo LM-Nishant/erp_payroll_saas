@@ -65,7 +65,14 @@ export function isLimitKey(value: string): value is LimitKey {
 export const SUBSCRIPTION_STATUSES = ['TRIAL', 'ACTIVE', 'PAST_DUE', 'CANCELLED'] as const;
 export type SubscriptionStatus = (typeof SUBSCRIPTION_STATUSES)[number];
 
-export const INVOICE_STATUSES = ['DRAFT', 'OPEN', 'PAID', 'OVERDUE', 'VOID'] as const;
+export const INVOICE_STATUSES = [
+  'DRAFT',
+  'OPEN',
+  'PAYMENT_SUBMITTED',
+  'PAID',
+  'OVERDUE',
+  'VOID',
+] as const;
 export type InvoiceStatus = (typeof INVOICE_STATUSES)[number];
 
 /** Hierarchy levels that can carry feature overrides, branding and secrets. */

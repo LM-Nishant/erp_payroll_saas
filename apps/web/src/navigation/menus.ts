@@ -25,6 +25,24 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/platform/organizations',
       permission: 'platform.organization.view',
     },
+    {
+      title: 'Plans',
+      icon: 'mdi-tag-multiple',
+      to: '/platform/plans',
+      permission: 'platform.plan.manage',
+    },
+    {
+      title: 'Invoices',
+      icon: 'mdi-receipt-text',
+      to: '/platform/invoices',
+      permission: 'platform.subscription.manage',
+    },
+    {
+      title: 'Billing settings',
+      icon: 'mdi-qrcode',
+      to: '/platform/billing-settings',
+      permission: 'platform.subscription.manage',
+    },
   ],
   group: [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/group' },

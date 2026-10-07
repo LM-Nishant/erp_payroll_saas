@@ -16,7 +16,15 @@ export type PdfBlock =
   | { type: 'keyValue'; rows: Array<[label: string, value: string]> }
   | { type: 'table'; columns: string[]; rows: string[][] }
   | { type: 'signature'; name?: string | null; designation?: string | null; label?: string | null }
-  | { type: 'spacer'; size?: number };
+  | { type: 'spacer'; size?: number }
+  /** PNG/JPEG image (e.g. a payment QR code), centred unless `align` says otherwise. */
+  | {
+      type: 'image';
+      data: Buffer;
+      width?: number;
+      caption?: string | null;
+      align?: 'left' | 'center';
+    };
 
 export interface PdfBranding {
   displayName: string | null;

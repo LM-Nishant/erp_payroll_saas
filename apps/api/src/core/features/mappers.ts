@@ -41,6 +41,16 @@ export function toSubscriptionDto(
   };
 }
 
+function asLineItems(value: unknown): InvoiceDto['lineItems'] {
+  if (!Array.isArray(value)) return [];
+  return value.filter(
+    (v): v is InvoiceDto['lineItems'][number] =>
+      !!v &&
+      typeof v === 'object' &&
+      typeof (v as { description?: unknown }).description === 'string',
+  );
+}
+
 export function toInvoiceDto(inv: Invoice): InvoiceDto {
   return {
     id: inv.id,
@@ -57,6 +67,13 @@ export function toInvoiceDto(inv: Invoice): InvoiceDto {
     paymentMethod: inv.paymentMethod,
     paymentReference: inv.paymentReference,
     notes: inv.notes,
+    lineItems: asLineItems(inv.lineItems),
+    subtotalCents: inv.subtotalCents,
+    taxRateBps: inv.taxRateBps,
+    taxCents: inv.taxCents,
+    submittedReference: inv.submittedReference,
+    submittedNote: inv.submittedNote,
+    submittedAt: inv.submittedAt?.toISOString() ?? null,
     createdAt: inv.createdAt.toISOString(),
   };
 }

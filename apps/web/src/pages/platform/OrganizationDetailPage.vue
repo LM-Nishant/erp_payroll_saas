@@ -18,7 +18,11 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
-import { apiFetch } from '@/api/client';
+import { apiDownload, apiFetch } from '@/api/client';
+import { invoiceStatusColor, invoiceStatusLabel } from '@/components/billing/billing';
+import InvoiceActions from '@/components/billing/InvoiceActions.vue';
+import InvoiceStatusDialog from '@/components/billing/InvoiceStatusDialog.vue';
+import NewInvoiceDialog from '@/components/billing/NewInvoiceDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
@@ -185,7 +189,32 @@ const invoiceHeaders = [
   { title: 'Amount', key: 'amountCents' },
   { title: 'Due', key: 'dueAt' },
   { title: 'Status', key: 'status' },
+  { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ];
+
+// --- Invoices ----------------------------------------------------------------------------
+
+const newInvoiceDialog = ref(false);
+const defaultTaxPercent = ref(18);
+async function openNewInvoice() {
+  await run(async () => {
+    const s = await apiFetch<{ data: { defaultTaxRateBps: number } }>(
+      '/api/v1/platform/billing-settings',
+    );
+    defaultTaxPercent.value = s.data.defaultTaxRateBps / 100;
+  });
+  newInvoiceDialog.value = true;
+}
+const invoiceAction = ref<'PAID' | 'OPEN' | 'VOID' | null>(null);
+const actionInvoice = ref<InvoiceDto | null>(null);
+const invoiceActionDialog = ref(false);
+function actOnInvoice(inv: InvoiceDto, action: 'PAID' | 'OPEN' | 'VOID') {
+  actionInvoice.value = inv;
+  invoiceAction.value = action;
+  invoiceActionDialog.value = true;
+}
+const downloadInvoice = (inv: InvoiceDto) =>
+  run(() => apiDownload(`${base.value}/invoices/${inv.id}/pdf`, `${inv.number}.pdf`));
 </script>
 
 <template>
@@ -334,8 +363,36 @@ const invoiceHeaders = [
       <v-card-text v-else>No subscription.</v-card-text>
     </v-card>
 
-    <v-card v-if="canBilling" title="Invoices">
+    <v-card v-if="canBilling">
+      <v-card-title class="d-flex align-center">
+        Invoices
+        <v-spacer />
+        <v-btn
+          v-if="subscription"
+          size="small"
+          color="primary"
+          prepend-icon="mdi-plus"
+          @click="openNewInvoice"
+        >
+          New invoice
+        </v-btn>
+      </v-card-title>
       <v-data-table :items="invoices" :headers="invoiceHeaders" density="compact">
+        <template #[`item.status`]="{ item }">
+          <v-chip size="small" :color="invoiceStatusColor(item.status)">
+            {{ invoiceStatusLabel(item.status) }}
+          </v-chip>
+          <div v-if="item.submittedReference && item.status !== 'PAID'" class="text-caption">
+            UTR {{ item.submittedReference }}
+          </div>
+        </template>
+        <template #[`item.actions`]="{ item }">
+          <InvoiceActions
+            :invoice="item"
+            @pdf="downloadInvoice(item)"
+            @act="(a) => actOnInvoice(item, a)"
+          />
+        </template>
         <template #[`item.periodStart`]="{ item }">
           {{ date(item.periodStart) }} – {{ date(item.periodEnd) }}
         </template>
@@ -346,6 +403,21 @@ const invoiceHeaders = [
       </v-data-table>
     </v-card>
   </template>
+
+  <NewInvoiceDialog
+    v-model="newInvoiceDialog"
+    :organization-id="id"
+    :subscription="subscription"
+    :default-tax-percent="defaultTaxPercent"
+    @created="(inv) => run(loadBilling, `Invoice ${inv.number} created`)"
+  />
+  <InvoiceStatusDialog
+    v-model="invoiceActionDialog"
+    :organization-id="id"
+    :invoice="actionInvoice"
+    :action="invoiceAction"
+    @saved="(inv) => run(loadBilling, `Invoice ${inv.number} updated`)"
+  />
 
   <v-dialog v-model="renameDialog" max-width="520">
     <v-card title="Rename organization">

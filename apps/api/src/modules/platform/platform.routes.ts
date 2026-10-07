@@ -9,6 +9,8 @@ import {
   idParamSchema,
   idSchema,
   listInvoicesQuerySchema,
+  platformBillingSettingsSchema,
+  platformInvoicesQuerySchema,
   listPlatformAuditLogsQuerySchema,
   platformAccessSchema,
   platformReasonSchema,
@@ -30,7 +32,11 @@ import {
   updateOrganizationRecord,
 } from '../../core/platform';
 import { createOrganization, inviteOrganizationOwner } from './organizations.service';
-import { platformBillingService } from '../../core/features';
+import {
+  getBillingSettings,
+  platformBillingService,
+  updateBillingSettings,
+} from '../../core/features';
 
 const invoiceParamsSchema = z.object({ id: idSchema, invoiceId: idSchema });
 const actor = () => ({ userId: currentPrincipal().userId });
@@ -209,6 +215,51 @@ platformRouter.patch(
     const input = parseInput(updateInvoiceSchema, req.body);
     res.json({
       data: await platformBillingService.updateInvoice(actor(), id, invoiceId, input),
+    });
+  },
+);
+
+platformRouter.get(
+  '/organizations/:id/invoices/:invoiceId/pdf',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (req, res) => {
+    const { id, invoiceId } = parseInput(invoiceParamsSchema, req.params);
+    const { number, pdf } = await platformBillingService.invoicePdf(id, invoiceId);
+    res
+      .type('application/pdf')
+      .setHeader('Content-Disposition', `attachment; filename="${number}.pdf"`)
+      .send(pdf);
+  },
+);
+
+platformRouter.get(
+  '/invoices',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (req, res) => {
+    res.json(
+      await platformBillingService.listAllInvoices(
+        parseInput(platformInvoicesQuerySchema, req.query),
+      ),
+    );
+  },
+);
+
+// --- Platform billing settings (seller details, UPI ID, default GST) ---------------------
+
+platformRouter.get(
+  '/billing-settings',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (_req, res) => {
+    res.json({ data: await getBillingSettings() });
+  },
+);
+
+platformRouter.put(
+  '/billing-settings',
+  requirePlatformPermission('platform.subscription.manage'),
+  async (req, res) => {
+    res.json({
+      data: await updateBillingSettings(parseInput(platformBillingSettingsSchema, req.body)),
     });
   },
 );
