@@ -11,13 +11,17 @@ export interface MenuItem {
   feature?: FeatureKey;
   /** Label used for company (non-education) organizations. */
   companyTitle?: string;
-  /** Hidden for company organizations (students, campuses, academics…). */
+  /**
+   * Hidden for company organizations (students, campuses, academics…) unless the organization
+   * licenses the `education` module, which turns these items back on.
+   */
   educationOnly?: boolean;
 }
 
 export type OrgKind = 'EDUCATION' | 'COMPANY';
 
-export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee' | 'portal';
+export type LayoutKey =
+  'platform' | 'group' | 'institution' | 'hr' | 'employee' | 'portal' | 'assets';
 
 /**
  * Menus are data-driven and filtered by the permissions AND enabled modules (features) returned
@@ -78,6 +82,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/group/approvals' },
+    {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
     {
       title: 'Payroll summary',
       icon: 'mdi-cash-multiple',
@@ -193,6 +204,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       educationOnly: true,
     },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/institution/approvals' },
+    {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
     {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',
@@ -380,6 +398,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/hr/approvals' },
     {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',
       to: '/hr/documents',
@@ -412,6 +437,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       feature: 'hr',
     },
     {
+      title: 'My salary',
+      icon: 'mdi-cash-multiple',
+      to: '/employee/salary',
+      permission: 'payroll.view_own',
+      feature: 'payroll',
+    },
+    {
       title: 'My payslips',
       icon: 'mdi-receipt-text',
       to: '/employee/payslips',
@@ -425,6 +457,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/employee/documents',
       permission: 'document.view_own',
       feature: 'documents',
+    },
+    {
+      title: 'My assets',
+      icon: 'mdi-laptop',
+      to: '/employee/assets',
+      permission: 'asset.view_own',
+      feature: 'assets',
     },
     {
       title: 'My library',
@@ -479,6 +518,72 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       feature: 'library',
     },
   ],
+  assets: [
+    {
+      title: 'Dashboard',
+      icon: 'mdi-view-dashboard',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets/register',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Categories',
+      icon: 'mdi-shape',
+      to: '/assets/categories',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Assignments',
+      icon: 'mdi-account-arrow-right',
+      to: '/assets/assignments',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Maintenance',
+      icon: 'mdi-wrench',
+      to: '/assets/maintenance',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Inventory',
+      icon: 'mdi-warehouse',
+      to: '/assets/inventory',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Audit',
+      icon: 'mdi-barcode-scan',
+      to: '/assets/audit',
+      permission: 'asset.audit',
+      feature: 'assets',
+    },
+    {
+      title: 'Disposal',
+      icon: 'mdi-delete-sweep',
+      to: '/assets/disposal',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Reports',
+      icon: 'mdi-file-chart',
+      to: '/assets/reports',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    { title: 'Approvals', icon: 'mdi-check-decagram', to: '/assets/approvals' },
+  ],
 };
 
 /** Workspaces offered on the home page, each gated by the permission of its layout route. */
@@ -531,6 +636,14 @@ export const WORKSPACES: Array<MenuItem & { layout: LayoutKey }> = [
     permission: 'ward.view',
     feature: 'education',
   },
+  {
+    layout: 'assets',
+    title: 'Assets',
+    to: '/assets',
+    icon: 'mdi-package-variant-closed',
+    permission: 'asset.view',
+    feature: 'assets',
+  },
 ];
 
 export function visibleMenu<T extends MenuItem>(
@@ -544,7 +657,7 @@ export function visibleMenu<T extends MenuItem>(
       (item) =>
         can(item.permission) &&
         hasFeature(item.feature) &&
-        !(kind === 'COMPANY' && item.educationOnly),
+        !(kind === 'COMPANY' && item.educationOnly && !hasFeature('education')),
     )
     .map((item) =>
       kind === 'COMPANY' && item.companyTitle ? { ...item, title: item.companyTitle } : item,

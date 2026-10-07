@@ -47,6 +47,8 @@ const TIME_VIEW = views('holiday', 'shift', 'attendance', 'leave');
 /** Fees & finance administration (everything except the student/parent self-service code). */
 const FEES_FINANCE = pick('fee', 'finance').filter((c) => c !== 'fee.view_own');
 const FEES_FINANCE_VIEW = ['fee.view', 'finance.view'] as PermissionCode[];
+/** Asset custody (view / check-out / check-in) for institution admins and HR. */
+const ASSET_CUSTODY = ['asset.view', 'asset.assign', 'asset.return'] as PermissionCode[];
 
 /** Full administration of everything below the group/institution level. */
 const INSTITUTION_ADMIN = [
@@ -59,11 +61,12 @@ const INSTITUTION_ADMIN = [
     'admission',
     'guardian',
     'employee',
-    'asset',
     'document',
     'message',
     'library',
   ).filter((c) => c !== 'employee.view_sensitive'),
+  // Assets: admins see and hand out assets; register management sits with asset_manager.
+  ...ASSET_CUSTODY,
   'designation.view',
   ...TIME_OFFICE,
   'role.view',
@@ -109,6 +112,7 @@ const HR = [
   'payroll.report',
   'message.send',
   'ai.use',
+  ...ASSET_CUSTODY,
 ] as PermissionCode[];
 
 const FINANCE = [
@@ -187,6 +191,7 @@ const EMPLOYEE_SELF_SERVICE = [
   ...TIME_SELF_SERVICE,
   'payroll.view_own',
   'reimbursement.claim_own',
+  'asset.view_own',
 ] as PermissionCode[];
 
 /** Payroll preparation (Layer 8): masters, runs, loans, Form 16; never approves its own runs. */
@@ -373,7 +378,16 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Asset Manager',
       description: 'Manages assets',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, ...pick('asset'), 'employee.view'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        ...pick('asset').filter((c) => c !== 'asset.view_own'),
+        'employee.view',
+        'document.view',
+        'document.upload',
+        'document.download',
+        'pdf.generate',
+        'workflow.view',
+      ],
     },
     {
       key: 'transport_manager',

@@ -17,4 +17,5 @@ import './modules/payroll/payroll.registrations';
 import './modules/ai/ai.registrations';
 import './modules/finance/finance.registrations';
 import './modules/fees/fees.registrations';
+import './modules/assets/assets.registrations';
 import './modules/library/library.registrations';

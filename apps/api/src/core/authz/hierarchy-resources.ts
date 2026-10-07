@@ -65,6 +65,18 @@ export const hierarchyResource = {
     institutionId: a.institutionId,
     departmentId: a.departmentId,
   }),
+  /** Asset (and asset child rows / inventory items carrying the same columns). */
+  asset: (a: {
+    groupId: string | null;
+    institutionId: string;
+    campusId: string | null;
+    departmentId: string | null;
+  }): ResourceScope => ({
+    groupId: a.groupId,
+    institutionId: a.institutionId,
+    campusId: a.campusId,
+    departmentId: a.departmentId,
+  }),
   /** Library rows (books, copies, loans, reservations, fines) — institution library (+ campus). */
   library: (l: {
     groupId: string | null;

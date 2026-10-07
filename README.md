@@ -156,3 +156,16 @@ Seed demo AI settings and conversations against a running API with
 OpenAI-compatible endpoint, add a secret of kind `ai.openai` (value = API key, optional metadata
 `{"model":"gpt-4o-mini","baseUrl":"…"}`) on the Secrets page, then set provider `openai` and enable
 data sharing on **AI settings**. See docs/ARCHITECTURE.md §16.
+
+## Asset management demo
+
+Start the API, then run
+`API_URL=http://localhost:3000/api/v1 node scripts/demo/seed-assets.mjs`. It enables the
+`assets` add-on and seeds categories, assets, custody, repairs, inventory, an audit and a
+disposal for ABBS and Logicmines. It also creates these asset-manager logins:
+
+- `abbs.assets@abbs.test` / `Abbs@2026Demo`
+- `assets@logicmines.in` / `Logicmines@2026`
+
+Logicmines employees (e.g. `lmt.it2@logicmines.in`) see their devices under
+**My assets**. See ARCHITECTURE §18.
