@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import NotificationBell from '@/components/NotificationBell.vue';
+import AiAssistantPanel from '@/components/ai/AiAssistantPanel.vue';
 import { MENUS, visibleMenu, type LayoutKey } from '@/navigation/menus';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
@@ -16,6 +17,9 @@ const items = computed(() =>
   visibleMenu(MENUS[props.layout], auth.can, auth.hasFeature, auth.me?.organization?.kind),
 );
 const terms = useTerms();
+const showAi = computed(
+  () => !!auth.me?.organization && auth.hasFeature('ai') && auth.can('ai.use'),
+);
 const shellTitle = computed(() =>
   terms.value.isCompany
     ? props.title.replace('Institution', 'Company').replace('Group', 'Head office')
@@ -86,4 +90,5 @@ async function signOut() {
       <router-view />
     </v-container>
   </v-main>
+  <AiAssistantPanel v-if="showAi" />
 </template>

@@ -1123,3 +1123,53 @@ Module `apps/api/src/modules/students` is mounted under `/api/v1/students` and `
 Data model: `Student` (unique `admissionNo` per organization, optional linked student login), `StudentEnrollment` effective-dated history, `Guardian` and `StudentGuardian` sibling-safe parent links, `AdmissionApplication` with staff-managed status transitions and enrollment that creates the student, guardian link and initial enrollment. Student creation consumes the `students` license limit; soft delete releases it. Registrations live in `students.registrations.ts`: domain events, usage recount, and document owner types for `student` and `admission_application`.
 
 Permissions: `student.view|create|update|delete|import|view_own|lifecycle`, `admission.view|manage`, `guardian.manage`, and `ward.view`. Academic administrators and registrars manage students/admissions in scope; teachers view students; student and parent roles get only self-service / ward access. Web pages live in `apps/web/src/pages/students` and the `/portal` layout.
+
+## 16. AI gateway and assistant
+
+The core engine `apps/api/src/core/ai` is provider-agnostic. Modules call `runAi` / `runAiPrompt` and never talk to a vendor SDK directly.
+
+- **Providers.** `openai` is an OpenAI Chat Completions adapter (`fetch`, tool calling) that works with OpenAI, Azure OpenAI and any OpenAI-compatible endpoint. Credentials come **only** from `getSecret({ kind: 'ai.openai', purpose })` (value = API key; metadata `{ model?, baseUrl?, apiVersion? }`); the URL goes through `assertSafeOutboundUrl`. `mock` is deterministic and answers from prompt-specific mocks / tool routing. It is chosen automatically when settings select `mock`, when no `ai.openai` secret exists, when `dataSharing` is off, and in tests (`setAiProviderOverride`).
+- **Governance (every call).** The call is refused unless:
+  - the `ai` feature is enabled;
+  - org settings (`ai_settings`: enabled, provider, default model, max tokens, temperature, enabled features, `dataSharing`) allow the feature.
+
+  `maxTokensPerRequest` is reserved via `consumeLimit('ai_tokens', n)` before the call; the unused part is released afterwards and the whole reservation on failure. An `ai_usage_logs` row records user, feature, prompt key, provider/model, prompt/completion tokens, latency, status (`OK|ERROR|LIMITED`) and a **PII-redacted, truncated** prompt preview (`redactPii`: emails, phones, Aadhaar/PAN/IFSC/card-like ids). Secrets are never logged or returned. Settings changes are audited (`ai.settings.update`).
+
+- **Registries.**
+  - `registerAiPrompt({ key, version, system, inputSchema, mock? })` registers a versioned prompt template.
+  - `registerAiTool({ name, description, parameters, permission, feature?, execute })` registers a **read-only** tool for the assistant. A tool is offered to the model only when the caller holds its permission (and feature). `execute` runs inside the caller's request context and calls the module services, so tenancy and hierarchy scope (`scopeWhere`) still apply. A tool can never read more than the user could through the UI.
+
+The module `apps/api/src/modules/ai` (mounted at `/api/v1/ai` behind `requireFeature('ai')`) registers its prompts and tools in `ai.registrations.ts`.
+
+Tools: `employee_search`, `employee_headcount`, `leave_balances`, `attendance_summary`, `payroll_run_totals`, `student_counts`.
+
+Features:
+
+- **Assistant chat.** Conversations are private per user and tenant (`ai_conversations`, `ai_messages`; deletion hard-deletes the messages).
+- **Drafting** of offer/experience/relieving letters, circulars, notices and parent emails. Results can be saved as a communication template.
+- **Payroll anomaly explanation.** Needs `payroll.view`. Compares a run with the previous finalized run for the same institution and flags >20% changes, joiners and leavers, LOP, errors and z-score outliers.
+- **Student insight hook.** Needs `student.view`. Uses heuristic signals today; exams/attendance modules can add signals via `registerStudentInsightSource`. Student names are never sent to the model.
+- **Resume / JD summarizer.** Text only.
+- **Usage.** Dashboard and logs.
+
+Permissions:
+
+| Permission      | Allows                            | Default holders                                        |
+| --------------- | --------------------------------- | ------------------------------------------------------ |
+| `ai.use`        | Use the AI features               | Admins, HR, payroll, principals and self-service roles |
+| `ai.manage`     | Change the AI settings            | Group admin, IT admin                                  |
+| `ai.view_usage` | View the usage dashboard and logs | Group admin, IT admin                                  |
+
+Web:
+
+- A floating **Ask AI** panel in `AppShell`, shown when the `ai` feature is on and the user has `ai.use`.
+- Pages `/group/ai` (tools), `/group/ai/settings` and `/group/ai/usage`, plus `/hr/ai`.
+- A `DraftWithAiButton` in the communication template dialog and the HR letters dialog.
+
+Demo: `node scripts/demo/seed-ai.mjs` (HTTP based, idempotent; `API_URL` env).
+
+To use a real model:
+
+1. In Secrets, add kind `ai.openai` with the API key as the value.
+2. Optionally add metadata `{"model":"gpt-4o-mini","baseUrl":"https://…/v1","apiVersion":"…"}`.
+3. In AI settings, set provider `openai` and turn on data sharing.

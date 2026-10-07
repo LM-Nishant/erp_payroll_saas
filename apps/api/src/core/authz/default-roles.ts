@@ -86,6 +86,8 @@ const GROUP_ADMIN = [
   'notification.manage',
   'communication.manage',
   'integration.view',
+  'ai.manage',
+  'ai.view_usage',
 ] as PermissionCode[];
 
 const HR = [
@@ -329,6 +331,8 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'role.view',
         'audit.view',
         'ai.configure',
+        'ai.manage',
+        'ai.view_usage',
         'feature.view',
         'branding.view',
         ...pick('secret', 'integration', 'communication'),

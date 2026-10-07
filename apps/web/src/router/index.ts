@@ -166,6 +166,24 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'secret.view' },
         component: () => import('@/pages/settings/SecretsPage.vue'),
       },
+      {
+        path: 'ai',
+        name: 'group-ai-tools',
+        meta: { permission: 'ai.use', feature: 'ai' },
+        component: () => import('@/pages/ai/AiToolsPage.vue'),
+      },
+      {
+        path: 'ai/settings',
+        name: 'group-ai-settings',
+        meta: { permission: 'ai.manage', feature: 'ai' },
+        component: () => import('@/pages/ai/AiSettingsPage.vue'),
+      },
+      {
+        path: 'ai/usage',
+        name: 'group-ai-usage',
+        meta: { permission: 'ai.view_usage', feature: 'ai' },
+        component: () => import('@/pages/ai/AiUsagePage.vue'),
+      },
     ],
   },
   {
@@ -362,6 +380,12 @@ export const routes: RouteRecordRaw[] = [
         path: 'approvals',
         name: 'hr-approvals',
         component: () => import('@/pages/ApprovalsPage.vue'),
+      },
+      {
+        path: 'ai',
+        name: 'hr-ai-tools',
+        meta: { permission: 'ai.use', feature: 'ai' },
+        component: () => import('@/pages/ai/AiToolsPage.vue'),
       },
     ],
   },

@@ -27,3 +27,5 @@ export * from './types/hr';
 export * from './types/licensing';
 export * from './types/payroll';
 export * from './types/students';
+export * from './schemas/ai';
+export * from './types/ai';

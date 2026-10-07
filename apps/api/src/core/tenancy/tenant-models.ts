@@ -115,6 +115,11 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'Loan',
   'LoanInstallment',
   'ReimbursementClaim',
+  // AI
+  'AiSetting',
+  'AiConversation',
+  'AiMessage',
+  'AiUsageLog',
 ]);
 
 /**
@@ -149,6 +154,8 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'Guardian',
   'StudentGuardian',
   'AdmissionApplication',
+  // AI
+  'AiConversation',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */

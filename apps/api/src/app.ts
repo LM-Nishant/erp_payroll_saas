@@ -49,6 +49,7 @@ import { leaveRouter } from './modules/leave/leave.routes';
 import { payrollRouter } from './modules/payroll/payroll.routes';
 import { shiftsRouter } from './modules/shifts/shifts.routes';
 import { admissionsRouter, studentsRouter } from './modules/students/students.routes';
+import { aiRouter } from './modules/ai/ai.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -176,6 +177,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/notifications', notificationsRouter);
   api.use('/communication', requireFeature('communication'), communicationRouter);
   api.use('/integrations', integrationsRouter);
+  api.use('/ai', requireFeature('ai'), aiRouter);
   app.use('/api/v1', api);
 
   app.use(notFoundHandler);
