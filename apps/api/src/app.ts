@@ -50,6 +50,7 @@ import { payrollRouter } from './modules/payroll/payroll.routes';
 import { shiftsRouter } from './modules/shifts/shifts.routes';
 import { admissionsRouter, studentsRouter } from './modules/students/students.routes';
 import { aiRouter } from './modules/ai/ai.routes';
+import { assetsRouter } from './modules/assets/assets.routes';
 import { libraryRouter } from './modules/library/library.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
@@ -165,6 +166,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/attendance', requireFeature('hr'), attendanceRouter);
   api.use('/leave', requireFeature('hr'), leaveRouter);
   api.use('/payroll', requireFeature('payroll'), payrollRouter);
+  api.use('/assets', requireFeature('assets'), assetsRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
   api.use('/permissions', permissionsRouter);
