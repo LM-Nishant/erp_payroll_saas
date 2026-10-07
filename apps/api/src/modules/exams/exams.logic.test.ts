@@ -54,7 +54,8 @@ describe('computeStudentResult', () => {
       ],
       DEFAULT_GRADE_BANDS,
     );
-    expect(r.gpa).toBe(8.75);
+    // A: 100% → 10 pts × 3 credits; B: 40% → D (4 pts) × 1 credit → 34 / 4
+    expect(r.gpa).toBe(8.5);
   });
 });
 
