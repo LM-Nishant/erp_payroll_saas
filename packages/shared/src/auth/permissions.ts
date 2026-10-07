@@ -162,6 +162,16 @@ export const PERMISSIONS = {
   'library.circulate': 'Issue, return, renew books and manage reservations',
   'library.fine': 'Collect or waive library fines',
   'library.view_own': 'Self-service library: own loans, fines, OPAC search and reservations',
+  'transport.view': 'View vehicles, drivers, routes, allocations, trips and transport reports',
+  'transport.manage': 'Manage vehicles, drivers, routes & stops, fare slabs, trips and logs',
+  'transport.allocate': 'Allocate students / staff to routes and generate transport charges',
+  'transport.view_own': "View own / own wards' transport (route, stop, vehicle, driver)",
+  'hostel.view': 'View hostels, rooms, allocations, visitors, out-passes and complaints',
+  'hostel.manage': 'Manage hostels, rooms & beds, visitors, in/out register, complaints, roll call',
+  'hostel.allocate': 'Allocate / vacate / transfer hostel beds and generate hostel charges',
+  'hostel.outpass_approve': 'Approve or reject hostel out-pass requests',
+  'hostel.view_own': "View own / own wards' hostel room, roommates and out-passes",
+  'hostel.apply_own': 'Apply for an out-pass and raise hostel complaints for oneself',
 } as const satisfies Record<string, string>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;

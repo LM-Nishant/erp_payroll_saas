@@ -147,6 +147,18 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/students/AdmissionsPage.vue'),
       },
       {
+        path: 'transport/:tab?',
+        name: 'group-transport',
+        meta: { permission: 'transport.view', feature: 'transport' },
+        component: () => import('@/pages/transport/TransportPage.vue'),
+      },
+      {
+        path: 'hostel/:tab?',
+        name: 'group-hostel',
+        meta: { permission: 'hostel.view', feature: 'hostel' },
+        component: () => import('@/pages/hostel/HostelPage.vue'),
+      },
+      {
         path: 'documents',
         name: 'group-documents',
         meta: { permission: 'document.view', feature: 'documents' },
@@ -266,6 +278,18 @@ export const routes: RouteRecordRaw[] = [
         name: 'institution-admissions',
         meta: { permission: 'admission.view', feature: 'education' },
         component: () => import('@/pages/students/AdmissionsPage.vue'),
+      },
+      {
+        path: 'transport/:tab?',
+        name: 'institution-transport',
+        meta: { permission: 'transport.view', feature: 'transport' },
+        component: () => import('@/pages/transport/TransportPage.vue'),
+      },
+      {
+        path: 'hostel/:tab?',
+        name: 'institution-hostel',
+        meta: { permission: 'hostel.view', feature: 'hostel' },
+        component: () => import('@/pages/hostel/HostelPage.vue'),
       },
       {
         path: 'documents',
@@ -520,6 +544,18 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/DocumentsPage.vue'),
       },
       ...librarySelfRoutes('portal'),
+      {
+        path: 'transport',
+        name: 'portal-transport',
+        meta: { permission: 'transport.view_own', feature: 'transport' },
+        component: () => import('@/pages/transport/MyTransportPage.vue'),
+      },
+      {
+        path: 'hostel',
+        name: 'portal-hostel',
+        meta: { permission: 'hostel.view_own', feature: 'hostel' },
+        component: () => import('@/pages/hostel/MyHostelPage.vue'),
+      },
     ],
   },
   {

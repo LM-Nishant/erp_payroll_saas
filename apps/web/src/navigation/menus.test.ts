@@ -23,6 +23,23 @@ describe('visibleMenu', () => {
     expect(visibleMenu(WORKSPACES, can).map((w) => w.layout)).toEqual(['institution', 'employee']);
   });
 
+  it('shows transport and hostel pages by permission and licensed module', () => {
+    const perms = new Set(['institution.view', 'transport.view', 'hostel.view']);
+    const can = (p?: string) => !p || perms.has(p);
+    const onlyTransport = (f?: string) => !f || f === 'transport';
+    const titles = visibleMenu(MENUS.institution, can, onlyTransport).map((i) => i.title);
+    expect(titles).toContain('Transport');
+    expect(titles).not.toContain('Hostel');
+    const own = new Set(['transport.view_own', 'hostel.view_own']);
+    expect(
+      visibleMenu(
+        MENUS.portal,
+        (p) => !p || own.has(p),
+        () => true,
+      ).map((i) => i.title),
+    ).toEqual(['My transport', 'My hostel']);
+  });
+
   it('hides modules that are not enabled for the organization', () => {
     const items: MenuItem[] = [
       { title: 'Dashboard', icon: 'x', to: '/' },
