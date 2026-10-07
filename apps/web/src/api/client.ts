@@ -107,3 +107,29 @@ export async function apiDownload(path: string, fileName: string): Promise<void>
   a.click();
   URL.revokeObjectURL(url);
 }
+
+/**
+ * Authenticated binary request (any method, JSON body) returning the response as a Blob — e.g.
+ * images or generated PDFs that are shown in-app rather than saved.
+ */
+export async function apiBlob(path: string, init: RequestInit = {}): Promise<Blob> {
+  const send = (token?: string | null) => {
+    const headers = new Headers(init.headers);
+    if (init.body && !(init.body instanceof FormData))
+      headers.set('Content-Type', 'application/json');
+    if (token) headers.set('Authorization', `Bearer ${token}`);
+    return fetch(`${BASE_URL}${path}`, { ...init, headers, credentials: 'include' });
+  };
+  let res = await send(hooks?.accessToken());
+  if (res.status === 401 && hooks && (await hooks.refresh())) res = await send(hooks.accessToken());
+  if (!res.ok) {
+    const body = (await res.json().catch(() => null)) as ApiErrorResponse | null;
+    throw new ApiError(
+      res.status,
+      body?.error.code ?? 'HTTP_ERROR',
+      body?.error.message ?? res.statusText,
+      body?.error.details,
+    );
+  }
+  return res.blob();
+}

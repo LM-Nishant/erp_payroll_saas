@@ -152,6 +152,11 @@ export const PERMISSIONS = {
   // ===== AI =====
   'ai.manage': 'Manage organization AI settings (provider, model, enabled features, limits)',
   'ai.view_usage': 'View AI usage dashboards (tokens by feature / user / day)',
+  'library.view': 'View library catalogue, copies, circulation and reports',
+  'library.manage': 'Manage library catalogue, copies, policies, imports and stock verification',
+  'library.circulate': 'Issue, return, renew books and manage reservations',
+  'library.fine': 'Collect or waive library fines',
+  'library.view_own': 'Self-service library: own loans, fines, OPAC search and reservations',
 } as const satisfies Record<string, string>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;

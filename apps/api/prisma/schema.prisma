@@ -181,6 +181,14 @@ model Organization {
   aiMessages                AiMessage[]
   aiUsageLogs               AiUsageLog[]
 
+  libraryBooks              LibraryBook[]
+  libraryCopies             LibraryCopy[]
+  libraryPolicies           LibraryPolicy[]
+  libraryLoans              LibraryLoan[]
+  libraryReservations       LibraryReservation[]
+  libraryFines              LibraryFine[]
+  libraryStockVerifications LibraryStockVerification[]
+
   @@map("organizations")
 }
 
@@ -255,6 +263,14 @@ model Institution {
   attendanceLocks    AttendancePeriodLock[]
   attendancePolicies AttendancePolicy[]
   leavePolicies      LeavePolicy[]
+
+  libraryBooks              LibraryBook[]
+  libraryCopies             LibraryCopy[]
+  libraryPolicies           LibraryPolicy[]
+  libraryLoans              LibraryLoan[]
+  libraryReservations       LibraryReservation[]
+  libraryFines              LibraryFine[]
+  libraryStockVerifications LibraryStockVerification[]
 
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
@@ -3676,4 +3692,238 @@ model AiUsageLog {
   @@index([organizationId, feature, createdAt])
   @@index([organizationId, userId, createdAt])
   @@map("ai_usage_logs")
+}
+
+// ===== Library =====
+
+/// Catalogue title (book, journal, magazine, e-resource) held by an institution library.
+model LibraryBook {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @map("organization_id") @db.Char(36)
+  groupId         String?   @map("group_id") @db.Char(36)
+  institutionId   String    @map("institution_id") @db.Char(36)
+  campusId        String?   @map("campus_id") @db.Char(36)
+  itemType        String    @default("BOOK") @map("item_type") @db.VarChar(16)
+  isbn            String?   @db.VarChar(20)
+  title           String    @db.VarChar(300)
+  subtitle        String?   @db.VarChar(300)
+  authors         Json?
+  /// Authors joined with "; " for search.
+  authorText      String?   @map("author_text") @db.VarChar(1000)
+  publisher       String?   @db.VarChar(200)
+  edition         String?   @db.VarChar(60)
+  publicationYear Int?      @map("publication_year")
+  category        String?   @db.VarChar(100)
+  language        String?   @db.VarChar(40)
+  tags            Json?
+  callNumber      String?   @map("call_number") @db.VarChar(60)
+  url             String?   @db.VarChar(500)
+  description     String?   @db.VarChar(2000)
+  coverDocumentId String?   @map("cover_document_id") @db.Char(36)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt       DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution          @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  copies       LibraryCopy[]
+  loans        LibraryLoan[]
+  reservations LibraryReservation[]
+
+  @@index([organizationId, institutionId, title])
+  @@index([organizationId, isbn])
+  @@index([organizationId, category])
+  @@index([organizationId, deletedAt])
+  @@map("library_books")
+}
+
+/// Physical copy (accession) of a catalogue title, identified by barcode.
+model LibraryCopy {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  campusId       String?   @map("campus_id") @db.Char(36)
+  bookId         String    @map("book_id") @db.Char(36)
+  accessionNo    String    @map("accession_no") @db.VarChar(40)
+  barcode        String    @db.VarChar(64)
+  shelf          String?   @db.VarChar(40)
+  rack           String?   @db.VarChar(40)
+  status         String    @default("AVAILABLE") @db.VarChar(16)
+  condition      String?   @db.VarChar(40)
+  price          Decimal?  @db.Decimal(12, 2)
+  acquiredOn     DateTime? @map("acquired_on") @db.Date
+  notes          String?   @db.VarChar(500)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution          @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  book         LibraryBook          @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  loans        LibraryLoan[]
+  reservations LibraryReservation[]
+
+  @@unique([organizationId, barcode])
+  @@unique([organizationId, institutionId, accessionNo])
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, bookId, status])
+  @@map("library_copies")
+}
+
+/// Membership policy per institution library and member type (STUDENT / EMPLOYEE).
+model LibraryPolicy {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  groupId        String?  @map("group_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  campusId       String?  @map("campus_id") @db.Char(36)
+  memberType     String   @map("member_type") @db.VarChar(16)
+  maxBooks       Int      @default(3) @map("max_books")
+  loanDays       Int      @default(14) @map("loan_days")
+  maxRenewals    Int      @default(1) @map("max_renewals")
+  finePerDay     Decimal  @default(1) @map("fine_per_day") @db.Decimal(10, 2)
+  maxFine        Decimal  @default(100) @map("max_fine") @db.Decimal(12, 2)
+  holdDays       Int      @default(3) @map("hold_days")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId, memberType])
+  @@map("library_policies")
+}
+
+/// Circulation record: one copy issued to one member (student or employee).
+model LibraryLoan {
+  id               String    @id @default(uuid()) @db.Char(36)
+  organizationId   String    @map("organization_id") @db.Char(36)
+  groupId          String?   @map("group_id") @db.Char(36)
+  institutionId    String    @map("institution_id") @db.Char(36)
+  campusId         String?   @map("campus_id") @db.Char(36)
+  copyId           String    @map("copy_id") @db.Char(36)
+  bookId           String    @map("book_id") @db.Char(36)
+  memberType       String    @map("member_type") @db.VarChar(16)
+  studentId        String?   @map("student_id") @db.Char(36)
+  employeeId       String?   @map("employee_id") @db.Char(36)
+  memberUserId     String?   @map("member_user_id") @db.Char(36)
+  memberName       String    @map("member_name") @db.VarChar(200)
+  issuedAt         DateTime  @map("issued_at") @db.DateTime(3)
+  dueDate          DateTime  @map("due_date") @db.Date
+  returnedAt       DateTime? @map("returned_at") @db.DateTime(3)
+  renewCount       Int       @default(0) @map("renew_count")
+  status           String    @default("ISSUED") @db.VarChar(16)
+  fineAmount       Decimal   @default(0) @map("fine_amount") @db.Decimal(12, 2)
+  returnCondition  String?   @map("return_condition") @db.VarChar(16)
+  reminderCount    Int       @default(0) @map("reminder_count")
+  lastReminderAt   DateTime? @map("last_reminder_at") @db.DateTime(3)
+  issuedByUserId   String?   @map("issued_by_user_id") @db.Char(36)
+  returnedByUserId String?   @map("returned_by_user_id") @db.Char(36)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution   @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  copy         LibraryCopy   @relation(fields: [copyId], references: [id], onDelete: Restrict)
+  book         LibraryBook   @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  fines        LibraryFine[]
+
+  @@index([organizationId, institutionId, status, dueDate])
+  @@index([organizationId, copyId, status])
+  @@index([organizationId, bookId])
+  @@index([organizationId, studentId, status])
+  @@index([organizationId, employeeId, status])
+  @@index([organizationId, memberUserId])
+  @@map("library_loans")
+}
+
+/// Hold queue entry for a title; READY holds a specific copy until expiresAt.
+model LibraryReservation {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  campusId       String?   @map("campus_id") @db.Char(36)
+  bookId         String    @map("book_id") @db.Char(36)
+  copyId         String?   @map("copy_id") @db.Char(36)
+  memberType     String    @map("member_type") @db.VarChar(16)
+  studentId      String?   @map("student_id") @db.Char(36)
+  employeeId     String?   @map("employee_id") @db.Char(36)
+  memberUserId   String?   @map("member_user_id") @db.Char(36)
+  memberName     String    @map("member_name") @db.VarChar(200)
+  status         String    @default("WAITING") @db.VarChar(16)
+  readyAt        DateTime? @map("ready_at") @db.DateTime(3)
+  expiresAt      DateTime? @map("expires_at") @db.DateTime(3)
+  closedAt       DateTime? @map("closed_at") @db.DateTime(3)
+  loanId         String?   @map("loan_id") @db.Char(36)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  book         LibraryBook  @relation(fields: [bookId], references: [id], onDelete: Restrict)
+  copy         LibraryCopy? @relation(fields: [copyId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, bookId, status, createdAt])
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, studentId, status])
+  @@index([organizationId, employeeId, status])
+  @@map("library_reservations")
+}
+
+/// Library fine (overdue/lost/damaged). POSTED = handed to the fee module via the fine poster hook.
+model LibraryFine {
+  id               String    @id @default(uuid()) @db.Char(36)
+  organizationId   String    @map("organization_id") @db.Char(36)
+  groupId          String?   @map("group_id") @db.Char(36)
+  institutionId    String    @map("institution_id") @db.Char(36)
+  campusId         String?   @map("campus_id") @db.Char(36)
+  loanId           String?   @map("loan_id") @db.Char(36)
+  memberType       String    @map("member_type") @db.VarChar(16)
+  studentId        String?   @map("student_id") @db.Char(36)
+  employeeId       String?   @map("employee_id") @db.Char(36)
+  memberUserId     String?   @map("member_user_id") @db.Char(36)
+  memberName       String    @map("member_name") @db.VarChar(200)
+  amount           Decimal   @db.Decimal(12, 2)
+  reason           String    @db.VarChar(16)
+  status           String    @default("PENDING") @db.VarChar(16)
+  note             String?   @db.VarChar(500)
+  externalChargeId String?   @map("external_charge_id") @db.VarChar(64)
+  settledAt        DateTime? @map("settled_at") @db.DateTime(3)
+  settledByUserId  String?   @map("settled_by_user_id") @db.Char(36)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  loan         LibraryLoan? @relation(fields: [loanId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, studentId, status])
+  @@index([organizationId, employeeId, status])
+  @@index([organizationId, loanId])
+  @@map("library_fines")
+}
+
+/// Stock verification session: scanned barcodes compared against expected shelf stock.
+model LibraryStockVerification {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @map("organization_id") @db.Char(36)
+  groupId         String?   @map("group_id") @db.Char(36)
+  institutionId   String    @map("institution_id") @db.Char(36)
+  campusId        String?   @map("campus_id") @db.Char(36)
+  name            String    @db.VarChar(200)
+  status          String    @default("OPEN") @db.VarChar(16)
+  scannedBarcodes Json?     @map("scanned_barcodes")
+  result          Json?
+  startedByUserId String?   @map("started_by_user_id") @db.Char(36)
+  completedAt     DateTime? @map("completed_at") @db.DateTime(3)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, institutionId, status])
+  @@map("library_stock_verifications")
 }
