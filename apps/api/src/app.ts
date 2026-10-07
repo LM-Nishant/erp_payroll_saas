@@ -52,6 +52,7 @@ import { financeRouter } from './modules/finance/finance.routes';
 import { shiftsRouter } from './modules/shifts/shifts.routes';
 import { admissionsRouter, studentsRouter } from './modules/students/students.routes';
 import { aiRouter } from './modules/ai/ai.routes';
+import { libraryRouter } from './modules/library/library.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -158,6 +159,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/class-sections', requireFeature('education'), classSectionsRouter);
   api.use('/students', requireFeature('education'), studentsRouter);
   api.use('/admissions', requireFeature('education'), admissionsRouter);
+  api.use('/library', requireFeature('library'), libraryRouter);
   api.use('/employees', requireFeature('hr'), employeesRouter);
   api.use('/designations', requireFeature('hr'), designationsRouter);
   api.use('/employee-types', requireFeature('hr'), employeeTypesRouter);

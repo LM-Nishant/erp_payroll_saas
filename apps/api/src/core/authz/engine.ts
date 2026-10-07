@@ -165,7 +165,8 @@ export type ScopedModel =
   | 'employee'
   | 'student'
   | 'admission'
-  | 'finance';
+  | 'finance'
+  | 'library';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -212,6 +213,7 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
   },
   /** Fees & finance rows (invoices, receipts, structures, vouchers, expenses…). */
   finance: { groupIds: 'groupId', institutionIds: 'institutionId', campusIds: 'campusId' },
+  library: { groupIds: 'groupId', institutionIds: 'institutionId', campusIds: 'campusId' },
 };
 
 /** Prisma `where` fragment restricting `model` rows to the access set (undefined = no filter). */

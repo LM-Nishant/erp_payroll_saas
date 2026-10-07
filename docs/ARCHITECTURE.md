@@ -1174,7 +1174,23 @@ To use a real model:
 2. Optionally add metadata `{"model":"gpt-4o-mini","baseUrl":"https://…/v1","apiVersion":"…"}`.
 3. In AI settings, set provider `openai` and turn on data sharing.
 
-## 17. Fees and finance (accounts)
+## 17. Library
+
+Module `apps/api/src/modules/library` is mounted under `/api/v1/library` with `requireFeature('library')`. Every row carries `organizationId` plus `groupId`/`institutionId` (and optional `campusId`) derived server-side from the owning institution library; services use only `tenantDb()` / `withTenant()` and audit every mutation (`library_book.created`, `library_loan.issued|returned|renewed`, `library_fine.collected|waived`, …).
+
+Data model (`// ===== Library =====` block in `schema.prisma`, migration `20261007120300_library`): `LibraryBook` (title/ISBN/authors/publisher/category/tags; item types BOOK, JOURNAL, MAGAZINE, E_RESOURCE, …; cover via the `library_book` document owner type), `LibraryCopy` (accession number `<INSTCODE>-000001` doubling as barcode, shelf/rack, status AVAILABLE/ISSUED/RESERVED/LOST/DAMAGED/WITHDRAWN), `LibraryPolicy` (per institution × member type STUDENT/EMPLOYEE: max loans, loan days, renewals, fine per day, max fine, hold days), `LibraryLoan`, `LibraryReservation` (FIFO queue per book; WAITING → READY when a copy returns, copy held as RESERVED until `expiresAt`), `LibraryFine` and `LibraryStockVerification`. Students and employees are members automatically through their enrollment / assignment institution — there is no membership table.
+
+Circulation: `POST /issue`, `POST /return`, `POST /loans/:id/renew`, `/reservations`; fines are calculated on return (`min(daysLate × finePerDay, maxFine)`). Backdated `issuedAt`/`returnedAt` require `library.manage`. Errors: `NOT_A_MEMBER`, `LOAN_LIMIT`, `RENEWAL_LIMIT`, `LOAN_OVERDUE`, `BOOK_RESERVED` (422), `COPY_NOT_AVAILABLE`, `COPY_RESERVED` (409).
+
+Registrations (`library.registrations.ts`): domain events `library.*`; notification events `library.due_reminder`, `library.overdue`, `library.reservation_ready`, `library.fine_assessed` published to the member (students: also guardians); recurring job `library.daily.schedule` → `library.daily_circulation` per active organization (due/overdue reminders, expiry of uncollected holds); PDF templates `library_labels` (QR barcode labels) and `library_report`.
+
+Fees integration hook: fines live in `library_fines` with collect / waive actions. When a fees module provides student charges, it calls `registerLibraryFinePoster(poster)` (from `library.constants.ts`); new student fines are then posted to the fee account and the returned `externalChargeId` is stored on the fine.
+
+Other endpoints: `/opac` (search, `library.view` or `library.view_own`), `/me`, `/me/reservations`, `/me/loans/:id/renew` (self-service), `/books/import` (CSV/XLSX), `/labels` (PDF), `/stock-verifications`, `/reports/:key` (`issued|overdue|most_borrowed|fines`, JSON/CSV/XLSX), `/dashboard`, `/members`.
+
+Permissions: `library.view|manage|circulate|fine|view_own`. New default role `librarian` (library.* plus student/employee view); `institution_admin` gets library.*; `principal` gets `library.view`; student, parent and employee self-service roles get `library.view_own`. Web pages live in `apps/web/src/pages/library` (Library menu in group / institution layouts, “My library” + “Library catalogue” in `/portal` and `/employee`).
+
+## 18. Fees and finance (accounts)
 
 Modules `apps/api/src/modules/fees` (mounted at `/api/v1/fees`) and `apps/api/src/modules/finance` (`/api/v1/finance`) sit behind `requireFeature('finance')`. All 18 models (`FeeHead`, `FeeStructure`/`FeeStructureItem`/`FeeInstallment`, `LateFeeRule`, `FeeConcession`, `FeeInvoice`/`FeeInvoiceLine`, `FeePayment`/`FeePaymentAllocation`, `FeeRefund`, `FeeNumberSeries`, `PaymentOrder`, `Account`, `JournalVoucher`/`JournalVoucherLine`, `Vendor`, `Expense`) are tenant models carrying `organizationId` + `groupId` + `institutionId`. Money is `Decimal(14,2)`; every calculation goes through integer paise in `fees.logic.ts` / `finance.logic.ts` (pure, unit-tested).
 
@@ -1196,7 +1212,7 @@ await createStudentCharge({
 await cancelStudentCharge({ sourceType: 'TRANSPORT_ALLOCATION', sourceId: allocation.id, reason });
 ```
 
-The charge runs as the current principal inside its tenant context: it validates the student and head, creates an `ADHOC` invoice, posts the receivable journal, then audits it and emits `fee.invoice_created`. Staff can call the same operation through `POST /fees/charges` (`fee.manage`).
+The charge runs as the current principal inside its tenant context: it validates the student and head, creates an `ADHOC` invoice, posts the receivable journal, then audits it and emits `fee.invoice_created`. Staff can call the same operation through `POST /fees/charges` (`fee.manage`). Library fines are already wired up: `fees.registrations.ts` registers `registerLibraryFinePoster()`, so every student fine becomes a `LIBRARY` charge with `sourceType: 'LIBRARY_FINE'` and the fine id as `sourceId`. The fine is stored as `POSTED`, and is then settled through fees rather than at the library desk. When `finance` is disabled for the institution, fines stay `PENDING`.
 
 **Collections.** `POST /fees/payments` records cash, cheque, UPI, card, bank transfer or online payments. It allocates the amount to the given invoices, or to the oldest dues first, and keeps any excess as student advance. Each payment takes a per-institution receipt number from `FeeNumberSeries` (`RECEIPT`, `REFUND`, `INVOICE`), allocated under a row lock. Receipts render through the branded `fee_receipt` PDF template. Refunds (`fee.refund`) and payment or invoice cancellations require a reason; they are audited and reverse their journals.
 

@@ -9,7 +9,10 @@ import {
 } from '../../core/queue';
 import { registerNotificationEvent } from '../../core/notifications';
 import { registerPdfTemplate } from '../../core/pdf';
+import { registerLibraryFinePoster } from '../library/library.constants';
+import { today } from '../finance/finance.mappers';
 import { applyLateFees, sendDueReminders } from './fees.dues.service';
+import { createStudentCharge } from './fees.invoices.service';
 import { FEE_RECEIPT_TEMPLATE } from './fees.payments.service';
 
 /*
@@ -124,4 +127,26 @@ defineRecurringJob({
       );
     });
   },
+});
+
+/**
+ * Library → fees: student library fines become a `LIBRARY` fee charge (head auto-created),
+ * idempotent per fine. Returning null (finance off for the institution) keeps the fine PENDING
+ * at the library desk.
+ */
+registerLibraryFinePoster(async (fine) => {
+  const enabled = await isFeatureEnabled(currentFeatureContext(), 'finance', {
+    institutionId: fine.institutionId,
+  });
+  if (!enabled) return null;
+  const invoice = await createStudentCharge({
+    studentId: fine.studentId,
+    feeHeadCode: 'LIBRARY',
+    amount: fine.amount,
+    dueDate: today(),
+    sourceType: 'LIBRARY_FINE',
+    sourceId: fine.fineId,
+    description: fine.description.slice(0, 500),
+  });
+  return { externalChargeId: invoice.id };
 });

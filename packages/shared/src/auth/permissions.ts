@@ -162,6 +162,11 @@ export const PERMISSIONS = {
   'finance.view': 'View accounts, vouchers, ledgers and financial reports',
   'finance.manage': 'Manage chart of accounts, vendors and expenses',
   'finance.post': 'Post and cancel journal vouchers',
+  'library.view': 'View library catalogue, copies, circulation and reports',
+  'library.manage': 'Manage library catalogue, copies, policies, imports and stock verification',
+  'library.circulate': 'Issue, return, renew books and manage reservations',
+  'library.fine': 'Collect or waive library fines',
+  'library.view_own': 'Self-service library: own loans, fines, OPAC search and reservations',
 } as const satisfies Record<string, string>;
 
 export type PermissionCode = keyof typeof PERMISSIONS;
