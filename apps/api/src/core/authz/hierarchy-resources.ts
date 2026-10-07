@@ -45,4 +45,24 @@ export const hierarchyResource = {
     campusId: e.campusId,
     departmentId: e.departmentId,
   }),
+  student: (s: {
+    groupId: string | null;
+    institutionId: string;
+    campusId: string | null;
+    departmentId: string | null;
+  }): ResourceScope => ({
+    groupId: s.groupId,
+    institutionId: s.institutionId,
+    campusId: s.campusId,
+    departmentId: s.departmentId,
+  }),
+  admission: (a: {
+    groupId: string | null;
+    institutionId: string;
+    departmentId: string;
+  }): ResourceScope => ({
+    groupId: a.groupId,
+    institutionId: a.institutionId,
+    departmentId: a.departmentId,
+  }),
 };

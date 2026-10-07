@@ -11,5 +11,6 @@ import './core/workflow';
 import './core/integrations';
 import './core/jobs/documents';
 import './modules/employees/employees.registrations';
+import './modules/students/students.registrations';
 import './modules/attendance/attendance.registrations';
 import './modules/payroll/payroll.registrations';

@@ -74,6 +74,12 @@ model Organization {
   departments               Department[]
   programs                  Program[]
   classSections             ClassSection[]
+  studentCodeSequences      StudentCodeSequence[]
+  students                  Student[]
+  studentEnrollments        StudentEnrollment[]
+  guardians                 Guardian[]
+  studentGuardians          StudentGuardian[]
+  admissionApplications     AdmissionApplication[]
   memberships               OrganizationMembership[]
   roles                     Role[]
   rolePermissions           RolePermission[]
@@ -185,13 +191,17 @@ model Group {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  organization     Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
   institutions     Institution[]
   userScopes       UserScope[]
   featureOverrides FeatureOverride[]
   brandingProfiles BrandingProfile[]
   secrets          TenantSecret[]
   documents        Document[]
+  students         Student[]
+  guardians        Guardian[]
+  studentGuardians StudentGuardian[]
+  admissions       AdmissionApplication[]
 
   employees Employee[]
 
@@ -216,17 +226,23 @@ model Institution {
   updatedAt      DateTime        @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?       @map("deleted_at") @db.DateTime(3)
 
-  organization     Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  group            Group?            @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  campuses         Campus[]
-  departments      Department[]
-  programs         Program[]
-  classSections    ClassSection[]
-  userScopes       UserScope[]
-  featureOverrides FeatureOverride[]
-  brandingProfiles BrandingProfile[]
-  secrets          TenantSecret[]
-  documents        Document[]
+  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group                Group?                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  campuses             Campus[]
+  departments          Department[]
+  programs             Program[]
+  classSections        ClassSection[]
+  userScopes           UserScope[]
+  featureOverrides     FeatureOverride[]
+  brandingProfiles     BrandingProfile[]
+  secrets              TenantSecret[]
+  documents            Document[]
+  studentCodeSequences StudentCodeSequence[]
+  students             Student[]
+  studentEnrollments   StudentEnrollment[]
+  guardians            Guardian[]
+  studentGuardians     StudentGuardian[]
+  admissions           AdmissionApplication[]
 
   employees          Employee[]
   holidayCalendars   HolidayCalendar[]
@@ -255,12 +271,14 @@ model Campus {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  departments   Department[]
-  classSections ClassSection[]
-  userScopes    UserScope[]
-  documents     Document[]
+  organization       Organization        @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution        Institution         @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  departments        Department[]
+  classSections      ClassSection[]
+  userScopes         UserScope[]
+  documents          Document[]
+  students           Student[]
+  studentEnrollments StudentEnrollment[]
 
   employees Employee[]
 
@@ -283,13 +301,16 @@ model Department {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  campus        Campus?        @relation(fields: [campusId], references: [id], onDelete: Restrict)
-  programs      Program[]
-  classSections ClassSection[]
-  userScopes    UserScope[]
-  documents     Document[]
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution        Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus             Campus?                @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  programs           Program[]
+  classSections      ClassSection[]
+  userScopes         UserScope[]
+  documents          Document[]
+  students           Student[]
+  studentEnrollments StudentEnrollment[]
+  admissions         AdmissionApplication[]
 
   employees    Employee[]
   designations Designation[]
@@ -316,10 +337,13 @@ model Program {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
-  organization  Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  institution   Institution    @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  department    Department     @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  classSections ClassSection[]
+  organization       Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution        Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  department         Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  classSections      ClassSection[]
+  students           Student[]
+  studentEnrollments StudentEnrollment[]
+  admissions         AdmissionApplication[]
 
   @@unique([institutionId, code])
   @@index([organizationId, institutionId])
@@ -345,11 +369,14 @@ model ClassSection {
   updatedAt      DateTime     @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt      DateTime?    @map("deleted_at") @db.DateTime(3)
 
-  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  program      Program      @relation(fields: [programId], references: [id], onDelete: Restrict)
-  campus       Campus?      @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  department   Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program      Program                @relation(fields: [programId], references: [id], onDelete: Restrict)
+  campus       Campus?                @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  students     Student[]
+  enrollments  StudentEnrollment[]
+  admissions   AdmissionApplication[]
 
   @@unique([programId, code, academicYear])
   @@index([organizationId, institutionId])
@@ -358,6 +385,258 @@ model ClassSection {
   @@index([organizationId, campusId])
   @@index([organizationId, deletedAt])
   @@map("class_sections")
+}
+
+// ---------------------------------------------------------------------------
+// Student information system — students, guardians and admissions
+// ---------------------------------------------------------------------------
+
+enum StudentStatus {
+  ACTIVE
+  INACTIVE
+  GRADUATED
+  WITHDRAWN
+  ALUMNI
+}
+
+enum StudentEnrollmentStatus {
+  ENROLLED
+  PROMOTED
+  DETAINED
+  WITHDRAWN
+  GRADUATED
+}
+
+enum GuardianRelation {
+  FATHER
+  MOTHER
+  GUARDIAN
+  OTHER
+}
+
+enum AdmissionStatus {
+  DRAFT
+  SUBMITTED
+  UNDER_REVIEW
+  APPROVED
+  REJECTED
+  WAITLISTED
+  ENROLLED
+}
+
+model StudentCodeSequence {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  academicYear   String   @map("academic_year") @db.VarChar(9)
+  prefix         String   @db.VarChar(40)
+  padding        Int      @default(4)
+  nextNumber     Int      @default(1) @map("next_number")
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId, academicYear])
+  @@index([organizationId, institutionId])
+  @@map("student_code_sequences")
+}
+
+model Student {
+  id              String        @id @default(uuid()) @db.Char(36)
+  organizationId  String        @map("organization_id") @db.Char(36)
+  admissionNo     String        @map("admission_no") @db.VarChar(40)
+  rollNo          String?       @map("roll_no") @db.VarChar(40)
+  userId          String?       @map("user_id") @db.Char(36)
+  groupId         String?       @map("group_id") @db.Char(36)
+  institutionId   String        @map("institution_id") @db.Char(36)
+  campusId        String?       @map("campus_id") @db.Char(36)
+  departmentId    String        @map("department_id") @db.Char(36)
+  programId       String        @map("program_id") @db.Char(36)
+  classSectionId  String        @map("class_section_id") @db.Char(36)
+  academicYear    String        @map("academic_year") @db.VarChar(9)
+  status          StudentStatus @default(ACTIVE)
+  firstName       String        @map("first_name") @db.VarChar(100)
+  middleName      String?       @map("middle_name") @db.VarChar(100)
+  lastName        String?       @map("last_name") @db.VarChar(100)
+  displayName     String        @map("display_name") @db.VarChar(200)
+  dateOfBirth     DateTime?     @map("date_of_birth") @db.Date
+  gender          String?       @db.VarChar(24)
+  bloodGroup      String?       @map("blood_group") @db.VarChar(8)
+  email           String?       @db.VarChar(254)
+  phone           String?       @db.VarChar(32)
+  address         Json?
+  photoDocumentId String?       @map("photo_document_id") @db.Char(36)
+  admissionDate   DateTime?     @map("admission_date") @db.Date
+  category        String?       @db.VarChar(64)
+  quota           String?       @db.VarChar(64)
+  previousSchool  String?       @map("previous_school") @db.VarChar(200)
+  notes           String?       @db.VarChar(2000)
+  createdAt       DateTime      @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt       DateTime?     @map("deleted_at") @db.DateTime(3)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?                  @relation(fields: [userId], references: [id], onDelete: Restrict)
+  group        Group?                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution  Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus       Campus?                @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department   Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program      Program                @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classSection ClassSection           @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  enrollments  StudentEnrollment[]
+  guardians    StudentGuardian[]
+  admissions   AdmissionApplication[]
+
+  @@unique([organizationId, admissionNo])
+  @@unique([organizationId, userId])
+  @@unique([organizationId, classSectionId, rollNo])
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, groupId])
+  @@index([organizationId, departmentId])
+  @@index([organizationId, programId])
+  @@index([organizationId, classSectionId])
+  @@index([organizationId, deletedAt])
+  @@map("students")
+}
+
+model StudentEnrollment {
+  id             String                  @id @default(uuid()) @db.Char(36)
+  organizationId String                  @map("organization_id") @db.Char(36)
+  studentId      String                  @map("student_id") @db.Char(36)
+  groupId        String?                 @map("group_id") @db.Char(36)
+  institutionId  String                  @map("institution_id") @db.Char(36)
+  campusId       String?                 @map("campus_id") @db.Char(36)
+  departmentId   String                  @map("department_id") @db.Char(36)
+  programId      String                  @map("program_id") @db.Char(36)
+  classSectionId String                  @map("class_section_id") @db.Char(36)
+  academicYear   String                  @map("academic_year") @db.VarChar(9)
+  rollNo         String?                 @map("roll_no") @db.VarChar(40)
+  fromDate       DateTime                @map("from_date") @db.Date
+  toDate         DateTime?               @map("to_date") @db.Date
+  status         StudentEnrollmentStatus @default(ENROLLED)
+  createdAt      DateTime                @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime                @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus       Campus?      @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department   Department   @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program      Program      @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classSection ClassSection @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, studentId])
+  @@index([organizationId, institutionId, academicYear])
+  @@index([organizationId, classSectionId, status])
+  @@map("student_enrollments")
+}
+
+model Guardian {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  userId         String?   @map("user_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  name           String    @db.VarChar(200)
+  phone          String?   @db.VarChar(32)
+  email          String?   @db.VarChar(254)
+  occupation     String?   @db.VarChar(120)
+  address        Json?
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization      @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user         User?             @relation(fields: [userId], references: [id], onDelete: Restrict)
+  group        Group?            @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution  Institution       @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  students     StudentGuardian[]
+
+  @@unique([organizationId, userId])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, email])
+  @@index([organizationId, phone])
+  @@index([organizationId, deletedAt])
+  @@map("guardians")
+}
+
+model StudentGuardian {
+  id             String           @id @default(uuid()) @db.Char(36)
+  organizationId String           @map("organization_id") @db.Char(36)
+  studentId      String           @map("student_id") @db.Char(36)
+  guardianId     String           @map("guardian_id") @db.Char(36)
+  groupId        String?          @map("group_id") @db.Char(36)
+  institutionId  String           @map("institution_id") @db.Char(36)
+  relation       GuardianRelation
+  isPrimary      Boolean          @default(false) @map("is_primary")
+  canPickup      Boolean          @default(true) @map("can_pickup")
+  createdAt      DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime?        @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  guardian     Guardian     @relation(fields: [guardianId], references: [id], onDelete: Restrict)
+  group        Group?       @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, studentId, guardianId])
+  @@index([organizationId, guardianId])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, deletedAt])
+  @@map("student_guardians")
+}
+
+model AdmissionApplication {
+  id                   String           @id @default(uuid()) @db.Char(36)
+  organizationId       String           @map("organization_id") @db.Char(36)
+  applicationNo        String           @map("application_no") @db.VarChar(40)
+  groupId              String?          @map("group_id") @db.Char(36)
+  institutionId        String           @map("institution_id") @db.Char(36)
+  departmentId         String           @map("department_id") @db.Char(36)
+  programId            String           @map("program_id") @db.Char(36)
+  classSectionId       String?          @map("class_section_id") @db.Char(36)
+  academicYear         String           @map("academic_year") @db.VarChar(9)
+  status               AdmissionStatus  @default(SUBMITTED)
+  applicantFirstName   String           @map("applicant_first_name") @db.VarChar(100)
+  applicantMiddleName  String?          @map("applicant_middle_name") @db.VarChar(100)
+  applicantLastName    String?          @map("applicant_last_name") @db.VarChar(100)
+  applicantDisplayName String           @map("applicant_display_name") @db.VarChar(200)
+  dateOfBirth          DateTime?        @map("date_of_birth") @db.Date
+  gender               String?          @db.VarChar(24)
+  email                String?          @db.VarChar(254)
+  phone                String?          @db.VarChar(32)
+  previousSchool       String?          @map("previous_school") @db.VarChar(200)
+  marksPercent         Decimal?         @map("marks_percent") @db.Decimal(5, 2)
+  guardianName         String           @map("guardian_name") @db.VarChar(200)
+  guardianRelation     GuardianRelation @map("guardian_relation")
+  guardianPhone        String?          @map("guardian_phone") @db.VarChar(32)
+  guardianEmail        String?          @map("guardian_email") @db.VarChar(254)
+  decisionComment      String?          @map("decision_comment") @db.VarChar(1000)
+  studentId            String?          @map("student_id") @db.Char(36)
+  submittedAt          DateTime?        @map("submitted_at") @db.DateTime(3)
+  decidedAt            DateTime?        @map("decided_at") @db.DateTime(3)
+  enrolledAt           DateTime?        @map("enrolled_at") @db.DateTime(3)
+  createdAt            DateTime         @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt            DateTime?        @map("deleted_at") @db.DateTime(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group        Group?        @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution  Institution   @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  department   Department    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program      Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classSection ClassSection? @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  student      Student?      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, applicationNo])
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, programId])
+  @@index([organizationId, classSectionId])
+  @@index([organizationId, deletedAt])
+  @@map("admission_applications")
 }
 
 // ---------------------------------------------------------------------------
@@ -428,6 +707,8 @@ model User {
   auditLogs     AuditLog[]
 
   employees Employee[]
+  students  Student[]
+  guardians Guardian[]
 
   @@map("users")
 }

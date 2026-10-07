@@ -131,11 +131,12 @@ The foundation was built as an 8-PR stack:
 - locked payroll and audited reopen (14–15);
 - branded payslips with employee self-access (16–17);
 - Form 16 publication (18);
-- workflow approvals, notifications, documents, audit, and API/webhooks.
+- workflow approvals, notifications, documents, audit, and API/webhooks;
+- student master, guardian/parent login links and admissions pipeline.
 
 **Remaining (future work per §67):**
 
-- education modules: admissions, students, academics, fees, exams, timetable, transport,
+- education modules still to expand: academics, fees, exams, timetable, transport,
   hostel, library, LMS;
 - asset management;
 - the AI gateway;

@@ -90,6 +90,25 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/UsersPage.vue'),
       },
       {
+        path: 'students',
+        name: 'group-students',
+        meta: { permission: 'student.view', feature: 'education' },
+        component: () => import('@/pages/students/StudentsPage.vue'),
+      },
+      {
+        path: 'students/:id',
+        name: 'group-student-detail',
+        props: true,
+        meta: { permission: 'student.view', feature: 'education' },
+        component: () => import('@/pages/students/StudentDetailPage.vue'),
+      },
+      {
+        path: 'admissions',
+        name: 'group-admissions',
+        meta: { permission: 'admission.view', feature: 'education' },
+        component: () => import('@/pages/students/AdmissionsPage.vue'),
+      },
+      {
         path: 'documents',
         name: 'group-documents',
         meta: { permission: 'document.view', feature: 'documents' },
@@ -171,6 +190,25 @@ export const routes: RouteRecordRaw[] = [
         name: 'institution-users',
         meta: { permission: 'user.view' },
         component: () => import('@/pages/UsersPage.vue'),
+      },
+      {
+        path: 'students',
+        name: 'institution-students',
+        meta: { permission: 'student.view', feature: 'education' },
+        component: () => import('@/pages/students/StudentsPage.vue'),
+      },
+      {
+        path: 'students/:id',
+        name: 'student-detail',
+        props: true,
+        meta: { permission: 'student.view', feature: 'education' },
+        component: () => import('@/pages/students/StudentDetailPage.vue'),
+      },
+      {
+        path: 'admissions',
+        name: 'institution-admissions',
+        meta: { permission: 'admission.view', feature: 'education' },
+        component: () => import('@/pages/students/AdmissionsPage.vue'),
       },
       {
         path: 'documents',
@@ -375,6 +413,32 @@ export const routes: RouteRecordRaw[] = [
       {
         path: 'documents',
         name: 'employee-documents',
+        meta: { permission: 'document.view_own', feature: 'documents' },
+        component: () => import('@/pages/DocumentsPage.vue'),
+      },
+    ],
+  },
+  {
+    path: '/portal',
+    component: () => import('@/layouts/PortalLayout.vue'),
+    meta: { tenant: true, feature: 'education' },
+    children: [
+      { path: '', redirect: { name: 'portal-profile' } },
+      {
+        path: 'profile',
+        name: 'portal-profile',
+        meta: { permission: 'student.view_own', feature: 'education' },
+        component: () => import('@/pages/students/MyStudentProfilePage.vue'),
+      },
+      {
+        path: 'wards',
+        name: 'portal-wards',
+        meta: { permission: 'ward.view', feature: 'education' },
+        component: () => import('@/pages/students/MyWardsPage.vue'),
+      },
+      {
+        path: 'documents',
+        name: 'portal-documents',
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
       },
