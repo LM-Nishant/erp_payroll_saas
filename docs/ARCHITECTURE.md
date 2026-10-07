@@ -1173,3 +1173,43 @@ To use a real model:
 1. In Secrets, add kind `ai.openai` with the API key as the value.
 2. Optionally add metadata `{"model":"gpt-4o-mini","baseUrl":"https://…/v1","apiVersion":"…"}`.
 3. In AI settings, set provider `openai` and turn on data sharing.
+
+## 17. Fees and finance (accounts)
+
+Modules `apps/api/src/modules/fees` (mounted at `/api/v1/fees`) and `apps/api/src/modules/finance` (`/api/v1/finance`) sit behind `requireFeature('finance')`. All 18 models (`FeeHead`, `FeeStructure`/`FeeStructureItem`/`FeeInstallment`, `LateFeeRule`, `FeeConcession`, `FeeInvoice`/`FeeInvoiceLine`, `FeePayment`/`FeePaymentAllocation`, `FeeRefund`, `FeeNumberSeries`, `PaymentOrder`, `Account`, `JournalVoucher`/`JournalVoucherLine`, `Vendor`, `Expense`) are tenant models carrying `organizationId` + `groupId` + `institutionId`. Money is `Decimal(14,2)`; every calculation goes through integer paise in `fees.logic.ts` / `finance.logic.ts` (pure, unit-tested).
+
+**Fee setup.** Fee heads (category, refundable flag, tax %), structures per institution / program / class section / academic year with items and installments (due dates and % split), late-fee rules (`FLAT` or `PER_DAY`, grace days, cap), and concessions (`PERCENT`/`AMOUNT`, per student, per category, or `SIBLING` for second and later wards of a guardian). `POST /fees/invoices/generate` (structure + optional section/program) raises one invoice per student per installment, applying concessions. It is idempotent per (structure, installment, student).
+
+**Charges from other modules.** Transport, hostel, library fines, exams and similar modules post demand through the service API, not the HTTP route:
+
+```ts
+import { createStudentCharge, cancelStudentCharge } from '../fees/fees.invoices.service';
+await createStudentCharge({
+  studentId,
+  feeHeadCode: 'TRANSPORT', // institution head first, then organization-wide
+  amount: 4500,
+  dueDate: new Date('2026-07-10'),
+  sourceType: 'TRANSPORT_ALLOCATION', // free text, used for idempotency and reporting
+  sourceId: allocation.id, // optional; with it, repeat calls return the existing invoice
+  description: 'Bus route 7 — Term 1',
+});
+await cancelStudentCharge({ sourceType: 'TRANSPORT_ALLOCATION', sourceId: allocation.id, reason });
+```
+
+The charge runs as the current principal inside its tenant context: it validates the student and head, creates an `ADHOC` invoice, posts the receivable journal, then audits it and emits `fee.invoice_created`. Staff can call the same operation through `POST /fees/charges` (`fee.manage`).
+
+**Collections.** `POST /fees/payments` records cash, cheque, UPI, card, bank transfer or online payments. It allocates the amount to the given invoices, or to the oldest dues first, and keeps any excess as student advance. Each payment takes a per-institution receipt number from `FeeNumberSeries` (`RECEIPT`, `REFUND`, `INVOICE`), allocated under a row lock. Receipts render through the branded `fee_receipt` PDF template. Refunds (`fee.refund`) and payment or invoice cancellations require a reason; they are audited and reverse their journals.
+
+**Online payment.** The `PaymentGateway` interface in `fees.gateway.ts` defines `createOrder`, `verifyPayment` and `verifyWebhook`. Providers register with `registerPaymentGateway(provider, (secret, config) => gateway)`. `resolveGateway(institutionId)` picks the first registered provider that has an active integration credential with purpose `fees.online_payment` (institution → group → organization). Otherwise it falls back to the built-in HMAC `mock` gateway (credential provider `mock_gateway`; a dev secret is used outside production). The portal calls `POST /fees/checkout` and then `POST /fees/checkout/confirm`. The provider may also call the public `POST /api/v1/fees/webhooks/:provider/:organizationId`; its signature is verified before any tenant work. Both paths settle the order exactly once.
+
+**Dues and reminders.** `GET /fees/defaulters` and `GET /fees/reports/:key` (`collections`, `dues`, `aging` in buckets 0–30/31–60/61–90/90+, `head_wise`, `concessions`). The recurring `fees.daily.schedule` job enqueues `fees.daily_org` per active organization. That job applies late fees, then publishes the `fee.due_reminder` notification to guardians (and student logins) through `publish()`. Staff can trigger them manually with `POST /fees/reminders/send` and `POST /fees/late-fees/apply`.
+
+**Accounts.** `ensureChartOfAccounts()` seeds a default tree per organization: Assets, Liabilities, Funds, Income and Expenses. Well-known ledgers carry a `systemKey`, for example `cash`, `bank`, `fee_receivable`, `gateway_clearing`, `fee_advance`, `salary_payable`, `statutory_payable`, `tax_payable`, `creditors`, `corpus_fund`, `income_<category>`, `late_fee_income`, `concession_expense`, `fee_refunds`, `salary_expense`, `employer_contribution`, `utilities`, `maintenance`, `admin_expense` and `general_expense`. Journal vouchers must balance (Dr = Cr, at least two lines). Manual vouchers can be drafted and then posted (`finance.post`). Postings are automatic with `sourceType` set to `FEE_INVOICE`, `FEE_INVOICE_CANCEL`, `FEE_LATE_FEE`, `FEE_PAYMENT`, `FEE_REFUND`, `EXPENSE` or `PAYROLL`; `sourceKey` makes them idempotent. Payroll runs post a salary journal through `onEvent('payroll.run_finalized')`, and re-finalized revisions supersede earlier journals. `GET /finance/reports/:key` serves `day_book`, `ledger`, `trial_balance` and `income_expenditure` as JSON, or as CSV, XLSX or PDF with `?format=`, using the shared report helpers.
+
+**Registrations.** Both live in `fees.registrations.ts` and `finance.registrations.ts`:
+
+- Events: `fee.invoice_created`, `fee.invoices_generated`, `fee.invoice_cancelled`, `fee.payment_received`, `fee.payment_cancelled`, `fee.refund_issued`, `finance.voucher_posted` and `finance.expense_recorded`.
+- Notifications: `fee.payment_received` and `fee.due_reminder`.
+- The PDF template `fee_receipt` and the daily job.
+
+**Permissions.** The fee and finance keys are `fee.view|manage|collect|refund|concession|view_own` and `finance.view|manage|post`. Institution admins and `finance_manager` get everything except `view_own`. The `accountant` role gets view, manage, collect and post. Principals get view only. Student and parent roles get `fee.view_own`; with it they can use `/fees/me` and `/fees/my-wards`, pay online and download their own receipts. Web pages are in `apps/web/src/pages/fees`, `pages/finance` and `pages/fees/MyFeesPage.vue` (portal). Routes and menus are in `router/fees-finance-routes.ts` and `navigation/fees-finance-menu.ts`. Demo data comes from `scripts/demo/seed-fees_finance.mjs`.

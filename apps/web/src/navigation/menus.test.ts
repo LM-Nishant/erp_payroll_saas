@@ -79,3 +79,17 @@ describe('visibleMenu', () => {
     ).toEqual(['Home', 'My attendance', 'My leave', 'Approvals']);
   });
 });
+
+describe('fees & finance menus', () => {
+  it('adds fees + finance items gated by the finance feature', () => {
+    const can = (p?: string) => !p || p === 'fee.view' || p === 'finance.view';
+    const finance = (f?: string) => !f || f === 'finance';
+    const titles = visibleMenu(MENUS.institution, can, finance).map((i) => i.title);
+    expect(titles).toEqual(expect.arrayContaining(['Fee structures', 'Trial balance']));
+    expect(titles).not.toContain('Collect fee');
+    expect(visibleMenu(MENUS.institution, can, (f) => !f).map((i) => i.title)).not.toContain(
+      'Fee heads',
+    );
+    expect(MENUS.portal.some((i) => i.to === '/portal/fees')).toBe(true);
+  });
+});

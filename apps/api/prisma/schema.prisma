@@ -180,6 +180,25 @@ model Organization {
   aiConversations           AiConversation[]
   aiMessages                AiMessage[]
   aiUsageLogs               AiUsageLog[]
+  // Fees & Finance
+  feeHeads                  FeeHead[]
+  feeLateRules              FeeLateRule[]
+  feeStructures             FeeStructure[]
+  feeInstallments           FeeInstallment[]
+  feeStructureItems         FeeStructureItem[]
+  feeConcessions            FeeConcession[]
+  feeInvoices               FeeInvoice[]
+  feeInvoiceLines           FeeInvoiceLine[]
+  feePayments               FeePayment[]
+  feePaymentAllocations     FeePaymentAllocation[]
+  feeRefunds                FeeRefund[]
+  financeNumberSeries       FinanceNumberSeries[]
+  paymentGatewayOrders      PaymentGatewayOrder[]
+  ledgerAccounts            LedgerAccount[]
+  journalVouchers           JournalVoucher[]
+  journalLines              JournalLine[]
+  vendors                   Vendor[]
+  expenses                  Expense[]
 
   @@map("organizations")
 }
@@ -3676,4 +3695,510 @@ model AiUsageLog {
   @@index([organizationId, feature, createdAt])
   @@index([organizationId, userId, createdAt])
   @@map("ai_usage_logs")
+}
+
+// ===== Fees & Finance =====
+// Layer: fees (modules/fees) + finance/accounts (modules/finance). Money = Decimal(14,2).
+// Hierarchy FKs other than organization are scalar columns (like payroll) to keep the schema
+// loosely coupled; services validate them through tenantDb (422 INVALID_REFERENCE).
+
+/// Fee head (tuition, transport, hostel, library, exam, misc…). institutionId null = org-wide.
+model FeeHead {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @map("organization_id") @db.Char(36)
+  groupId         String?   @map("group_id") @db.Char(36)
+  institutionId   String?   @map("institution_id") @db.Char(36)
+  code            String    @db.VarChar(32)
+  name            String    @db.VarChar(200)
+  category        String    @default("MISC") @db.VarChar(24)
+  refundable      Boolean   @default(false)
+  taxRate         Decimal   @default(0) @map("tax_rate") @db.Decimal(5, 2)
+  incomeAccountId String?   @map("income_account_id") @db.Char(36)
+  sortOrder       Int       @default(0) @map("sort_order")
+  active          Boolean   @default(true)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt       DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  items        FeeStructureItem[]
+  invoiceLines FeeInvoiceLine[]
+  concessions  FeeConcession[]
+
+  @@unique([organizationId, institutionId, code])
+  @@index([organizationId, institutionId, deletedAt])
+  @@map("fee_heads")
+}
+
+/// Late-fee rule: FLAT once after grace, or PER_DAY after grace (capped by maxAmount).
+model FeeLateRule {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  name           String    @db.VarChar(200)
+  mode           String    @default("FLAT") @db.VarChar(16)
+  amount         Decimal   @db.Decimal(14, 2)
+  graceDays      Int       @default(0) @map("grace_days")
+  maxAmount      Decimal?  @map("max_amount") @db.Decimal(14, 2)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  structures   FeeStructure[]
+
+  @@index([organizationId, institutionId, deletedAt])
+  @@map("fee_late_rules")
+}
+
+/// Fee structure for an institution (optionally narrowed to program / class section) and year.
+model FeeStructure {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String    @map("institution_id") @db.Char(36)
+  campusId       String?   @map("campus_id") @db.Char(36)
+  departmentId   String?   @map("department_id") @db.Char(36)
+  programId      String?   @map("program_id") @db.Char(36)
+  classSectionId String?   @map("class_section_id") @db.Char(36)
+  academicYear   String    @map("academic_year") @db.VarChar(9)
+  code           String    @db.VarChar(32)
+  name           String    @db.VarChar(200)
+  status         String    @default("ACTIVE") @db.VarChar(16)
+  lateRuleId     String?   @map("late_rule_id") @db.Char(36)
+  totalAmount    Decimal   @default(0) @map("total_amount") @db.Decimal(14, 2)
+  notes          String?   @db.VarChar(1000)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lateRule     FeeLateRule?       @relation(fields: [lateRuleId], references: [id], onDelete: Restrict)
+  installments FeeInstallment[]
+  items        FeeStructureItem[]
+
+  @@unique([organizationId, institutionId, academicYear, code])
+  @@index([organizationId, institutionId, academicYear, deletedAt])
+  @@index([organizationId, classSectionId])
+  @@index([organizationId, programId])
+  @@map("fee_structures")
+}
+
+/// Installment (term) of a structure with its due date.
+model FeeInstallment {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  structureId    String   @map("structure_id") @db.Char(36)
+  seq            Int
+  label          String   @db.VarChar(120)
+  dueDate        DateTime @map("due_date") @db.Date
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization       @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  structure    FeeStructure       @relation(fields: [structureId], references: [id], onDelete: Restrict)
+  items        FeeStructureItem[]
+
+  @@unique([structureId, seq])
+  @@index([organizationId, structureId])
+  @@map("fee_installments")
+}
+
+/// Amount of one fee head within one installment of a structure.
+model FeeStructureItem {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  structureId    String   @map("structure_id") @db.Char(36)
+  installmentId  String   @map("installment_id") @db.Char(36)
+  feeHeadId      String   @map("fee_head_id") @db.Char(36)
+  amount         Decimal  @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  structure    FeeStructure   @relation(fields: [structureId], references: [id], onDelete: Restrict)
+  installment  FeeInstallment @relation(fields: [installmentId], references: [id], onDelete: Restrict)
+  feeHead      FeeHead        @relation(fields: [feeHeadId], references: [id], onDelete: Restrict)
+
+  @@unique([installmentId, feeHeadId])
+  @@index([organizationId, structureId])
+  @@map("fee_structure_items")
+}
+
+/// Concession / scholarship / sibling discount (PERCENT or AMOUNT per installment invoice).
+model FeeConcession {
+  id               String    @id @default(uuid()) @db.Char(36)
+  organizationId   String    @map("organization_id") @db.Char(36)
+  groupId          String?   @map("group_id") @db.Char(36)
+  institutionId    String    @map("institution_id") @db.Char(36)
+  campusId         String?   @map("campus_id") @db.Char(36)
+  departmentId     String?   @map("department_id") @db.Char(36)
+  name             String    @db.VarChar(200)
+  kind             String    @default("CONCESSION") @db.VarChar(16)
+  appliesTo        String    @map("applies_to") @db.VarChar(16)
+  studentId        String?   @map("student_id") @db.Char(36)
+  category         String?   @db.VarChar(64)
+  feeHeadId        String?   @map("fee_head_id") @db.Char(36)
+  valueType        String    @map("value_type") @db.VarChar(16)
+  value            Decimal   @db.Decimal(14, 2)
+  academicYear     String?   @map("academic_year") @db.VarChar(9)
+  reason           String?   @db.VarChar(500)
+  active           Boolean   @default(true)
+  approvedByUserId String?   @map("approved_by_user_id") @db.Char(36)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt        DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  feeHead      FeeHead?     @relation(fields: [feeHeadId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, institutionId, appliesTo, deletedAt])
+  @@index([organizationId, studentId])
+  @@map("fee_concessions")
+}
+
+/// Student fee invoice (demand): one per structure installment, ad-hoc, or module charge.
+model FeeInvoice {
+  id               String    @id @default(uuid()) @db.Char(36)
+  organizationId   String    @map("organization_id") @db.Char(36)
+  groupId          String?   @map("group_id") @db.Char(36)
+  institutionId    String    @map("institution_id") @db.Char(36)
+  campusId         String?   @map("campus_id") @db.Char(36)
+  departmentId     String?   @map("department_id") @db.Char(36)
+  programId        String?   @map("program_id") @db.Char(36)
+  classSectionId   String?   @map("class_section_id") @db.Char(36)
+  studentId        String    @map("student_id") @db.Char(36)
+  academicYear     String?   @map("academic_year") @db.VarChar(9)
+  number           String    @db.VarChar(40)
+  structureId      String?   @map("structure_id") @db.Char(36)
+  installmentId    String?   @map("installment_id") @db.Char(36)
+  sourceType       String    @default("ADHOC") @map("source_type") @db.VarChar(32)
+  sourceId         String?   @map("source_id") @db.VarChar(64)
+  dedupeKey        String?   @map("dedupe_key") @db.VarChar(191)
+  description      String?   @db.VarChar(500)
+  issueDate        DateTime  @map("issue_date") @db.Date
+  dueDate          DateTime  @map("due_date") @db.Date
+  grossAmount      Decimal   @default(0) @map("gross_amount") @db.Decimal(14, 2)
+  concessionAmount Decimal   @default(0) @map("concession_amount") @db.Decimal(14, 2)
+  taxAmount        Decimal   @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  lateFeeAmount    Decimal   @default(0) @map("late_fee_amount") @db.Decimal(14, 2)
+  netAmount        Decimal   @default(0) @map("net_amount") @db.Decimal(14, 2)
+  paidAmount       Decimal   @default(0) @map("paid_amount") @db.Decimal(14, 2)
+  status           String    @default("UNPAID") @db.VarChar(16)
+  lateRuleId       String?   @map("late_rule_id") @db.Char(36)
+  lastReminderAt   DateTime? @map("last_reminder_at") @db.DateTime(3)
+  cancelledAt      DateTime? @map("cancelled_at") @db.DateTime(3)
+  cancelReason     String?   @map("cancel_reason") @db.VarChar(500)
+  createdByUserId  String?   @map("created_by_user_id") @db.Char(36)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lines        FeeInvoiceLine[]
+  allocations  FeePaymentAllocation[]
+
+  @@unique([organizationId, institutionId, number])
+  @@unique([organizationId, dedupeKey])
+  @@index([organizationId, studentId, status])
+  @@index([organizationId, institutionId, status, dueDate])
+  @@index([organizationId, classSectionId, status])
+  @@index([organizationId, sourceType, sourceId])
+  @@map("fee_invoices")
+}
+
+model FeeInvoiceLine {
+  id               String   @id @default(uuid()) @db.Char(36)
+  organizationId   String   @map("organization_id") @db.Char(36)
+  invoiceId        String   @map("invoice_id") @db.Char(36)
+  feeHeadId        String   @map("fee_head_id") @db.Char(36)
+  description      String?  @db.VarChar(500)
+  amount           Decimal  @db.Decimal(14, 2)
+  concessionAmount Decimal  @default(0) @map("concession_amount") @db.Decimal(14, 2)
+  taxAmount        Decimal  @default(0) @map("tax_amount") @db.Decimal(14, 2)
+  netAmount        Decimal  @map("net_amount") @db.Decimal(14, 2)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  invoice      FeeInvoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+  feeHead      FeeHead      @relation(fields: [feeHeadId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, invoiceId])
+  @@index([organizationId, feeHeadId])
+  @@map("fee_invoice_lines")
+}
+
+/// Fee payment = receipt. Allocated to invoices; unallocated remainder is an advance.
+model FeePayment {
+  id                String    @id @default(uuid()) @db.Char(36)
+  organizationId    String    @map("organization_id") @db.Char(36)
+  groupId           String?   @map("group_id") @db.Char(36)
+  institutionId     String    @map("institution_id") @db.Char(36)
+  campusId          String?   @map("campus_id") @db.Char(36)
+  departmentId      String?   @map("department_id") @db.Char(36)
+  studentId         String    @map("student_id") @db.Char(36)
+  number            String    @db.VarChar(40)
+  paidOn            DateTime  @map("paid_on") @db.Date
+  mode              String    @db.VarChar(16)
+  reference         String?   @db.VarChar(120)
+  instrumentDate    DateTime? @map("instrument_date") @db.Date
+  bankName          String?   @map("bank_name") @db.VarChar(120)
+  amount            Decimal   @db.Decimal(14, 2)
+  allocatedAmount   Decimal   @default(0) @map("allocated_amount") @db.Decimal(14, 2)
+  refundedAmount    Decimal   @default(0) @map("refunded_amount") @db.Decimal(14, 2)
+  status            String    @default("ACTIVE") @db.VarChar(24)
+  gatewayOrderId    String?   @map("gateway_order_id") @db.Char(36)
+  voucherId         String?   @map("voucher_id") @db.Char(36)
+  remarks           String?   @db.VarChar(500)
+  collectedByUserId String?   @map("collected_by_user_id") @db.Char(36)
+  cancelledAt       DateTime? @map("cancelled_at") @db.DateTime(3)
+  cancelReason      String?   @map("cancel_reason") @db.VarChar(500)
+  cancelledByUserId String?   @map("cancelled_by_user_id") @db.Char(36)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  allocations  FeePaymentAllocation[]
+  refunds      FeeRefund[]
+
+  @@unique([organizationId, institutionId, number])
+  @@index([organizationId, studentId, status])
+  @@index([organizationId, institutionId, paidOn])
+  @@map("fee_payments")
+}
+
+model FeePaymentAllocation {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  paymentId      String   @map("payment_id") @db.Char(36)
+  invoiceId      String   @map("invoice_id") @db.Char(36)
+  amount         Decimal  @db.Decimal(14, 2)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      FeePayment   @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+  invoice      FeeInvoice   @relation(fields: [invoiceId], references: [id], onDelete: Restrict)
+
+  @@unique([paymentId, invoiceId])
+  @@index([organizationId, invoiceId])
+  @@map("fee_payment_allocations")
+}
+
+model FeeRefund {
+  id               String   @id @default(uuid()) @db.Char(36)
+  organizationId   String   @map("organization_id") @db.Char(36)
+  groupId          String?  @map("group_id") @db.Char(36)
+  institutionId    String   @map("institution_id") @db.Char(36)
+  campusId         String?  @map("campus_id") @db.Char(36)
+  departmentId     String?  @map("department_id") @db.Char(36)
+  paymentId        String   @map("payment_id") @db.Char(36)
+  studentId        String   @map("student_id") @db.Char(36)
+  number           String   @db.VarChar(40)
+  refundedOn       DateTime @map("refunded_on") @db.Date
+  amount           Decimal  @db.Decimal(14, 2)
+  mode             String   @db.VarChar(16)
+  reference        String?  @db.VarChar(120)
+  reason           String   @db.VarChar(500)
+  voucherId        String?  @map("voucher_id") @db.Char(36)
+  refundedByUserId String?  @map("refunded_by_user_id") @db.Char(36)
+  createdAt        DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  payment      FeePayment   @relation(fields: [paymentId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId, number])
+  @@index([organizationId, studentId])
+  @@map("fee_refunds")
+}
+
+/// Per-institution document number series (INVOICE, RECEIPT, REFUND, VOUCHER, EXPENSE).
+model FinanceNumberSeries {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  institutionId  String   @map("institution_id") @db.Char(36)
+  kind           String   @db.VarChar(16)
+  prefix         String   @db.VarChar(24)
+  nextValue      Int      @default(1) @map("next_value")
+  padding        Int      @default(5)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId, kind])
+  @@map("finance_number_series")
+}
+
+/// Online payment order created through a payment gateway (checkout → webhook → receipt).
+model PaymentGatewayOrder {
+  id                String    @id @default(uuid()) @db.Char(36)
+  organizationId    String    @map("organization_id") @db.Char(36)
+  groupId           String?   @map("group_id") @db.Char(36)
+  institutionId     String    @map("institution_id") @db.Char(36)
+  campusId          String?   @map("campus_id") @db.Char(36)
+  departmentId      String?   @map("department_id") @db.Char(36)
+  studentId         String    @map("student_id") @db.Char(36)
+  provider          String    @db.VarChar(32)
+  providerOrderId   String    @map("provider_order_id") @db.VarChar(120)
+  providerPaymentId String?   @map("provider_payment_id") @db.VarChar(120)
+  amount            Decimal   @db.Decimal(14, 2)
+  currency          String    @default("INR") @db.VarChar(3)
+  invoiceIds        Json      @map("invoice_ids")
+  status            String    @default("CREATED") @db.VarChar(16)
+  paymentId         String?   @map("payment_id") @db.Char(36)
+  initiatedByUserId String?   @map("initiated_by_user_id") @db.Char(36)
+  failureReason     String?   @map("failure_reason") @db.VarChar(500)
+  completedAt       DateTime? @map("completed_at") @db.DateTime(3)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+
+  @@unique([provider, providerOrderId])
+  @@index([organizationId, studentId, status])
+  @@map("payment_gateway_orders")
+}
+
+/// Chart of accounts (org-wide tree). systemKey marks accounts used by auto-posting.
+model LedgerAccount {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  parentId       String?   @map("parent_id") @db.Char(36)
+  code           String    @db.VarChar(32)
+  name           String    @db.VarChar(200)
+  type           String    @db.VarChar(16)
+  isGroup        Boolean   @default(false) @map("is_group")
+  systemKey      String?   @map("system_key") @db.VarChar(48)
+  description    String?   @db.VarChar(500)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization    @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  parent       LedgerAccount?  @relation("LedgerAccountTree", fields: [parentId], references: [id], onDelete: Restrict)
+  children     LedgerAccount[] @relation("LedgerAccountTree")
+  lines        JournalLine[]
+
+  @@unique([organizationId, code])
+  @@unique([organizationId, systemKey])
+  @@index([organizationId, parentId])
+  @@map("ledger_accounts")
+}
+
+/// Double-entry journal voucher (per institution). Auto-posted vouchers carry sourceType/Id.
+model JournalVoucher {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @map("organization_id") @db.Char(36)
+  groupId         String?   @map("group_id") @db.Char(36)
+  institutionId   String    @map("institution_id") @db.Char(36)
+  campusId        String?   @map("campus_id") @db.Char(36)
+  departmentId    String?   @map("department_id") @db.Char(36)
+  number          String    @db.VarChar(40)
+  voucherDate     DateTime  @map("voucher_date") @db.Date
+  type            String    @default("JOURNAL") @db.VarChar(16)
+  narration       String?   @db.VarChar(1000)
+  status          String    @default("DRAFT") @db.VarChar(16)
+  totalAmount     Decimal   @default(0) @map("total_amount") @db.Decimal(14, 2)
+  sourceType      String    @default("MANUAL") @map("source_type") @db.VarChar(32)
+  sourceId        String?   @map("source_id") @db.VarChar(64)
+  sourceKey       String?   @map("source_key") @db.VarChar(191)
+  postedAt        DateTime? @map("posted_at") @db.DateTime(3)
+  postedByUserId  String?   @map("posted_by_user_id") @db.Char(36)
+  cancelledAt     DateTime? @map("cancelled_at") @db.DateTime(3)
+  cancelReason    String?   @map("cancel_reason") @db.VarChar(500)
+  createdByUserId String?   @map("created_by_user_id") @db.Char(36)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  lines        JournalLine[]
+
+  @@unique([organizationId, institutionId, number])
+  @@unique([organizationId, sourceKey])
+  @@index([organizationId, institutionId, voucherDate, status])
+  @@index([organizationId, sourceType, sourceId])
+  @@map("journal_vouchers")
+}
+
+model JournalLine {
+  id             String   @id @default(uuid()) @db.Char(36)
+  organizationId String   @map("organization_id") @db.Char(36)
+  voucherId      String   @map("voucher_id") @db.Char(36)
+  accountId      String   @map("account_id") @db.Char(36)
+  lineNo         Int      @map("line_no")
+  debit          Decimal  @default(0) @db.Decimal(14, 2)
+  credit         Decimal  @default(0) @db.Decimal(14, 2)
+  narration      String?  @db.VarChar(500)
+  createdAt      DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization   @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  voucher      JournalVoucher @relation(fields: [voucherId], references: [id], onDelete: Restrict)
+  account      LedgerAccount  @relation(fields: [accountId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, accountId])
+  @@index([organizationId, voucherId])
+  @@map("journal_lines")
+}
+
+model Vendor {
+  id             String    @id @default(uuid()) @db.Char(36)
+  organizationId String    @map("organization_id") @db.Char(36)
+  groupId        String?   @map("group_id") @db.Char(36)
+  institutionId  String?   @map("institution_id") @db.Char(36)
+  code           String    @db.VarChar(32)
+  name           String    @db.VarChar(200)
+  gstin          String?   @db.VarChar(20)
+  phone          String?   @db.VarChar(32)
+  email          String?   @db.VarChar(254)
+  address        String?   @db.VarChar(500)
+  active         Boolean   @default(true)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt      DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  expenses     Expense[]
+
+  @@unique([organizationId, code])
+  @@index([organizationId, institutionId, deletedAt])
+  @@map("vendors")
+}
+
+/// Expense / vendor payment: posts Dr expense account, Cr cash/bank.
+model Expense {
+  id               String    @id @default(uuid()) @db.Char(36)
+  organizationId   String    @map("organization_id") @db.Char(36)
+  groupId          String?   @map("group_id") @db.Char(36)
+  institutionId    String    @map("institution_id") @db.Char(36)
+  campusId         String?   @map("campus_id") @db.Char(36)
+  departmentId     String?   @map("department_id") @db.Char(36)
+  number           String    @db.VarChar(40)
+  expenseDate      DateTime  @map("expense_date") @db.Date
+  vendorId         String?   @map("vendor_id") @db.Char(36)
+  expenseAccountId String    @map("expense_account_id") @db.Char(36)
+  paymentAccountId String    @map("payment_account_id") @db.Char(36)
+  amount           Decimal   @db.Decimal(14, 2)
+  mode             String    @db.VarChar(16)
+  reference        String?   @db.VarChar(120)
+  description      String    @db.VarChar(500)
+  status           String    @default("POSTED") @db.VarChar(16)
+  voucherId        String?   @map("voucher_id") @db.Char(36)
+  cancelledAt      DateTime? @map("cancelled_at") @db.DateTime(3)
+  cancelReason     String?   @map("cancel_reason") @db.VarChar(500)
+  createdByUserId  String?   @map("created_by_user_id") @db.Char(36)
+  createdAt        DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt        DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  vendor       Vendor?      @relation(fields: [vendorId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId, number])
+  @@index([organizationId, institutionId, expenseDate])
+  @@map("expenses")
 }

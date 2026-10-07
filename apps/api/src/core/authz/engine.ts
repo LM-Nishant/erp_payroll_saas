@@ -164,7 +164,8 @@ export type ScopedModel =
   | 'document'
   | 'employee'
   | 'student'
-  | 'admission';
+  | 'admission'
+  | 'finance';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -209,6 +210,8 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
     institutionIds: 'institutionId',
     departmentIds: 'departmentId',
   },
+  /** Fees & finance rows (invoices, receipts, structures, vouchers, expenses…). */
+  finance: { groupIds: 'groupId', institutionIds: 'institutionId', campusIds: 'campusId' },
 };
 
 /** Prisma `where` fragment restricting `model` rows to the access set (undefined = no filter). */

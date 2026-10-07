@@ -44,6 +44,10 @@ const TIME_SELF_SERVICE = [
 /** Read access used by payroll / finance (attendance summary = payroll feed). */
 const TIME_VIEW = views('holiday', 'shift', 'attendance', 'leave');
 
+/** Fees & finance administration (everything except the student/parent self-service code). */
+const FEES_FINANCE = pick('fee', 'finance').filter((c) => c !== 'fee.view_own');
+const FEES_FINANCE_VIEW = ['fee.view', 'finance.view'] as PermissionCode[];
+
 /** Full administration of everything below the group/institution level. */
 const INSTITUTION_ADMIN = [
   ...ACADEMIC_STRUCTURE_VIEW,
@@ -72,6 +76,7 @@ const INSTITUTION_ADMIN = [
   'pdf.generate',
   'workflow.view',
   'communication.view',
+  ...FEES_FINANCE,
 ] as PermissionCode[];
 
 const GROUP_ADMIN = [
@@ -124,6 +129,8 @@ const FINANCE = [
   'billing.view',
   'billing.pay',
   'subscription.view',
+  ...FEES_FINANCE,
+  'student.view',
 ] as PermissionCode[];
 
 const ACADEMIC_LEAD = [
@@ -159,8 +166,12 @@ const TEACHING = [
  * never every document of their institution.
  */
 const SELF_SERVICE = ['organization.view', 'document.view_own', 'ai.use'] as PermissionCode[];
-const STUDENT_SELF_SERVICE = [...SELF_SERVICE, 'student.view_own'] as PermissionCode[];
-const PARENT_SELF_SERVICE = [...SELF_SERVICE, 'ward.view'] as PermissionCode[];
+const STUDENT_SELF_SERVICE = [
+  ...SELF_SERVICE,
+  'student.view_own',
+  'fee.view_own',
+] as PermissionCode[];
+const PARENT_SELF_SERVICE = [...SELF_SERVICE, 'ward.view', 'fee.view_own'] as PermissionCode[];
 
 /** Employee self-service adds the own-profile APIs (`/employees/me`). */
 const EMPLOYEE_SELF_SERVICE = [
@@ -240,7 +251,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Principal',
       description: 'Academic head of an institution',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view'],
+      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view', ...FEES_FINANCE_VIEW],
     },
     {
       key: 'vice_principal',
@@ -318,6 +329,13 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'document.view',
         'document.download',
         'billing.view',
+        'student.view',
+        'fee.view',
+        'fee.manage',
+        'fee.collect',
+        'finance.view',
+        'finance.manage',
+        'finance.post',
       ],
     },
     {
