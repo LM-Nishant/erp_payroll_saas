@@ -79,6 +79,17 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'Guardian',
   'StudentGuardian',
   'AdmissionApplication',
+  // Assets
+  'AssetCategory',
+  'Asset',
+  'AssetAssignment',
+  'AssetTransfer',
+  'AssetMaintenance',
+  'AssetDisposal',
+  'AssetAudit',
+  'AssetAuditItem',
+  'InventoryItem',
+  'InventoryTransaction',
   // Attendance / leave / holiday / shift (Layer 7)
   'HolidayCalendar',
   'Holiday',
@@ -156,6 +167,11 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'AdmissionApplication',
   // AI
   'AiConversation',
+  // Assets
+  'AssetCategory',
+  'Asset',
+  'AssetAudit',
+  'InventoryItem',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */

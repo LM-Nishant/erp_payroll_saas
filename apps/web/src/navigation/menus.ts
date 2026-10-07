@@ -16,7 +16,8 @@ export interface MenuItem {
 
 export type OrgKind = 'EDUCATION' | 'COMPANY';
 
-export type LayoutKey = 'platform' | 'group' | 'institution' | 'hr' | 'employee' | 'portal';
+export type LayoutKey =
+  'platform' | 'group' | 'institution' | 'hr' | 'employee' | 'portal' | 'assets';
 
 /**
  * Menus are data-driven and filtered by the permissions AND enabled modules (features) returned
@@ -77,6 +78,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/group/approvals' },
+    {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
     {
       title: 'Payroll summary',
       icon: 'mdi-cash-multiple',
@@ -170,6 +178,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       educationOnly: true,
     },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/institution/approvals' },
+    {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
     {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',
@@ -293,6 +308,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/hr/approvals' },
     {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
       title: 'Documents',
       icon: 'mdi-file-document-multiple',
       to: '/hr/documents',
@@ -339,6 +361,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'document.view_own',
       feature: 'documents',
     },
+    {
+      title: 'My assets',
+      icon: 'mdi-laptop',
+      to: '/employee/assets',
+      permission: 'asset.view_own',
+      feature: 'assets',
+    },
   ],
   portal: [
     {
@@ -362,6 +391,72 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'document.view_own',
       feature: 'documents',
     },
+  ],
+  assets: [
+    {
+      title: 'Dashboard',
+      icon: 'mdi-view-dashboard',
+      to: '/assets',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Assets',
+      icon: 'mdi-package-variant-closed',
+      to: '/assets/register',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Categories',
+      icon: 'mdi-shape',
+      to: '/assets/categories',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Assignments',
+      icon: 'mdi-account-arrow-right',
+      to: '/assets/assignments',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Maintenance',
+      icon: 'mdi-wrench',
+      to: '/assets/maintenance',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Inventory',
+      icon: 'mdi-warehouse',
+      to: '/assets/inventory',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Audit',
+      icon: 'mdi-barcode-scan',
+      to: '/assets/audit',
+      permission: 'asset.audit',
+      feature: 'assets',
+    },
+    {
+      title: 'Disposal',
+      icon: 'mdi-delete-sweep',
+      to: '/assets/disposal',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    {
+      title: 'Reports',
+      icon: 'mdi-file-chart',
+      to: '/assets/reports',
+      permission: 'asset.view',
+      feature: 'assets',
+    },
+    { title: 'Approvals', icon: 'mdi-check-decagram', to: '/assets/approvals' },
   ],
 };
 
@@ -414,6 +509,14 @@ export const WORKSPACES: Array<MenuItem & { layout: LayoutKey }> = [
     icon: 'mdi-human-male-child',
     permission: 'ward.view',
     feature: 'education',
+  },
+  {
+    layout: 'assets',
+    title: 'Assets',
+    to: '/assets',
+    icon: 'mdi-package-variant-closed',
+    permission: 'asset.view',
+    feature: 'assets',
   },
 ];
 

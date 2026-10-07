@@ -440,6 +440,12 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
       },
+      {
+        path: 'assets',
+        name: 'employee-assets',
+        meta: { permission: 'asset.view_own', feature: 'assets' },
+        component: () => import('@/pages/assets/MyAssetsPage.vue'),
+      },
     ],
   },
   {
@@ -465,6 +471,75 @@ export const routes: RouteRecordRaw[] = [
         name: 'portal-documents',
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
+      },
+    ],
+  },
+  {
+    path: '/assets',
+    component: () => import('@/layouts/AssetsLayout.vue'),
+    meta: { permission: 'asset.view', feature: 'assets', tenant: true },
+    children: [
+      {
+        path: '',
+        name: 'assets-dashboard',
+        component: () => import('@/pages/assets/AssetDashboardPage.vue'),
+      },
+      {
+        path: 'register',
+        name: 'assets-register',
+        component: () => import('@/pages/assets/AssetsPage.vue'),
+      },
+      {
+        path: 'register/:id',
+        name: 'assets-detail',
+        props: true,
+        component: () => import('@/pages/assets/AssetDetailPage.vue'),
+      },
+      {
+        path: 'categories',
+        name: 'assets-categories',
+        component: () => import('@/pages/assets/AssetCategoriesPage.vue'),
+      },
+      {
+        path: 'assignments',
+        name: 'assets-assignments',
+        component: () => import('@/pages/assets/AssetAssignmentsPage.vue'),
+      },
+      {
+        path: 'maintenance',
+        name: 'assets-maintenance',
+        component: () => import('@/pages/assets/AssetMaintenancePage.vue'),
+      },
+      {
+        path: 'inventory',
+        name: 'assets-inventory',
+        component: () => import('@/pages/assets/AssetInventoryPage.vue'),
+      },
+      {
+        path: 'audit',
+        name: 'assets-audit',
+        meta: { permission: 'asset.audit' },
+        component: () => import('@/pages/assets/AssetAuditPage.vue'),
+      },
+      {
+        path: 'disposal',
+        name: 'assets-disposal',
+        component: () => import('@/pages/assets/AssetDisposalPage.vue'),
+      },
+      {
+        path: 'reports',
+        name: 'assets-reports',
+        component: () => import('@/pages/assets/AssetReportsPage.vue'),
+      },
+      {
+        path: 'notifications',
+        name: 'assets-notifications',
+        component: () => import('@/pages/NotificationsPage.vue'),
+      },
+      {
+        path: 'approvals',
+        name: 'assets-approvals',
+        component: () => import('@/pages/ApprovalsPage.vue'),
       },
     ],
   },

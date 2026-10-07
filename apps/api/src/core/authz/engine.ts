@@ -164,7 +164,9 @@ export type ScopedModel =
   | 'document'
   | 'employee'
   | 'student'
-  | 'admission';
+  | 'admission'
+  | 'asset'
+  | 'assetCategory';
 
 type Column = 'id' | 'groupId' | 'institutionId' | 'campusId' | 'departmentId';
 
@@ -209,6 +211,14 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
     institutionIds: 'institutionId',
     departmentIds: 'departmentId',
   },
+  // Also used for asset child tables (assignments, maintenance…) that copy the same columns.
+  asset: {
+    groupIds: 'groupId',
+    institutionIds: 'institutionId',
+    campusIds: 'campusId',
+    departmentIds: 'departmentId',
+  },
+  assetCategory: { groupIds: 'groupId', institutionIds: 'institutionId' },
 };
 
 /** Prisma `where` fragment restricting `model` rows to the access set (undefined = no filter). */
