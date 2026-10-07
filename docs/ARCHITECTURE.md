@@ -832,6 +832,13 @@ transfer files and never persist clear values.
   (`AttendancePunch.selfieDocumentId`, `faceDistance`). Descriptors are computed in the browser with
   `@vladmandic/face-api` (models in `apps/web/public/models`). There is **no liveness detection**,
   so a printed photo can pass; treat this as a deterrent, not strong biometric proof.
+  Browsers expose the camera only on HTTPS or localhost; for phones on the LAN run the web dev
+  server with `DEV_HTTPS=1` (self-signed certificate, binds all interfaces).
+- **Dashboard highlights.** `GET /employees/highlights` (`EmployeeHighlightsDto`) feeds the
+  employee, HR, company and head-office dashboards: upcoming holidays (own calendar chain, else
+  all visible), own upcoming leave, approved team leave today/upcoming, new joiners (±30 days),
+  work anniversaries and birthdays (next 30 days, no birth year). Users with `employee.view`
+  see their permission scope; other employees see colleagues of their own company only.
 
 ## 10. Attendance, leave, holidays & shifts (Layer 7)
 

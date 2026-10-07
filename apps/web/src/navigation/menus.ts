@@ -145,6 +145,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
     },
   ],
   hr: [
+    { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/hr' },
     {
       title: 'Employees',
       icon: 'mdi-badge-account',

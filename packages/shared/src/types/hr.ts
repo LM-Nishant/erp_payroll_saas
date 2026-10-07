@@ -252,3 +252,39 @@ export interface EmployeeTypeDto {
   createdAt: string;
   updatedAt: string;
 }
+
+/** A person shown on dashboard highlight cards (no sensitive data; birthdays carry no year). */
+export interface HighlightPersonDto {
+  employeeId: string;
+  name: string;
+  designation: string | null;
+  department: string | null;
+  institution: string | null;
+  /** YYYY-MM-DD of the event in the current window (joining date, anniversary, birthday). */
+  date: string;
+  /** Completed years (work anniversaries only). */
+  years?: number;
+}
+
+export interface HighlightLeaveDto {
+  employeeId: string;
+  name: string;
+  leaveType: string;
+  fromDate: string;
+  toDate: string;
+  days: number;
+  status: string;
+}
+
+/** `GET /employees/highlights`: dashboard widgets (Zoho People / HROne style). */
+export interface EmployeeHighlightsDto {
+  asOf: string;
+  upcomingHolidays: { date: string; name: string; type: string }[];
+  myUpcomingLeaves: HighlightLeaveDto[];
+  onLeaveToday: HighlightLeaveDto[];
+  upcomingTeamLeaves: HighlightLeaveDto[];
+  newJoiners: HighlightPersonDto[];
+  workAnniversaries: HighlightPersonDto[];
+  birthdays: HighlightPersonDto[];
+  headcount: number;
+}

@@ -207,7 +207,12 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/HrLayout.vue'),
     meta: { permission: 'employee.view', feature: 'hr', tenant: true },
     children: [
-      { path: '', redirect: { name: 'hr-employees' } },
+      {
+        path: '',
+        name: 'hr-dashboard',
+        component: () => import('@/pages/WorkspaceDashboard.vue'),
+        props: { layout: 'hr' },
+      },
       {
         path: 'employees',
         name: 'hr-employees',

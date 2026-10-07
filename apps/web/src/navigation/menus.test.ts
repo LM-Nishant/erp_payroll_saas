@@ -45,6 +45,7 @@ describe('visibleMenu', () => {
     expect(visibleMenu(WORKSPACES, can, withHr).map((w) => w.layout)).toContain('hr');
     expect(visibleMenu(WORKSPACES, can, (f) => !f).map((w) => w.layout)).not.toContain('hr');
     expect(visibleMenu(MENUS.hr, can, withHr).map((i) => i.title)).toEqual([
+      'Dashboard',
       'Employees',
       'Employee types',
       'Designations',
@@ -66,6 +67,7 @@ describe('visibleMenu', () => {
     const can = (p?: string) => !p || perms.has(p);
     const withHr = (f?: string) => !f || f === 'hr';
     expect(visibleMenu(MENUS.hr, can, withHr).map((i) => i.title)).toEqual([
+      'Dashboard',
       'Employees',
       'Attendance',
       'Holiday calendars',

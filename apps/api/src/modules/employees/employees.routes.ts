@@ -32,6 +32,7 @@ import {
   withdrawResignationSchema,
 } from '@erp/shared';
 import { Router, type Request } from 'express';
+import { employeeHighlights } from './employees.highlights';
 import type { z } from 'zod';
 import { requirePermission } from '../../core/authz';
 import { parseMultipartFile } from '../../core/http/multipart';
@@ -58,6 +59,9 @@ const idOf = (req: Request) => parseInput(idParamSchema, req.params).id;
 const IMPORT_MAX_BYTES = 5 * 1024 * 1024;
 
 /* ---- self-service (before /:id) ---- */
+employeesRouter.get('/highlights', async (_req, res) => {
+  res.json({ data: await employeeHighlights() });
+});
 employeesRouter.get('/me', requirePermission('employee.view_own'), async (_req, res) => {
   res.json({ data: await selfService.me() });
 });

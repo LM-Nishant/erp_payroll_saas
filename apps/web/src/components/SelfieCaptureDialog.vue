@@ -23,6 +23,11 @@ function stop() {
 watch(open, async (isOpen) => {
   error.value = null;
   if (!isOpen) return stop();
+  if (!window.isSecureContext || !navigator.mediaDevices?.getUserMedia) {
+    error.value =
+      'The camera is only available over HTTPS (or on localhost). Open the app via its https:// address.';
+    return;
+  }
   try {
     stream.value = await navigator.mediaDevices.getUserMedia({
       video: { facingMode: 'user', width: 640, height: 480 },
