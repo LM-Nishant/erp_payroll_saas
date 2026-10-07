@@ -152,6 +152,32 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'ExamSchedule',
   'ExamMark',
   'ExamResult',
+  // Transport & hostel
+  'TransportVehicle',
+  'TransportStaff',
+  'TransportRoute',
+  'TransportStop',
+  'TransportFareSlab',
+  'TransportAllocation',
+  'TransportCharge',
+  'TransportTrip',
+  'TransportBoarding',
+  'TransportIncident',
+  'TransportFuelLog',
+  'TransportMaintenanceLog',
+  'Hostel',
+  'HostelBlock',
+  'HostelRoom',
+  'HostelBed',
+  'HostelMessPlan',
+  'HostelAllocation',
+  'HostelCharge',
+  'HostelVisitor',
+  'HostelOutpass',
+  'HostelMovement',
+  'HostelComplaint',
+  'HostelRollCall',
+  'HostelRollCallEntry',
 ]);
 
 /**
@@ -198,6 +224,16 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'Subject',
   'GradingScale',
   'ExamTerm',
+  // Transport & hostel
+  'TransportVehicle',
+  'TransportStaff',
+  'TransportRoute',
+  'TransportStop',
+  'Hostel',
+  'HostelBlock',
+  'HostelRoom',
+  'HostelBed',
+  'HostelMessPlan',
 ]);
 
 /** The tenant root. Through the tenant client it is read-only and limited to the current org. */

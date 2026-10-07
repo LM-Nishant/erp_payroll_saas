@@ -59,6 +59,8 @@ import { admissionsRouter, studentsRouter } from './modules/students/students.ro
 import { aiRouter } from './modules/ai/ai.routes';
 import { assetsRouter } from './modules/assets/assets.routes';
 import { libraryRouter } from './modules/library/library.routes';
+import { transportRouter } from './modules/transport/transport.routes';
+import { hostelRouter } from './modules/hostel/hostel.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -170,6 +172,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/student-attendance', requireFeature('education'), studentAttendanceRouter);
   api.use('/timetable', requireFeature('education'), timetableRouter);
   api.use('/exams', requireFeature('education'), examsRouter);
+  api.use('/transport', requireFeature('transport'), transportRouter);
+  api.use('/hostel', requireFeature('hostel'), hostelRouter);
   api.use('/employees', requireFeature('hr'), employeesRouter);
   api.use('/designations', requireFeature('hr'), designationsRouter);
   api.use('/employee-types', requireFeature('hr'), employeeTypesRouter);

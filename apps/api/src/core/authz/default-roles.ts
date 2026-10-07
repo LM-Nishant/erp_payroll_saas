@@ -79,7 +79,11 @@ const INSTITUTION_ADMIN = [
     'document',
     'message',
     'library',
-  ).filter((c) => c !== 'employee.view_sensitive'),
+    'transport',
+    'hostel',
+  ).filter(
+    (c) => c !== 'employee.view_sensitive' && !(/^(transport|hostel)\./.test(c) && /_own$/.test(c)),
+  ),
   // Assets: admins see and hand out assets; register management sits with asset_manager.
   ...ASSET_CUSTODY,
   'designation.view',
@@ -191,15 +195,23 @@ const SELF_SERVICE = [
   'ai.use',
   'library.view_own',
 ] as PermissionCode[];
+/** Portal "My transport" / "My hostel" (own record for students, wards for parents). */
+const TRANSPORT_HOSTEL_SELF_SERVICE = [
+  'transport.view_own',
+  'hostel.view_own',
+  'hostel.apply_own',
+] as PermissionCode[];
 const STUDENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'student.view_own',
   ...ACADEMICS_SELF_SERVICE,
+  ...TRANSPORT_HOSTEL_SELF_SERVICE,
 ] as PermissionCode[];
 const PARENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'ward.view',
   ...ACADEMICS_SELF_SERVICE,
+  ...TRANSPORT_HOSTEL_SELF_SERVICE,
 ] as PermissionCode[];
 
 /** Employee self-service adds the own-profile APIs (`/employees/me`). */
@@ -407,7 +419,18 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Transport Manager',
       description: 'Manages transport',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, 'student.view', 'message.send'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        'student.view',
+        'employee.view',
+        'message.send',
+        'transport.view',
+        'transport.manage',
+        'transport.allocate',
+        'document.view',
+        'document.upload',
+        'document.download',
+      ],
     },
     {
       key: 'librarian',
@@ -430,7 +453,28 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Hostel Manager',
       description: 'Manages hostels',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_STRUCTURE_VIEW, 'student.view', 'message.send'],
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        'student.view',
+        'employee.view',
+        'message.send',
+        ...pick('hostel').filter((c) => !c.endsWith('_own')),
+      ],
+    },
+    {
+      key: 'hostel_warden',
+      name: 'Hostel Warden',
+      description: 'Runs a hostel day to day: allocations, out-pass approval, visitors, roll call',
+      typicalScope: 'INSTITUTION',
+      permissions: [
+        ...ACADEMIC_STRUCTURE_VIEW,
+        'student.view',
+        'message.send',
+        'hostel.view',
+        'hostel.manage',
+        'hostel.allocate',
+        'hostel.outpass_approve',
+      ],
     },
     {
       key: 'student',

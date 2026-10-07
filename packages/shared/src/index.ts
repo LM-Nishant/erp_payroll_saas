@@ -35,3 +35,5 @@ export * from './schemas/ai';
 export * from './types/ai';
 export * from './schemas/library';
 export * from './types/library';
+export * from './schemas/transport';
+export * from './schemas/hostel';
