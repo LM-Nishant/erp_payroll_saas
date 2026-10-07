@@ -1173,6 +1173,7 @@ To use a real model:
 1. In Secrets, add kind `ai.openai` with the API key as the value.
 2. Optionally add metadata `{"model":"gpt-4o-mini","baseUrl":"https://…/v1","apiVersion":"…"}`.
 3. In AI settings, set provider `openai` and turn on data sharing.
+
 ## 17. Academics, timetable, student attendance and exams
 
 Three API modules behind `requireFeature('education')`:
