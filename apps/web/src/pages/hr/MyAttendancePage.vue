@@ -218,7 +218,8 @@ const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
             v-if="auth.can('attendance.regularize_own') && c.record && !c.record.locked"
             size="x-small"
             variant="text"
-            icon="mdi-pencil-clock"
+            color="primary"
+            icon="mdi-clock-edit-outline"
             :title="'Regularize'"
             @click="openReg(c.date)"
           />
