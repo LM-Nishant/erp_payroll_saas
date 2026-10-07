@@ -69,13 +69,18 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/group',
     component: () => import('@/layouts/GroupLayout.vue'),
-    meta: { permission: 'group.view' },
+    meta: { permission: 'group.view', tenant: true },
     children: [
-      { path: '', name: 'group-dashboard', ...placeholder('Group dashboard') },
+      {
+        path: '',
+        name: 'group-dashboard',
+        component: () => import('@/pages/WorkspaceDashboard.vue'),
+        props: { layout: 'group' },
+      },
       {
         path: 'institutions',
         name: 'group-institutions',
-        meta: { permission: 'institution.view' },
+        meta: { permission: 'institution.view', tenant: true },
         component: () => import('@/pages/group/InstitutionsPage.vue'),
       },
       {
@@ -149,7 +154,12 @@ export const routes: RouteRecordRaw[] = [
     component: () => import('@/layouts/InstitutionLayout.vue'),
     meta: { permission: 'institution.view' },
     children: [
-      { path: '', name: 'institution-dashboard', ...placeholder('Institution dashboard') },
+      {
+        path: '',
+        name: 'institution-dashboard',
+        component: () => import('@/pages/WorkspaceDashboard.vue'),
+        props: { layout: 'institution' },
+      },
       {
         path: 'departments',
         name: 'institution-departments',
@@ -195,7 +205,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/hr',
     component: () => import('@/layouts/HrLayout.vue'),
-    meta: { permission: 'employee.view', feature: 'hr' },
+    meta: { permission: 'employee.view', feature: 'hr', tenant: true },
     children: [
       { path: '', redirect: { name: 'hr-employees' } },
       {
@@ -315,8 +325,14 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/employee',
     component: () => import('@/layouts/EmployeeLayout.vue'),
+    meta: { tenant: true },
     children: [
-      { path: '', name: 'employee-home', ...placeholder('Employee home') },
+      {
+        path: '',
+        name: 'employee-home',
+        component: () => import('@/pages/WorkspaceDashboard.vue'),
+        props: { layout: 'employee' },
+      },
       {
         path: 'profile',
         name: 'employee-profile',
@@ -372,6 +388,7 @@ export function installGuards(r: Router) {
       isAuthenticated: auth.isAuthenticated,
       can: auth.can,
       hasFeature: auth.hasFeature,
+      hasOrganization: !auth.me || Boolean(auth.me.organization),
     });
   });
 }

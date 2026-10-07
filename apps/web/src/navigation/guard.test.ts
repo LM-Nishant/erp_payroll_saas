@@ -33,6 +33,15 @@ describe('guardDecision', () => {
     });
   });
 
+  it('sends platform-only users (no organization) home from tenant workspaces', () => {
+    const r = route('employee-approvals', '/employee/approvals', [{ tenant: true }, {}]);
+    expect(guardDecision(r, { ...user([]), hasOrganization: false })).toEqual({ name: 'home' });
+    expect(guardDecision(r, { ...user([]), hasOrganization: true })).toBe(true);
+    expect(
+      guardDecision(route('platform', '/platform', [{}]), { ...user([]), hasOrganization: false }),
+    ).toBe(true);
+  });
+
   it('requires every matched permission', () => {
     const to = route('group-users', '/group/users', [
       { permission: 'group.view' },

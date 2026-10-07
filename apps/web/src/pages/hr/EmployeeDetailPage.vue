@@ -14,6 +14,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import EmployeeLoginCard from '@/components/EmployeeLoginCard.vue';
 import ProfilePhotoCard from '@/components/ProfilePhotoCard.vue';
 import { useAuthStore } from '@/stores/auth';
 import EmployeeFormDialog from './EmployeeFormDialog.vue';
@@ -562,6 +563,9 @@ const personalRows = computed(() => {
                 </tbody>
               </v-table>
             </v-card>
+          </v-col>
+          <v-col cols="12" md="6">
+            <EmployeeLoginCard :employee="employee" @changed="loadEmployee" />
           </v-col>
         </v-row>
       </v-window-item>

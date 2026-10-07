@@ -9,6 +9,8 @@ declare module 'vue-router' {
     permission?: string;
     /** Licensed module required to open the route (from `/me.features`). */
     feature?: FeatureKey;
+    /** Needs an organization (tenant) context; platform-only users are sent home. */
+    tenant?: boolean;
   }
 }
 
@@ -17,6 +19,8 @@ export interface GuardState {
   can: (permission?: string) => boolean;
   /** Defaults to "all enabled" (the API returns 403 FEATURE_DISABLED regardless). */
   hasFeature?: (feature?: FeatureKey) => boolean;
+  /** False for platform-only users who do not belong to an organization. Defaults to true. */
+  hasOrganization?: boolean;
 }
 
 /**
@@ -33,6 +37,9 @@ export function guardDecision(
   }
   if (!state.isAuthenticated) {
     return { name: 'login', query: to.fullPath === '/' ? {} : { redirect: to.fullPath } };
+  }
+  if (state.hasOrganization === false && to.matched.some((r) => r.meta.tenant)) {
+    return { name: 'home' };
   }
   const allowed = to.matched.every((r) => state.can(r.meta.permission));
   if (!allowed) return { name: 'forbidden' };
