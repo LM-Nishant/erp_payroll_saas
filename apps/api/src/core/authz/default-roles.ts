@@ -287,7 +287,13 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Institution Owner',
       description: 'Owner of assigned institutions',
       typicalScope: 'INSTITUTION',
-      permissions: [...INSTITUTION_ADMIN, 'payroll.approve', 'payroll.lock', 'attendance.unlock'],
+      permissions: [
+        ...INSTITUTION_ADMIN,
+        'designation.manage',
+        'payroll.approve',
+        'payroll.lock',
+        'attendance.unlock',
+      ],
     },
     {
       key: 'institution_admin',
