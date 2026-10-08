@@ -17,6 +17,7 @@ import {
   seedHrMasters,
   seedLeaveRequest,
   seedLeaveSetup,
+  seedNewJoiners,
   seedPayrollRuns,
   seedPayrollSetup,
   seedWorkflows,
@@ -362,6 +363,18 @@ export async function seedAcme(plat, plans) {
     seedPayrollRuns(ctx, inst, {
       payrollEmail: users.payroll.email,
       approverEmail: users.finance.email,
+    }),
+  );
+  await step('acme new joiners', () =>
+    seedNewJoiners(ctx, inst, masters, {
+      dept: depts.ENG,
+      desig: 'SDE',
+      type: 'FT',
+      domain: 'acme.demo',
+      people: [
+        ['Aarav', 'Khanna', 'MALE'],
+        ['Isha', 'Bansal', 'FEMALE'],
+      ],
     }),
   );
   await step('acme documents', () =>

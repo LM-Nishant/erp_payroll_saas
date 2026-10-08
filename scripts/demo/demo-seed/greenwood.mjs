@@ -18,6 +18,7 @@ import {
   seedHrMasters,
   seedLeaveRequest,
   seedLeaveSetup,
+  seedNewJoiners,
   seedPayrollRuns,
   seedPayrollSetup,
   seedWorkflows,
@@ -532,6 +533,19 @@ export async function seedGreenwood(ctx) {
     seedPayrollRuns(ctx, main, {
       payrollEmail: users.payroll.email,
       approverEmail: users.finance.email,
+    }),
+  );
+
+  await step('greenwood new joiners', () =>
+    seedNewJoiners(ctx, main, masters, {
+      dept: depts.ACAD,
+      desig: 'TGT',
+      type: 'TEACH',
+      domain: 'greenwood.demo',
+      people: [
+        ['Meera', 'Joshi', 'FEMALE'],
+        ['Vikram', 'Sethi', 'MALE'],
+      ],
     }),
   );
 

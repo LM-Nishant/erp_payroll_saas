@@ -100,7 +100,8 @@ export async function seedHrMasters(ctx, { types, designations }) {
 export async function seedEmployees(ctx, inst, specs, masters) {
   const existing = await all(ctx.api, `/employees?institutionId=${inst.id}`);
   const byKey = {};
-  for (const s of specs) {
+  for (const [i, spec] of specs.entries()) {
+    const s = spec.fixedDates ? spec : { ...spec, ...dashboardDates(spec, i) };
     let emp = existing.find((e) => e.workEmail === s.email);
     if (!emp) {
       emp = (
@@ -130,6 +131,59 @@ export async function seedEmployees(ctx, inst, specs, masters) {
     byKey[s.key] = { ...emp, spec: s };
   }
   return byKey;
+}
+
+/** Month-day of TODAY + `days`, avoiding 29 Feb so any birth year is valid. */
+const upcomingMonthDay = (days) => {
+  const md = addDays(TODAY, days).slice(5);
+  return md === '02-29' ? '02-28' : md;
+};
+
+/**
+ * Keep the dashboard highlights alive whenever the seed runs: every third employee has a
+ * birthday in the next few weeks (the first one today) and every fourth (offset 1) has a work
+ * anniversary coming up. Birth / joining years stay as given, so payroll is unaffected.
+ */
+function dashboardDates(spec, i) {
+  const out = {};
+  if (i % 3 === 0) {
+    const year = (spec.dob ?? '1988-05-14').slice(0, 4);
+    out.dob = `${year}-${upcomingMonthDay(i === 0 ? 0 : (i * 5) % 28)}`;
+  }
+  if (i % 4 === 1) {
+    const year = Math.min(
+      Number((spec.joined ?? '2023-06-01').slice(0, 4)),
+      Number(TODAY.slice(0, 4)) - 1,
+    );
+    out.joined = `${year}-${upcomingMonthDay(3 + ((i * 3) % 25))}`;
+  }
+  return out;
+}
+
+/**
+ * New joiners for the dashboard: one who joined ~10 days ago and one joining in 5 days. Run after
+ * payroll so they never enter a demo payroll run.
+ */
+export async function seedNewJoiners(ctx, inst, masters, { dept, desig, type, domain, people }) {
+  const offsets = [-10, 5];
+  const specs = people.map(([first, last, gender], i) => ({
+    key: `joiner${i}`,
+    first,
+    last,
+    gender,
+    dept,
+    desig,
+    type,
+    email: `${first.toLowerCase()}.${last.toLowerCase()}@${domain}`,
+    dob: `199${4 + i}-0${3 + i}-1${i}`,
+    joined: addDays(TODAY, offsets[i % offsets.length]),
+  }));
+  return seedEmployees(
+    ctx,
+    inst,
+    specs.map((s) => ({ ...s, fixedDates: true })),
+    masters,
+  );
 }
 
 /** Shift, attendance policy, punches for previous + current month, recompute and lock. */
