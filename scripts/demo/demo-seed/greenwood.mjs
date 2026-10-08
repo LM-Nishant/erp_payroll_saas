@@ -12,6 +12,7 @@ import {
 import { linkStudentAndParent, portalNames } from './orgs.mjs';
 import {
   seedAttendance,
+  setAttendancePolicy,
   seedEmployees,
   seedHolidays,
   seedHrMasters,
@@ -472,9 +473,8 @@ export async function seedGreenwood(ctx) {
       payrollApprovers: ['finance_manager', 'institution_owner', 'group_finance'],
     }),
   );
-  await step('greenwood attendance', () =>
-    seedAttendance(ctx, main, employees, { faceMatch: false }),
-  );
+  await step('greenwood attendance', () => seedAttendance(ctx, main, employees));
+  await step('greenwood branch attendance policy', () => setAttendancePolicy(ctx, branch));
   const leave = await step('greenwood leave setup', () => seedLeaveSetup(ctx, 'Greenwood'));
   if (leave) {
     await step('greenwood leave (approved)', () =>

@@ -323,7 +323,7 @@ export async function seedAcme(plat, plans) {
   await step('acme workflows', () =>
     seedWorkflows(ctx, { payrollApprovers: ['finance_manager', 'institution_owner'] }),
   );
-  await step('acme attendance', () => seedAttendance(ctx, inst, employees, { faceMatch: false }));
+  await step('acme attendance', () => seedAttendance(ctx, inst, employees));
   const leave = await step('acme leave setup', () => seedLeaveSetup(ctx, 'Acme'));
   if (leave) {
     await step('acme leave (approved)', () =>

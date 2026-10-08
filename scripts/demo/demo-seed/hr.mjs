@@ -133,7 +133,19 @@ export async function seedEmployees(ctx, inst, specs, masters) {
 }
 
 /** Shift, attendance policy, punches for previous + current month, recompute and lock. */
-export async function seedAttendance(ctx, inst, employees, { faceMatch = false } = {}) {
+/** Attendance policy; punches in and out need a live selfie matched to the profile photo. */
+export async function setAttendancePolicy(ctx, inst, { faceMatch = true } = {}) {
+  await ctx.api('PUT', `/attendance/policies/${inst.id}`, {
+    timezone: 'Asia/Kolkata',
+    lateMarksPerHalfDay: 3,
+    absentIsLop: true,
+    allowWebPunch: true,
+    allowMobilePunch: true,
+    requireFaceMatch: faceMatch,
+  });
+}
+
+export async function seedAttendance(ctx, inst, employees, { faceMatch = true } = {}) {
   const shifts = await all(ctx.api, `/shifts?institutionId=${inst.id}`);
   const shift =
     shifts.find((s) => s.code === 'GEN') ??
@@ -155,14 +167,7 @@ export async function seedAttendance(ctx, inst, employees, { faceMatch = false }
       })
     ).data;
   bump('shifts');
-  await ctx.api('PUT', `/attendance/policies/${inst.id}`, {
-    timezone: 'Asia/Kolkata',
-    lateMarksPerHalfDay: 3,
-    absentIsLop: true,
-    allowWebPunch: true,
-    allowMobilePunch: true,
-    requireFaceMatch: faceMatch,
-  });
+  await setAttendancePolicy(ctx, inst, { faceMatch });
   const emps = Object.values(employees);
   for (const e of emps) {
     await tolerate([409], () =>
