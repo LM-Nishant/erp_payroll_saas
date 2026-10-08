@@ -44,6 +44,9 @@ const TIME_SELF_SERVICE = [
 /** Read access used by payroll / finance (attendance summary = payroll feed). */
 const TIME_VIEW = views('holiday', 'shift', 'attendance', 'leave');
 
+/** Fees & finance administration (everything except the student/parent self-service code). */
+const FEES_FINANCE = pick('fee', 'finance').filter((c) => c !== 'fee.view_own');
+const FEES_FINANCE_VIEW = ['fee.view', 'finance.view'] as PermissionCode[];
 /** Asset custody (view / check-out / check-in) for institution admins and HR. */
 const ASSET_CUSTODY = ['asset.view', 'asset.assign', 'asset.return'] as PermissionCode[];
 /** Academics, timetable, student attendance & exams. */
@@ -95,6 +98,7 @@ const INSTITUTION_ADMIN = [
   'pdf.generate',
   'workflow.view',
   'communication.view',
+  ...FEES_FINANCE,
   ...ACADEMICS_MANAGE,
 ] as PermissionCode[];
 
@@ -149,6 +153,8 @@ const FINANCE = [
   'billing.view',
   'billing.pay',
   'subscription.view',
+  ...FEES_FINANCE,
+  'student.view',
 ] as PermissionCode[];
 
 const ACADEMIC_LEAD = [
@@ -194,11 +200,13 @@ const SELF_SERVICE = [
 const STUDENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'student.view_own',
+  'fee.view_own',
   ...ACADEMICS_SELF_SERVICE,
 ] as PermissionCode[];
 const PARENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'ward.view',
+  'fee.view_own',
   ...ACADEMICS_SELF_SERVICE,
 ] as PermissionCode[];
 
@@ -281,7 +289,13 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Principal',
       description: 'Academic head of an institution',
       typicalScope: 'INSTITUTION',
-      permissions: [...ACADEMIC_LEAD, 'employee.update', 'audit.view', 'library.view'],
+      permissions: [
+        ...ACADEMIC_LEAD,
+        'employee.update',
+        'audit.view',
+        'library.view',
+        ...FEES_FINANCE_VIEW,
+      ],
     },
     {
       key: 'vice_principal',
@@ -366,6 +380,13 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'document.view',
         'document.download',
         'billing.view',
+        'student.view',
+        'fee.view',
+        'fee.manage',
+        'fee.collect',
+        'finance.view',
+        'finance.manage',
+        'finance.post',
       ],
     },
     {

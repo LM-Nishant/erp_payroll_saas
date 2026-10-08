@@ -157,6 +157,16 @@ export const PERMISSIONS = {
   // ===== AI =====
   'ai.manage': 'Manage organization AI settings (provider, model, enabled features, limits)',
   'ai.view_usage': 'View AI usage dashboards (tokens by feature / user / day)',
+  // Fees & finance
+  'fee.view': 'View fee setup, invoices, receipts and dues',
+  'fee.manage': 'Manage fee heads, structures, late-fee rules and invoices',
+  'fee.collect': 'Record fee payments and issue receipts',
+  'fee.refund': 'Refund and cancel fee receipts',
+  'fee.concession': 'Grant fee concessions and scholarships',
+  'fee.view_own': 'View and pay own / wards fees (student & parent self-service)',
+  'finance.view': 'View accounts, vouchers, ledgers and financial reports',
+  'finance.manage': 'Manage chart of accounts, vendors and expenses',
+  'finance.post': 'Post and cancel journal vouchers',
   'library.view': 'View library catalogue, copies, circulation and reports',
   'library.manage': 'Manage library catalogue, copies, policies, imports and stock verification',
   'library.circulate': 'Issue, return, renew books and manage reservations',

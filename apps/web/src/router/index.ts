@@ -1,6 +1,7 @@
 import { createRouter, createWebHistory, type Router, type RouteRecordRaw } from 'vue-router';
 import { guardDecision } from '@/navigation/guard';
 import { useAuthStore } from '@/stores/auth';
+import { feesFinanceRoutes, portalFeesRoute } from './fees-finance-routes';
 
 const placeholder = (title: string) => ({
   component: () => import('@/pages/PlaceholderPage.vue'),
@@ -266,6 +267,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'ai.view_usage', feature: 'ai' },
         component: () => import('@/pages/ai/AiUsagePage.vue'),
       },
+      ...feesFinanceRoutes('group'),
       ...libraryStaffRoutes('group'),
     ],
   },
@@ -395,6 +397,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'branding.view' },
         component: () => import('@/pages/settings/BrandingPage.vue'),
       },
+      ...feesFinanceRoutes('institution'),
       ...libraryStaffRoutes('institution'),
     ],
   },
@@ -637,6 +640,7 @@ export const routes: RouteRecordRaw[] = [
         meta: { permission: 'document.view_own', feature: 'documents' },
         component: () => import('@/pages/DocumentsPage.vue'),
       },
+      portalFeesRoute,
       ...librarySelfRoutes('portal'),
     ],
   },
