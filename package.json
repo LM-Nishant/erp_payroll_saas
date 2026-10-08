@@ -19,7 +19,8 @@
     "test:unit": "pnpm -r test:unit",
     "db:migrate": "pnpm --filter @erp/api db:migrate",
     "db:deploy": "pnpm --filter @erp/api db:deploy",
-    "db:seed": "pnpm --filter @erp/api db:seed"
+    "db:seed": "pnpm --filter @erp/api db:seed",
+    "demo:seed": "node scripts/demo/seed-demo.mjs"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
