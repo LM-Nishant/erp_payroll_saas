@@ -9,7 +9,7 @@ export interface License {
   organizationId: string;
   subscription: (OrganizationSubscription & { plan: SubscriptionPlan }) | null;
   active: boolean;
-  /** Plan features ∪ add-ons; empty when the subscription is not active. */
+  /** Plan features ∪ add-ons (plan `education` ignored for COMPANY orgs); empty when inactive. */
   features: ReadonlySet<FeatureKey>;
   /** Effective limits; all 0 when the subscription is not active. */
   limits: PlanLimits;
@@ -34,19 +34,24 @@ export async function loadLicense(organizationId: string): Promise<License> {
   const cached = cache?.get(cacheKey) as License | undefined;
   if (cached) return cached;
 
-  const subscription = await prisma.organizationSubscription.findUnique({
-    where: { organizationId },
-    include: { plan: true },
-  });
+  const [subscription, organization] = await Promise.all([
+    prisma.organizationSubscription.findUnique({
+      where: { organizationId },
+      include: { plan: true },
+    }),
+    prisma.organization.findUnique({ where: { id: organizationId }, select: { kind: true } }),
+  ]);
   const active = isSubscriptionActive(subscription);
+  // Plans bundle `education`; a company org gets it only when explicitly licensed as an add-on.
+  const planFeatures = asFeatures(subscription?.plan.features).filter(
+    (f) => f !== 'education' || organization?.kind !== 'COMPANY',
+  );
   const license: License = {
     organizationId,
     subscription,
     active,
     features: new Set(
-      active && subscription
-        ? [...asFeatures(subscription.plan.features), ...asFeatures(subscription.addOnFeatures)]
-        : [],
+      active && subscription ? [...planFeatures, ...asFeatures(subscription.addOnFeatures)] : [],
     ),
     limits:
       active && subscription
