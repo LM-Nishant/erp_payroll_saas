@@ -256,6 +256,12 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
   institution: [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/institution' },
     {
+      title: 'Branches',
+      icon: 'mdi-source-branch',
+      to: '/institution/branches',
+      permission: 'campus.view',
+    },
+    {
       title: 'Departments',
       icon: 'mdi-sitemap',
       to: '/institution/departments',
