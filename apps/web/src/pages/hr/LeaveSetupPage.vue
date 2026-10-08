@@ -662,16 +662,27 @@ const ruleSummary = (r: LeavePolicyRuleDto) => {
                   <v-btn
                     size="small"
                     variant="text"
-                    :icon="r.advanced ? 'mdi-chevron-up' : 'mdi-tune'"
-                    :title="r.advanced ? 'Hide advanced rules' : 'Advanced rules'"
-                    @click="r.advanced = !r.advanced"
-                  />
-                  <v-btn
-                    size="small"
-                    variant="text"
                     icon="mdi-delete"
+                    title="Remove leave type"
                     @click="policyDialog.rules.splice(i, 1)"
                   />
+                </td>
+              </tr>
+              <tr>
+                <td colspan="6" class="pb-2">
+                  <v-btn
+                    size="small"
+                    variant="tonal"
+                    color="primary"
+                    :prepend-icon="r.advanced ? 'mdi-chevron-up' : 'mdi-tune'"
+                    @click="r.advanced = !r.advanced"
+                  >
+                    {{ r.advanced ? 'Hide advanced rules' : 'Advanced rules' }}
+                    ({{ typeCode(r.leaveTypeId) }}: notice, sandwich, limits)
+                  </v-btn>
+                  <v-chip v-if="hasOverrides(r)" size="x-small" color="success" class="ml-2">
+                    Custom rules set
+                  </v-chip>
                 </td>
               </tr>
               <tr v-if="r.advanced">
@@ -844,6 +855,9 @@ const ruleSummary = (r: LeavePolicyRuleDto) => {
             </template>
           </tbody>
         </v-table>
+        <p v-if="!policyDialog.rules.length" class="text-body-2 text-medium-emphasis mt-2">
+          Add a leave type to set its entitlement and advanced rules (notice, sandwich, limits).
+        </p>
         <v-btn size="small" variant="text" prepend-icon="mdi-plus" class="mt-2" @click="addRule">
           Add leave type
         </v-btn>
