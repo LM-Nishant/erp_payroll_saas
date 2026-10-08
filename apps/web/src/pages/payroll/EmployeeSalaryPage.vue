@@ -11,7 +11,7 @@ import {
   type TaxRegime,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { apiFetch } from '@/api/client';
+import { ApiError, apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { label, todayIso } from '@/pages/hr/useHrOptions';
 import { firstOfMonth, lastOfMonth, money, searchEmployees } from './payroll';
@@ -189,16 +189,38 @@ function openForm(mode: 'assign' | 'revise') {
     taxRegime: current?.taxRegime ?? 'NEW',
     reason: mode === 'assign' ? 'Salary assignment' : '',
   });
+  formError.value = null;
   buildRows(current?.amounts ?? {}, current?.excludedComponents ?? []);
+}
+const formError = ref<string | null>(null);
+/** Turns a VALIDATION_ERROR into "field: message" lines so the user sees what to fix. */
+function describeError(e: unknown): string {
+  const issues = (e instanceof ApiError ? e.details : undefined) as
+    { issues?: { path: string; message: string }[] } | undefined;
+  if (!issues?.issues?.length) return (e as Error).message;
+  return issues.issues.map((i) => `${i.path || 'request'}: ${i.message}`).join('; ');
 }
 async function submit() {
   if (!employee.value) return;
+  formError.value = null;
+  if (!form.structureId) {
+    formError.value = 'Select a salary structure.';
+    return;
+  }
+  if (!form.annualCtc || Number(form.annualCtc) <= 0) {
+    formError.value = 'Enter the annual CTC.';
+    return;
+  }
+  if (!form.reason.trim()) {
+    formError.value = 'Enter a reason for this salary change.';
+    return;
+  }
   const amounts: Record<string, number> = {};
   for (const r of rows.value) {
     if (!r.applies) continue;
     if (r.amount === '') {
       if (r.extra) {
-        error.value = `Enter a monthly amount for ${r.code}`;
+        formError.value = `Enter a monthly amount for ${r.code}.`;
         return;
       }
       continue;
@@ -229,7 +251,7 @@ async function submit() {
     form.open = false;
     await loadEmployee();
   } catch (e) {
-    error.value = (e as Error).message;
+    formError.value = describeError(e);
   }
 }
 
@@ -460,7 +482,14 @@ async function runPreview() {
           <v-btn variant="tonal" :disabled="!addCode" @click="addComponent">Add</v-btn>
         </div>
         <v-select v-model="form.taxRegime" :items="TAX_REGIMES" label="Tax regime" />
-        <v-text-field v-model="form.reason" label="Reason" />
+        <v-text-field
+          v-model="form.reason"
+          label="Reason *"
+          :rules="[(v: string) => !!v?.trim() || 'Reason is required']"
+        />
+        <v-alert v-if="formError" type="error" density="compact" class="mb-2">
+          {{ formError }}
+        </v-alert>
         <v-alert v-if="form.mode === 'revise'" type="info" density="compact">
           Revisions go through the salary_revision workflow; back-dated revisions create arrears.
         </v-alert>
