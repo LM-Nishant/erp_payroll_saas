@@ -10,9 +10,10 @@ import {
 import { registerNotificationEvent } from '../../core/notifications';
 import { registerPdfTemplate } from '../../core/pdf';
 import { registerLibraryFinePoster } from '../library/library.constants';
+import { registerStudentChargePoster } from '../transport/charges-hook';
 import { today } from '../finance/finance.mappers';
 import { applyLateFees, sendDueReminders } from './fees.dues.service';
-import { createStudentCharge } from './fees.invoices.service';
+import { cancelStudentCharge, createStudentCharge } from './fees.invoices.service';
 import { FEE_RECEIPT_TEMPLATE } from './fees.payments.service';
 
 /*
@@ -150,3 +151,40 @@ registerLibraryFinePoster(async (fine) => {
   });
   return { externalChargeId: invoice.id };
 });
+
+/**
+ * Transport / hostel → fees: monthly student transport & hostel charges become `TRANSPORT` /
+ * `HOSTEL` fee charges (heads auto-created), idempotent per source charge; due on the 1st of the
+ * period (or today when later). Returning null (finance off) keeps the charge PENDING; waiving a
+ * POSTED charge cancels its unpaid invoice. Staff charges stay module-local.
+ */
+const CHARGE_SOURCE = { transport: 'TRANSPORT_CHARGE', hostel: 'HOSTEL_CHARGE' } as const;
+registerStudentChargePoster(
+  async (charge) => {
+    if (!charge.studentId) return null;
+    const enabled = await isFeatureEnabled(currentFeatureContext(), 'finance', {
+      institutionId: charge.institutionId,
+    });
+    if (!enabled) return null;
+    const periodStart = `${charge.period}-01`;
+    const now = today();
+    const invoice = await createStudentCharge({
+      studentId: charge.studentId,
+      feeHeadCode: charge.source.toUpperCase(),
+      amount: charge.amount,
+      dueDate: periodStart > now ? periodStart : now,
+      sourceType: CHARGE_SOURCE[charge.source],
+      sourceId: charge.sourceChargeId,
+      description: charge.description.slice(0, 500),
+    });
+    return invoice.id;
+  },
+  async (charge) => {
+    await cancelStudentCharge({
+      studentId: charge.studentId,
+      sourceType: CHARGE_SOURCE[charge.source],
+      sourceId: charge.sourceChargeId,
+      reason: charge.reason,
+    });
+  },
+);
