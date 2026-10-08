@@ -8,12 +8,14 @@ import {
   type HolidayCalendarScope,
   type HolidayType,
   type ResolvedDayDto,
+  type WeeklyOffRule,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
-import { formatWeeklyOffsInput, parseWeeklyOffs, weeklyOffsText } from './timeOffice';
+import WeeklyOffsPicker from '@/components/WeeklyOffsPicker.vue';
+import { weeklyOffsText } from './timeOffice';
 import { label, useHrOptions, type Option } from './useHrOptions';
 
 /**
@@ -68,7 +70,7 @@ const dialog = reactive({
   targetId: null as string | null,
   name: '',
   inheritWeeklyOffs: true,
-  weeklyOffs: '',
+  weeklyOffs: [] as WeeklyOffRule[],
 });
 function openDialog(c?: HolidayCalendarDto) {
   Object.assign(dialog, {
@@ -78,12 +80,12 @@ function openDialog(c?: HolidayCalendarDto) {
     targetId: null,
     name: c?.name ?? '',
     inheritWeeklyOffs: !c || c.weeklyOffs === null,
-    weeklyOffs: formatWeeklyOffsInput(c?.weeklyOffs),
+    weeklyOffs: (c?.weeklyOffs ?? [{ weekday: 0 }]).map((r) => ({ ...r })),
   });
 }
 const targets = computed(() => (dialog.scope === 'GROUP' ? groups.value : institutions.value));
 async function save() {
-  const weeklyOffs = dialog.inheritWeeklyOffs ? null : parseWeeklyOffs(dialog.weeklyOffs);
+  const weeklyOffs = dialog.inheritWeeklyOffs ? null : dialog.weeklyOffs;
   try {
     await apiFetch(
       dialog.id ? `/api/v1/holidays/calendars/${dialog.id}` : '/api/v1/holidays/calendars',
@@ -268,12 +270,10 @@ const types = HOLIDAY_TYPES.map((value) => ({ value, title: label(value) }));
         </template>
         <v-text-field v-model="dialog.name" label="Name *" />
         <v-checkbox v-model="dialog.inheritWeeklyOffs" label="Inherit weekly offs" hide-details />
-        <v-text-field
+        <WeeklyOffsPicker
           v-if="!dialog.inheritWeeklyOffs"
           v-model="dialog.weeklyOffs"
-          label="Weekly offs"
-          hint="weekday[:weeks] separated by ';' (0 = Sunday) — e.g. 0; 6:2,4"
-          persistent-hint
+          class="mt-2"
         />
       </v-card-text>
       <v-card-actions>

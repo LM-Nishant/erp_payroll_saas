@@ -28,31 +28,10 @@ export const weeklyOffsText = (rules: WeeklyOffRule[] | null | undefined) =>
       : rules
           .map((r) =>
             r.weeks?.length
-              ? `${WEEKDAYS[r.weekday]} (wk ${r.weeks.join(',')})`
+              ? `${r.weeks.map((w) => ['1st', '2nd', '3rd', '4th', '5th'][w - 1]).join('/')} ${WEEKDAYS[r.weekday]}`
               : WEEKDAYS[r.weekday],
           )
           .join(', ');
-
-/** Parse `weekday[:weeks]` tokens separated by `;` — e.g. "0; 6:2,4" = Sundays + 2nd/4th Saturdays. */
-export const parseWeeklyOffs = (text: string): WeeklyOffRule[] =>
-  text
-    .split(';')
-    .map((t) => t.trim())
-    .filter(Boolean)
-    .map((t) => {
-      const [day, weeks] = t.split(':');
-      const weekday = Number(day);
-      const list = (weeks ?? '')
-        .split(',')
-        .map((w) => Number(w.trim()))
-        .filter((w) => w >= 1 && w <= 5);
-      return list.length ? { weekday, weeks: list } : { weekday };
-    });
-
-export const formatWeeklyOffsInput = (rules: WeeklyOffRule[] | null | undefined) =>
-  (rules ?? [])
-    .map((r) => (r.weeks?.length ? `${r.weekday}:${r.weeks.join(',')}` : `${r.weekday}`))
-    .join('; ');
 
 export const ATTENDANCE_COLORS: Partial<Record<AttendanceStatus, string>> = {
   PRESENT: 'success',
