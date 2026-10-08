@@ -4,6 +4,9 @@ Multi-tenant SaaS platform for schools, colleges, universities and multi-institu
 education groups. See [`docs/SPEC.md`](docs/SPEC.md) for the product specification and
 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for binding technical conventions.
 
+**User guide:** [`docs/USER_GUIDE.md`](docs/USER_GUIDE.md) — how end users (admins, HR, payroll,
+teachers, employees, students, parents) use the product.
+
 ## Stack
 
 - **API:** Node 22, TypeScript, Express 5, Prisma (MySQL 8), zod, pino, Redis/BullMQ
