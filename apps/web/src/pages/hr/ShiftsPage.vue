@@ -1,16 +1,11 @@
 <script setup lang="ts">
-import type { ApiListResponse, ShiftAssignmentDto, ShiftDto } from '@erp/shared';
+import type { ApiListResponse, ShiftAssignmentDto, ShiftDto, WeeklyOffRule } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
+import WeeklyOffsPicker from '@/components/WeeklyOffsPicker.vue';
 import { useAuthStore } from '@/stores/auth';
-import {
-  formatWeeklyOffsInput,
-  hhmm,
-  parseWeeklyOffs,
-  toMinute,
-  weeklyOffsText,
-} from './timeOffice';
+import { hhmm, toMinute, weeklyOffsText } from './timeOffice';
 import { useHrOptions } from './useHrOptions';
 
 /** Shift definitions per institution and effective-dated employee / department assignments. */
@@ -68,7 +63,7 @@ const dialog = reactive({
   fullDayMinutes: 450,
   overtimeAfterMinutes: 0,
   inheritWeeklyOffs: true,
-  weeklyOffs: '',
+  weeklyOffs: [] as WeeklyOffRule[],
   isDefault: false,
 });
 function openDialog(s?: ShiftDto) {
@@ -86,7 +81,7 @@ function openDialog(s?: ShiftDto) {
     fullDayMinutes: s?.fullDayMinutes ?? 450,
     overtimeAfterMinutes: s?.overtimeAfterMinutes ?? 0,
     inheritWeeklyOffs: !s || s.weeklyOffs === null,
-    weeklyOffs: formatWeeklyOffsInput(s?.weeklyOffs),
+    weeklyOffs: (s?.weeklyOffs ?? [{ weekday: 0 }]).map((r) => ({ ...r })),
     isDefault: s?.isDefault ?? false,
   });
 }
@@ -101,7 +96,7 @@ async function save() {
     halfDayMinutes: Number(dialog.halfDayMinutes),
     fullDayMinutes: Number(dialog.fullDayMinutes),
     overtimeAfterMinutes: Number(dialog.overtimeAfterMinutes),
-    weeklyOffs: dialog.inheritWeeklyOffs ? null : parseWeeklyOffs(dialog.weeklyOffs),
+    weeklyOffs: dialog.inheritWeeklyOffs ? null : dialog.weeklyOffs,
     isDefault: dialog.isDefault,
   };
   try {
@@ -358,12 +353,10 @@ const shiftHeaders = [
           label="Use calendar weekly offs"
           hide-details
         />
-        <v-text-field
+        <WeeklyOffsPicker
           v-if="!dialog.inheritWeeklyOffs"
           v-model="dialog.weeklyOffs"
-          label="Weekly offs"
-          hint="weekday[:weeks] separated by ';' (0 = Sunday) — e.g. 0; 6:2,4"
-          persistent-hint
+          class="mt-2"
         />
         <v-checkbox v-model="dialog.isDefault" label="Institution default shift" hide-details />
       </v-card-text>
