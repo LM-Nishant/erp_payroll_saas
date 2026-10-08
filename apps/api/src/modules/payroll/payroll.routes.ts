@@ -99,6 +99,12 @@ async function sendReport(
   res.send(file.body);
 }
 
+function sendPdf(res: Response, file: { fileName: string; contentType: string; body: Buffer }) {
+  res.setHeader('Content-Type', file.contentType);
+  res.setHeader('Content-Disposition', `attachment; filename="${file.fileName}"`);
+  res.send(file.body);
+}
+
 /* ---- employee self-service (before parameterised routes) ---- */
 
 payrollRouter.get('/me/payslips', async (_req, res) => {
@@ -115,6 +121,9 @@ payrollRouter.post('/me/form16/:id/download-url', async (req, res) => {
 });
 payrollRouter.get('/me/salary', async (_req, res) => {
   res.json({ data: await selfSalaryService.mySalary() });
+});
+payrollRouter.get('/me/salary/pdf', async (_req, res) => {
+  sendPdf(res, await selfSalaryService.mySalaryPdf());
 });
 payrollRouter.get('/me/salary-statement', async (req, res) => {
   const query = parseInput(salaryStatementQuerySchema, req.query);
@@ -222,6 +231,13 @@ payrollRouter.post('/salary/preview', requirePermission('salary.view'), async (r
 payrollRouter.get('/employees/:id/salary', requirePermission('salary.view'), async (req, res) => {
   res.json({ data: await salaryService.list(idOf(req)) });
 });
+payrollRouter.get(
+  '/employees/:id/salary/pdf',
+  requirePermission('salary.view'),
+  async (req, res) => {
+    sendPdf(res, await selfSalaryService.employeeSalaryPdf(idOf(req)));
+  },
+);
 payrollRouter.post(
   '/employees/:id/salary',
   requirePermission('salary.update'),

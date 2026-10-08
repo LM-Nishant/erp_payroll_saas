@@ -458,6 +458,21 @@ export async function seedPayrollRuns(ctx, inst, { payrollEmail, approverEmail }
     // Finalizing (payroll.lock) is a finance / owner action, not the payroll processor's.
     run = (await userSession(approverEmail)('POST', `/payroll/runs/${run.id}/finalize`)).data;
     bump('payroll_runs_finalized');
+    await step(`${ctx.slug} Form 16`, () => seedForm16(papi, run));
   } else warn(`${ctx.slug} payroll run left in ${run.status}`);
   return run;
+}
+
+/** Generate + publish Form 16 (Part B, year to date) for everyone paid in the finalized run. */
+async function seedForm16(papi, run) {
+  const [y, m] = PREV_MONTH.start.split('-').map(Number);
+  const startYear = m >= 4 ? y : y - 1;
+  const financialYear = `${startYear}-${String((startYear + 1) % 100).padStart(2, '0')}`;
+  const slips = (await papi('GET', `/payroll/payslips?runId=${run.id}&pageSize=100`)).data;
+  for (const employeeId of new Set(slips.map((s) => s.employeeId))) {
+    const form = (await papi('POST', '/payroll/form16/generate', { employeeId, financialYear }))
+      .data;
+    await papi('POST', `/payroll/form16/${form.id}/publish`);
+    bump('form16_published');
+  }
 }

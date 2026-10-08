@@ -11,7 +11,7 @@ import {
   type TaxRegime,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
-import { ApiError, apiFetch } from '@/api/client';
+import { ApiError, apiDownload, apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { label, todayIso } from '@/pages/hr/useHrOptions';
 import { firstOfMonth, lastOfMonth, money, searchEmployees } from './payroll';
@@ -28,6 +28,17 @@ const components = ref<SalaryComponentDto[]>([]);
 const preview = ref<PayrollComputationDto | null>(null);
 const error = ref<string | null>(null);
 const canUpdate = computed(() => auth.can('salary.update'));
+async function downloadPdf() {
+  if (!employee.value) return;
+  try {
+    await apiDownload(
+      `/api/v1/payroll/employees/${employee.value.id}/salary/pdf`,
+      `salary-structure-${employee.value.employeeCode}.pdf`,
+    );
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
 
 async function findEmployees() {
   try {
@@ -299,6 +310,15 @@ async function runPreview() {
   <template v-if="employee">
     <v-card class="mb-4" title="Salary history (immutable)">
       <template #append>
+        <v-btn
+          v-if="history.length"
+          variant="tonal"
+          prepend-icon="mdi-file-pdf-box"
+          class="mr-2"
+          @click="downloadPdf"
+        >
+          Download PDF
+        </v-btn>
         <v-btn v-if="canUpdate" variant="tonal" class="mr-2" @click="openForm('assign')">
           Assign
         </v-btn>

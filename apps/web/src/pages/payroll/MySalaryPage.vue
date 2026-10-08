@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { MySalaryComponentDto, MySalaryDto, SalaryStatementDto } from '@erp/shared';
 import { computed, onMounted, ref, watch } from 'vue';
-import { apiFetch } from '@/api/client';
+import { apiDownload, apiFetch } from '@/api/client';
 import { money } from './payroll';
 
 /**
@@ -76,12 +76,33 @@ const statementSections = computed(() => {
 });
 
 const print = () => window.print();
+const downloading = ref(false);
+async function downloadPdf() {
+  downloading.value = true;
+  try {
+    await apiDownload('/api/v1/payroll/me/salary/pdf', 'salary-structure.pdf');
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    downloading.value = false;
+  }
+}
 </script>
 
 <template>
   <div class="d-flex align-center mb-4">
     <h2 class="text-h5">My salary</h2>
     <v-spacer />
+    <v-btn
+      v-if="salary"
+      prepend-icon="mdi-file-pdf-box"
+      color="primary"
+      class="d-print-none mr-2"
+      :loading="downloading"
+      @click="downloadPdf"
+    >
+      Download PDF
+    </v-btn>
     <v-btn prepend-icon="mdi-printer" variant="tonal" class="d-print-none" @click="print">
       Print / save PDF
     </v-btn>
