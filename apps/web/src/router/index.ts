@@ -148,6 +148,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/students/AdmissionsPage.vue'),
       },
       {
+        path: 'classes',
+        name: 'group-classes',
+        meta: { permission: 'program.view', feature: 'education' },
+        component: () => import('@/pages/academics/ClassesPage.vue'),
+      },
+      {
         path: 'subjects',
         name: 'group-subjects',
         meta: { permission: 'subject.view', feature: 'education' },
@@ -324,6 +330,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'institution-admissions',
         meta: { permission: 'admission.view', feature: 'education' },
         component: () => import('@/pages/students/AdmissionsPage.vue'),
+      },
+      {
+        path: 'classes',
+        name: 'institution-classes',
+        meta: { permission: 'program.view', feature: 'education' },
+        component: () => import('@/pages/academics/ClassesPage.vue'),
       },
       {
         path: 'subjects',
