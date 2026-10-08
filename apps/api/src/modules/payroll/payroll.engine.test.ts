@@ -249,6 +249,33 @@ describe('payroll engine', () => {
     expect(amt('TDS')).toBe(0);
     expect(r.deductions).toBe(100 + 1800 + 200 + 2000);
   });
+
+  it('drops employee-excluded components (PF opt-out, no HRA) from the payslip', () => {
+    const r = computePayroll(
+      baseInput({
+        components: [
+          ...baseInput().components,
+          comp('PF_EE', 'STATUTORY', { calcType: 'STATUTORY' }, { statutoryCode: 'PF_EE' }),
+          comp(
+            'PF_ER',
+            'EMPLOYER_CONTRIBUTION',
+            { calcType: 'STATUTORY' },
+            { statutoryCode: 'PF_ER' },
+          ),
+        ],
+        statutory: { month: 5, regime: 'NEW', pf: builtinPack('PF', 'IN') as PfConfig },
+        excludedComponents: ['PF_EE', 'PF_ER', 'HRA'],
+      }),
+    );
+    const codes = r.lines.map((l) => l.code);
+    expect(codes).not.toContain('PF_EE');
+    expect(codes).not.toContain('PF_ER');
+    expect(codes).not.toContain('HRA');
+    // SPECIAL = CTC - BASIC - HRA with HRA treated as 0
+    expect(r.lines.find((l) => l.code === 'SPECIAL')?.amount).toBe(25000);
+    expect(r.employerContributions).toBe(0);
+    expect(r.deductions).toBe(100);
+  });
 });
 
 describe('statutory packs', () => {

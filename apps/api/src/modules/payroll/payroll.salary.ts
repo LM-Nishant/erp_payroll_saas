@@ -88,6 +88,7 @@ async function writeSalary(args: {
   effectiveFrom: string;
   annualCtc: number;
   amounts: Record<string, number>;
+  excludedComponents: string[];
   structureId: string | null;
   taxRegime: TaxRegime;
   reason: string;
@@ -123,6 +124,7 @@ async function writeSalary(args: {
             effectiveFrom: toDate(args.effectiveFrom),
             annualCtc: args.annualCtc,
             amounts: json(args.amounts),
+            excludedComponents: json(args.excludedComponents),
             taxRegime: args.taxRegime,
             createdByUserId: userId(),
           }),
@@ -231,11 +233,16 @@ async function applyRevision(id: string, comment?: string | null) {
   const structureId = r.structureId ?? current?.structureId ?? latest?.salaryStructureId ?? null;
   const taxRegime = (r.taxRegime ?? current?.taxRegime ?? 'NEW') as TaxRegime;
   const amounts = (r.amounts as Record<string, number>) ?? {};
+  const excludedComponents =
+    (r.excludedComponents as string[] | null) ??
+    (current?.excludedComponents as string[] | null) ??
+    [];
   const snapshot: SalarySnapshot = {
     salaryHistoryId: null,
     structureId,
     annualCtc: num(r.annualCtc),
     amounts,
+    excludedComponents,
     taxRegime,
   };
   let arrears: ArrearLine[] = [];
@@ -250,6 +257,7 @@ async function applyRevision(id: string, comment?: string | null) {
     effectiveFrom,
     annualCtc: num(r.annualCtc),
     amounts,
+    excludedComponents,
     structureId,
     taxRegime,
     reason: r.reason,
@@ -368,6 +376,7 @@ export const salaryService = {
       effectiveFrom: input.effectiveFrom,
       annualCtc: input.annualCtc,
       amounts: input.amounts,
+      excludedComponents: input.excludedComponents,
       structureId: input.structureId,
       taxRegime: input.taxRegime,
       reason: input.reason,
@@ -383,6 +392,7 @@ export const salaryService = {
         structureId: input.structureId,
         effectiveFrom: input.effectiveFrom,
         taxRegime: input.taxRegime,
+        excludedComponents: input.excludedComponents,
       },
       reason: input.reason,
       metadata: { salaryHistoryId: written.history.id },
@@ -481,6 +491,7 @@ export const revisionService = {
         annualCtc: input.annualCtc,
         previousAnnualCtc: latest.annualCtc,
         amounts: json(input.amounts),
+        excludedComponents: input.excludedComponents ? json(input.excludedComponents) : undefined,
         taxRegime: input.taxRegime ?? null,
         reason: input.reason,
         status: 'PENDING_APPROVAL',

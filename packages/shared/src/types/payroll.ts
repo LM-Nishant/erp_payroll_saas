@@ -115,6 +115,7 @@ export interface EmployeeSalaryDto {
   effectiveFrom: string;
   annualCtc: number;
   amounts: Record<string, number>;
+  excludedComponents: string[];
   taxRegime: TaxRegime;
   createdAt: string;
 }
@@ -130,6 +131,7 @@ export interface SalaryRevisionDto {
   annualCtc: number;
   previousAnnualCtc: number | null;
   amounts: Record<string, number>;
+  excludedComponents: string[] | null;
   taxRegime: TaxRegime | null;
   reason: string;
   status: 'PENDING_APPROVAL' | 'APPLIED' | 'REJECTED' | 'CANCELLED';
