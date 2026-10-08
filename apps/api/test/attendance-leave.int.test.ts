@@ -515,6 +515,9 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
       const near = face.map((v) => v + 0.01);
       const far = face.map((v, i) => v + (i % 2 ? 0.2 : -0.2));
       const selfiePunch = (descriptor: number[]) =>
+        self.post('/api/v1/attendance/me/punch', { source: 'WEB', faceDescriptor: descriptor });
+      // Older clients sent the image as multipart; it must be discarded, never stored.
+      const legacySelfiePunch = (descriptor: number[]) =>
         supertest(app)
           .post('/api/v1/attendance/me/punch')
           .set('Authorization', `Bearer ${accessToken}`)
@@ -559,8 +562,10 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
           .expect(400, /SELFIE_REQUIRED/);
         await selfiePunch(far).expect(422, /FACE_MISMATCH/);
         const ok = (await selfiePunch(near).expect(201)).body.data.punch;
-        expect(ok.selfieDocumentId).toBeTruthy();
+        expect(ok.selfieDocumentId).toBeNull();
         expect(Number(ok.faceDistance)).toBeLessThan(0.5);
+        const legacy = (await legacySelfiePunch(near).expect(201)).body.data.punch;
+        expect(legacy.selfieDocumentId).toBeNull();
       } finally {
         await owner.put(`/api/v1/attendance/policies/${eng}`, policyBody(false)).expect(200);
       }

@@ -97,7 +97,7 @@ async function startSelfie(direction: 'IN' | 'OUT') {
   });
 }
 
-async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor: number[] }) {
+async function punch(direction: 'IN' | 'OUT', capture?: { descriptor: number[] }) {
   if (!capture && data.value?.faceMatchRequired) return startSelfie(direction);
   const pos = await position();
   const fields: Record<string, string | number> = {
@@ -105,16 +105,8 @@ async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor
     direction,
     ...(pos ? { latitude: pos.coords.latitude, longitude: pos.coords.longitude } : {}),
   };
-  let body: string | FormData;
-  if (capture) {
-    const form = new FormData();
-    for (const [k, v] of Object.entries(fields)) form.append(k, String(v));
-    form.append('faceDescriptor', JSON.stringify(capture.descriptor));
-    form.append('file', capture.file, 'selfie.jpg');
-    body = form;
-  } else {
-    body = JSON.stringify(fields);
-  }
+  // Only the face descriptor leaves the browser; the selfie image is never uploaded.
+  const body = JSON.stringify(capture ? { ...fields, faceDescriptor: capture.descriptor } : fields);
   error.value = null;
   try {
     const res = await apiFetch<{ data: { punch: AttendancePunchDto } }>(
@@ -128,8 +120,7 @@ async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor
     error.value = (e as Error).message;
   }
 }
-const onSelfie = (file: Blob, descriptor: number[]) =>
-  punch(selfie.direction, { file, descriptor });
+const onSelfie = (_file: Blob, descriptor: number[]) => punch(selfie.direction, { descriptor });
 
 // Calendar grid (Sunday-first weeks)
 const byDate = computed(
