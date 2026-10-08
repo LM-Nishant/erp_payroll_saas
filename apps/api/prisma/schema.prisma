@@ -3395,18 +3395,20 @@ model StatutoryRulePack {
 /// Employee salary assignment: links an immutable `employee_salary_history` row (whose
 /// `salary_structure_id` is the structure id) with payroll inputs (structure, tax regime).
 model EmployeeSalary {
-  id              String   @id @default(uuid()) @db.Char(36)
-  organizationId  String   @map("organization_id") @db.Char(36)
-  employeeId      String   @map("employee_id") @db.Char(36)
-  institutionId   String   @map("institution_id") @db.Char(36)
-  structureId     String   @map("structure_id") @db.Char(36)
-  salaryHistoryId String   @unique @map("salary_history_id") @db.Char(36)
-  effectiveFrom   DateTime @map("effective_from") @db.Date
-  annualCtc       Decimal  @map("annual_ctc") @db.Decimal(14, 2)
-  amounts         Json
-  taxRegime       String   @default("NEW") @map("tax_regime") @db.VarChar(8)
-  createdByUserId String?  @map("created_by_user_id") @db.Char(36)
-  createdAt       DateTime @default(now()) @map("created_at") @db.DateTime(3)
+  id                 String   @id @default(uuid()) @db.Char(36)
+  organizationId     String   @map("organization_id") @db.Char(36)
+  employeeId         String   @map("employee_id") @db.Char(36)
+  institutionId      String   @map("institution_id") @db.Char(36)
+  structureId        String   @map("structure_id") @db.Char(36)
+  salaryHistoryId    String   @unique @map("salary_history_id") @db.Char(36)
+  effectiveFrom      DateTime @map("effective_from") @db.Date
+  annualCtc          Decimal  @map("annual_ctc") @db.Decimal(14, 2)
+  amounts            Json
+  /// Component codes switched off for this employee (e.g. PF_EE / PF_ER for PF opt-out).
+  excludedComponents Json?    @map("excluded_components")
+  taxRegime          String   @default("NEW") @map("tax_regime") @db.VarChar(8)
+  createdByUserId    String?  @map("created_by_user_id") @db.Char(36)
+  createdAt          DateTime @default(now()) @map("created_at") @db.DateTime(3)
 
   organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
 
@@ -3427,6 +3429,8 @@ model SalaryRevision {
   annualCtc          Decimal   @map("annual_ctc") @db.Decimal(14, 2)
   previousAnnualCtc  Decimal?  @map("previous_annual_ctc") @db.Decimal(14, 2)
   amounts            Json
+  /// null = keep the current salary's exclusions.
+  excludedComponents Json?     @map("excluded_components")
   taxRegime          String?   @map("tax_regime") @db.VarChar(8)
   reason             String    @db.VarChar(500)
   status             String    @default("PENDING_APPROVAL") @db.VarChar(24)

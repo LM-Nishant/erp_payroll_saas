@@ -26,6 +26,7 @@ export interface SalarySnapshot {
   structureId: string | null;
   annualCtc: number;
   amounts: Record<string, number>;
+  excludedComponents: string[];
   taxRegime: TaxRegime;
 }
 
@@ -53,6 +54,7 @@ export async function salarySnapshot(
     structureId,
     annualCtc: history.annualCtc,
     amounts: history.amounts ?? {},
+    excludedComponents: (assignment?.excludedComponents as string[] | null) ?? [],
     taxRegime: (assignment?.taxRegime as TaxRegime | undefined) ?? 'NEW',
   };
 }
@@ -197,11 +199,20 @@ export async function computeEmployee(
   input: EmployeeComputeInput,
   cache = new ComputeCache(),
 ): Promise<EmployeeComputeResult> {
-  const { components, structureVersionId } = await cache.componentsFor(
+  const resolved = await cache.componentsFor(
     input.institutionId,
     input.periodEnd,
     input.salary.structureId,
   );
+  const { structureVersionId } = resolved;
+  let components = resolved.components;
+  // Employee-level extras: an amount for a component outside the structure adds that component.
+  const present = new Set(components.map((c) => c.code));
+  const extraCodes = Object.keys(input.salary.amounts).filter((code) => !present.has(code));
+  if (extraCodes.length) {
+    const all = (await cache.componentsFor(input.institutionId, input.periodEnd, null)).components;
+    components = [...components, ...all.filter((c) => extraCodes.includes(c.code))];
+  }
   const statutory = await cache.statutoryFor(
     input.institutionId,
     input.periodEnd,
@@ -213,6 +224,7 @@ export async function computeEmployee(
       components,
       annualCtc: input.salary.annualCtc,
       amounts: input.salary.amounts,
+      excludedComponents: input.salary.excludedComponents,
       attendance: {
         calendarDays: input.basis.calendarDays,
         employedDays: input.basis.employedDays,

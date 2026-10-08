@@ -406,6 +406,25 @@ describe.skipIf(!hasTestDatabase)('Payroll rule engine, runs and payslips', () =
       expect(full(apr, 'SPECIAL')).toBe(9000);
       expect(full(may, 'HRA')).toBe(7500);
       expect(full(may, 'SPECIAL')).toBe(7500);
+      expect(full(apr, 'PF_EE')).toBeDefined();
+
+      // Per-employee opt-outs (e.g. PF not applicable): excluded components leave the payslip.
+      const salaries = (await pm.get(`/api/v1/payroll/employees/${E1.id}/salary`).expect(200)).body
+        .data as { id: string; excludedComponents: string[] }[];
+      expect(salaries[0]!.excludedComponents).toEqual([]);
+      await prisma.employeeSalary.update({
+        where: { id: salaries[0]!.id },
+        data: { excludedComponents: ['PF_EE', 'PF_ER', 'HRA'] },
+      });
+      const optedOut = await preview('2025-04-01', '2025-04-30');
+      expect(optedOut.lines.find((l) => l.code === 'PF_EE')).toBeUndefined();
+      expect(optedOut.lines.find((l) => l.code === 'PF_ER')).toBeUndefined();
+      expect(optedOut.lines.find((l) => l.code === 'HRA')).toBeUndefined();
+      expect(full(optedOut, 'SPECIAL')).toBe(15000);
+      await prisma.employeeSalary.update({
+        where: { id: salaries[0]!.id },
+        data: { excludedComponents: [] },
+      });
     });
 
     it('creates a loan auto-deducted from payroll', async () => {

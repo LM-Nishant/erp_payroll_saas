@@ -257,13 +257,23 @@ export type CreateStatutoryRulePackInput = z.input<typeof createStatutoryRulePac
 
 /* --------------------------------- Employee salary -------------------------------------- */
 
+export const excludedComponentsSchema = z
+  .array(payrollCodeSchema)
+  .max(100)
+  .transform((codes) => [...new Set(codes)]);
+
 export const assignEmployeeSalarySchema = z
   .object({
     structureId: idSchema,
     effectiveFrom: isoDateSchema,
     annualCtc: positiveMoney,
-    /** Monthly FIXED component overrides, e.g. `{ "BASIC": 30000 }`. */
+    /**
+     * Monthly amounts per component, e.g. `{ "BASIC": 30000 }`. Overrides the calc of a structure
+     * component; a component that is not in the structure is added for this employee only.
+     */
     amounts: z.record(payrollCodeSchema, positiveMoney).default({}),
+    /** Component codes not applicable to this employee (e.g. `["PF_EE", "PF_ER"]`). */
+    excludedComponents: excludedComponentsSchema.default([]),
     taxRegime: taxRegimeSchema.default('NEW'),
     reason: text(500).min(1).default('Salary assignment'),
   })
@@ -278,6 +288,8 @@ export const createSalaryRevisionRequestSchema = z
     effectiveFrom: isoDateSchema,
     annualCtc: positiveMoney,
     amounts: z.record(payrollCodeSchema, positiveMoney).default({}),
+    /** Omit / null to keep the current salary's excluded components. */
+    excludedComponents: excludedComponentsSchema.nullish(),
     taxRegime: taxRegimeSchema.nullish(),
     reason: text(500).min(1),
   })

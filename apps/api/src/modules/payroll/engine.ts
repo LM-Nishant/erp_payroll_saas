@@ -116,6 +116,8 @@ export interface EngineInput {
   annualCtc: number;
   /** Employee-specific monthly amounts (override the calc of the matching component). */
   amounts: Record<string, number>;
+  /** Component codes switched off for this employee (treated as 0 and left off the payslip). */
+  excludedComponents?: string[];
   attendance: EngineAttendance;
   /** Pro-ration factor (0..1). */
   factor: number;
@@ -265,8 +267,15 @@ export function computePayroll(input: EngineInput): EngineResult {
     EMPLOYMENT_TYPE: input.employmentType ?? '',
   };
 
-  const regular = input.components.filter((c) => !isStatutory(c));
-  const statutory = input.components.filter(isStatutory);
+  const excluded = new Set(input.excludedComponents ?? []);
+  const components = input.components.filter((c) => !excluded.has(c.code));
+  const excludedStatutory = new Set(
+    input.components
+      .filter((c) => excluded.has(c.code) && c.statutoryCode)
+      .map((c) => c.statutoryCode!),
+  );
+  const regular = components.filter((c) => !isStatutory(c));
+  const statutory = components.filter(isStatutory);
 
   // 1. choose the applicable calc candidate per component (conditions see base variables only)
   const chosen = new Map<string, CalcCandidate | 'EMPLOYEE_AMOUNT'>();
@@ -306,6 +315,9 @@ export function computePayroll(input: EngineInput): EngineResult {
   const full: Record<string, number> = {};
   const vars: Record<string, FormulaValue> = { ...base };
   for (const c of regular) if (!chosen.has(c.code)) vars[c.code] = 0;
+  for (const c of input.components) {
+    if (excluded.has(c.code) && !isStatutory(c)) vars[c.code] = 0;
+  }
   const explanations = new Map<
     string,
     { source: string; expression: string; inputs: Record<string, FormulaValue> }
@@ -515,7 +527,7 @@ export function computePayroll(input: EngineInput): EngineResult {
           st.regime,
           monthlyTaxableFull,
           oneTimeTaxable,
-          results.get('PF_EE')?.amount ?? 0,
+          excludedStatutory.has('PF_EE') ? 0 : (results.get('PF_EE')?.amount ?? 0),
           st.declarations ?? 0,
         )
       : notConfigured('TDS disabled'),

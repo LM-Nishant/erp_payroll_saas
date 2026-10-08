@@ -138,6 +138,7 @@ export function toEmployeeSalaryDto(r: EmployeeSalary): EmployeeSalaryDto {
     effectiveFrom: dateStr(r.effectiveFrom),
     annualCtc: num(r.annualCtc),
     amounts: (r.amounts as Record<string, number>) ?? {},
+    excludedComponents: (r.excludedComponents as string[] | null) ?? [],
     taxRegime: r.taxRegime as EmployeeSalaryDto['taxRegime'],
     createdAt: r.createdAt.toISOString(),
   };
@@ -158,6 +159,7 @@ export function toRevisionDto(
     annualCtc: num(r.annualCtc),
     previousAnnualCtc: numOrNull(r.previousAnnualCtc),
     amounts: (r.amounts as Record<string, number>) ?? {},
+    excludedComponents: (r.excludedComponents as string[] | null) ?? null,
     taxRegime: r.taxRegime as SalaryRevisionDto['taxRegime'],
     reason: r.reason,
     status: r.status as SalaryRevisionDto['status'],
