@@ -220,6 +220,13 @@ const levels = computed(() => [
               show-size
             />
           </template>
+          <p class="text-caption text-medium-emphasis mt-2 mb-0">
+            The logo is printed in the top-right corner of every page of generated PDFs (payslips,
+            Form 16, letters, receipts, report cards, asset labels, …). PDFs saved before a change
+            keep the old logo — use <strong>Regenerate</strong> on a payroll run, the Payslips &amp;
+            Form 16 page or a document to refresh them with the current branding (a new version is
+            added; history is kept).
+          </p>
         </v-card-text>
         <v-card-actions v-if="canManage">
           <v-btn v-if="ownLogo" color="error" variant="text" @click="removeLogo">Remove</v-btn>

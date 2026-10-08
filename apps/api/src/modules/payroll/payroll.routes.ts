@@ -375,6 +375,21 @@ payrollRouter.post(
   },
 );
 
+payrollRouter.post(
+  '/payslips/:id/regenerate',
+  requirePermission('payroll.lock'),
+  async (req, res) => {
+    res.status(201).json({ data: await payslipService.regeneratePdf(idOf(req)) });
+  },
+);
+payrollRouter.post(
+  '/runs/:id/payslips/regenerate-pdfs',
+  requirePermission('payroll.lock'),
+  async (req, res) => {
+    res.status(202).json({ data: await payslipService.regenerateRunPdfs(idOf(req)) });
+  },
+);
+
 /* ---- Form 16 ---- */
 
 payrollRouter.get('/form16', requirePermission('form16.manage'), async (req, res) => {
@@ -392,6 +407,13 @@ payrollRouter.post('/form16/generate', requirePermission('form16.manage'), async
   const input = parseInput(form16FieldsSchema, req.body);
   res.status(201).json({ data: await form16Service.generate(input) });
 });
+payrollRouter.post(
+  '/form16/:id/regenerate',
+  requirePermission('form16.manage'),
+  async (req, res) => {
+    res.json({ data: await form16Service.regeneratePdf(idOf(req)) });
+  },
+);
 payrollRouter.post('/form16/:id/publish', requirePermission('form16.manage'), async (req, res) => {
   res.json({ data: await form16Service.publish(idOf(req)) });
 });

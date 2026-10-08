@@ -58,6 +58,10 @@ export function pdfTemplate(key: string, version?: number): PdfTemplate<unknown>
   return template;
 }
 
+export function pdfTemplateVersionExists(key: string, version: number): boolean {
+  return registry.get(key)?.has(version) ?? false;
+}
+
 /** Latest version of every registered template. */
 export function pdfTemplates(): PdfTemplateDto[] {
   return [...registry.keys()].sort().map((key) => {

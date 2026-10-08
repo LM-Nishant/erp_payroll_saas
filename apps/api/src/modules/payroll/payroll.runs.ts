@@ -85,6 +85,11 @@ export interface PayslipJob extends TenantJobData {
   runId: string;
 }
 
+export interface PayslipRefreshJob extends TenantJobData {
+  runId: string;
+  requestedByUserId: string | null;
+}
+
 const RELEASABLE_SOURCES = ['manual', 'arrear', 'reimbursement'];
 const PAYABLE_EMPLOYEE_STATUSES = ['ACTIVE', 'ON_NOTICE', 'EXITED'] as const;
 

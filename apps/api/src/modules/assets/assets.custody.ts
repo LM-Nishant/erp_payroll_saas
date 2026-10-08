@@ -30,7 +30,7 @@ import {
 } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
 import { logger } from '../../core/logger';
-import { renderPdfTemplate } from '../../core/pdf';
+import { renderPdfTemplate, storedPdfMetadata } from '../../core/pdf';
 import { tenantDb, withTenant } from '../../core/tenancy';
 import { submitWorkflow, type WorkflowInstanceRef } from '../../core/workflow';
 import { completeChecklistItem } from '../../modules/employees/employees.lifecycle';
@@ -102,29 +102,26 @@ async function generateHandover(
   target: string,
 ) {
   try {
-    const rendered = await renderPdfTemplate(
-      HANDOVER_TEMPLATE,
-      {
-        assetTag: asset.assetTag,
-        assetName: asset.name,
-        category: asset.category.name,
-        makeModel: [asset.make, asset.model].filter(Boolean).join(' ') || '—',
-        serialNo: asset.serialNo ?? '—',
-        institution: asset.institution?.name ?? '',
-        assignedTo: employee ? `${employee.displayName} (${employee.employeeCode})` : target,
-        assignedAt: dateOnly(assignment.assignedAt),
-        condition: assignment.conditionOut,
-        accessories: Array.isArray(assignment.accessories)
-          ? (assignment.accessories as string[]).join(', ') || '—'
-          : '—',
-      },
-      {
-        groupId: asset.groupId,
-        institutionId: asset.institutionId,
-        campusId: asset.campusId,
-        departmentId: asset.departmentId,
-      },
-    );
+    const input = {
+      assetTag: asset.assetTag,
+      assetName: asset.name,
+      category: asset.category.name,
+      makeModel: [asset.make, asset.model].filter(Boolean).join(' ') || '—',
+      serialNo: asset.serialNo ?? '—',
+      institution: asset.institution?.name ?? '',
+      assignedTo: employee ? `${employee.displayName} (${employee.employeeCode})` : target,
+      assignedAt: dateOnly(assignment.assignedAt),
+      condition: assignment.conditionOut,
+      accessories: Array.isArray(assignment.accessories)
+        ? (assignment.accessories as string[]).join(', ') || '—'
+        : '—',
+    };
+    const rendered = await renderPdfTemplate(HANDOVER_TEMPLATE, input, {
+      groupId: asset.groupId,
+      institutionId: asset.institutionId,
+      campusId: asset.campusId,
+      departmentId: asset.departmentId,
+    });
     const doc = await documentEngine.attach({
       ownerType: 'asset',
       ownerId: asset.id,
@@ -140,6 +137,7 @@ async function generateHandover(
         mimeType: 'application/pdf',
         body: rendered.body,
       },
+      extra: storedPdfMetadata(HANDOVER_TEMPLATE, rendered, input),
       authorization: 'caller',
     });
     await tenantDb().assetAssignment.update({

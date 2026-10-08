@@ -1,13 +1,23 @@
-import { generatePdfSchema, type DocumentDto, type ResolvedBrandingDto } from '@erp/shared';
+import {
+  generatePdfSchema,
+  type DocumentDto,
+  type DocumentVersionDto,
+  type ResolvedBrandingDto,
+} from '@erp/shared';
+import type { Prisma } from '@prisma/client';
+import { audit } from '../audit';
 import { authorize, currentPrincipal } from '../authz';
 import { resolveBranding } from '../branding';
+import { AppError, NotFoundError } from '../http/errors';
 import { parseInput } from '../http/validation';
 import { documentEngine } from '../documents/service';
+import { PDF_INPUT_METADATA_KEY } from '../documents/mappers';
+import { tenantDb } from '../tenancy/tenant-db';
 import { resolveDocumentOwner, toResourceScope, type OwnerScope } from '../documents/owners';
 import { currentOrganizationId } from '../tenancy/context';
 import { interpolateBlocks, toPdfBranding, type PdfBranding, type PdfDocumentModel } from './model';
 import { pdfRenderer } from './renderer';
-import { pdfTemplate, type PdfTemplateContext } from './templates';
+import { pdfTemplate, pdfTemplateVersionExists, type PdfTemplateContext } from './templates';
 
 const LOGO_MIME = new Set(['image/png', 'image/jpeg']);
 
@@ -89,6 +99,7 @@ export async function generatePdf(raw: unknown): Promise<DocumentDto> {
     version: template.version,
   });
   const title = input.title ?? rendered.title;
+  const data = parseInput(template.inputSchema, input.data);
   return documentEngine.attach({
     ownerType: owner.ownerType,
     ownerId: owner.ownerId,
@@ -104,15 +115,150 @@ export async function generatePdf(raw: unknown): Promise<DocumentDto> {
       mimeType: 'application/pdf',
       body: rendered.body,
     },
-    extra: {
-      templateKey: template.key,
-      templateVersion: rendered.templateVersion,
-      renderer: pdfRenderer().id,
-      branding: {
-        displayName: rendered.model.branding.displayName,
-        primaryColor: rendered.model.branding.primaryColor,
-        logoFileId: rendered.model.branding.logoFileId,
-      },
+    extra: storedPdfMetadata(template.key, rendered, data),
+  });
+}
+
+type RenderedPdf = Awaited<ReturnType<typeof renderPdfTemplate>>;
+
+/**
+ * Document metadata for a stored generated PDF: template provenance, the branding it was
+ * rendered with and the (validated) template input, so the file can be re-rendered later —
+ * e.g. after the logo changes — without recomputing anything. The input is never exposed in
+ * document DTOs (see documents/mappers).
+ */
+export function storedPdfMetadata(
+  templateKey: string,
+  rendered: Pick<RenderedPdf, 'templateVersion' | 'model'>,
+  input: unknown,
+  extra: Record<string, unknown> = {},
+): Record<string, unknown> {
+  return {
+    ...extra,
+    templateKey,
+    templateVersion: rendered.templateVersion,
+    renderer: pdfRenderer().id,
+    branding: {
+      displayName: rendered.model.branding.displayName,
+      primaryColor: rendered.model.branding.primaryColor,
+      logoFileId: rendered.model.branding.logoFileId,
+    },
+    [PDF_INPUT_METADATA_KEY]: input,
+  };
+}
+
+export interface RegenerateStoredPdfOptions {
+  /**
+   * Template input to render. Defaults to the input persisted with the document; modules pass
+   * one rebuilt from their authoritative data for documents stored before inputs were kept.
+   */
+  input?: unknown;
+  /**
+   * Called only when the document has no persisted input (stored before inputs were kept):
+   * rebuild it from the module's authoritative data, or return null to refuse.
+   */
+  fallbackInput?: () => Promise<unknown>;
+  /** Template key for legacy documents whose metadata does not record one. */
+  templateKey?: string;
+  reason?: string;
+  /**
+   * `principal` (default): requires `pdf.generate` in the document's scope AND the document
+   * engine's `upload_version` right. `caller`: the module already authorized the action.
+   */
+  authorization?: 'principal' | 'caller';
+}
+
+/**
+ * Re-render a stored generated PDF with the CURRENT branding (logo, colours, letterhead) and
+ * store it as a NEW VERSION of the same document — history, audit trail, grants and download
+ * links are preserved. Content comes from the persisted template input (never recalculated).
+ */
+export async function regenerateStoredPdf(
+  documentId: string,
+  options: RegenerateStoredPdfOptions = {},
+): Promise<{ documentId: string; version: DocumentVersionDto }> {
+  const authorization = options.authorization ?? 'principal';
+  if (authorization === 'principal') {
+    // 404 for invisible documents (no existence leak) before any scope check.
+    await documentEngine.get(documentId);
+  }
+  const doc = await tenantDb().document.findFirst({
+    where: { id: documentId },
+    include: { currentVersion: true },
+  });
+  if (!doc) throw new NotFoundError('Document');
+  if (doc.deletedAt || doc.status !== 'ACTIVE') {
+    throw new AppError(409, 'INVALID_STATE', 'Only active documents can be regenerated');
+  }
+  const meta = (doc.metadata as Record<string, unknown> | null) ?? {};
+  const templateKey =
+    typeof meta.templateKey === 'string' ? meta.templateKey : (options.templateKey ?? null);
+  if (!templateKey) {
+    throw new AppError(
+      409,
+      'NOT_REGENERATABLE',
+      'This document was not generated from a PDF template (e.g. an uploaded file) and cannot be regenerated',
+    );
+  }
+  let input = options.input ?? meta[PDF_INPUT_METADATA_KEY];
+  if ((input === undefined || input === null) && options.fallbackInput) {
+    input = await options.fallbackInput();
+  }
+  if (input === undefined || input === null) {
+    throw new AppError(
+      409,
+      'REGENERATE_INPUT_MISSING',
+      'This document was generated before its content was stored for regeneration; generate a new one instead',
+    );
+  }
+  const scope = {
+    groupId: doc.groupId,
+    institutionId: doc.institutionId,
+    campusId: doc.campusId,
+    departmentId: doc.departmentId,
+  };
+  if (authorization === 'principal') {
+    await authorize(currentPrincipal(), 'pdf.generate', toResourceScope(scope));
+  }
+  // Keep the recorded template version (its input schema matches the stored input).
+  const recorded = typeof meta.templateVersion === 'number' ? meta.templateVersion : undefined;
+  const version =
+    recorded !== undefined && pdfTemplateVersionExists(templateKey, recorded)
+      ? recorded
+      : undefined;
+  const template = pdfTemplate(templateKey, version);
+  const data = parseInput(template.inputSchema, input);
+  const rendered = await renderPdfTemplate(templateKey, data, scope, { version: template.version });
+  const fileName = doc.currentVersion?.fileName ?? `${slug(doc.title)}.pdf`;
+  const created = await documentEngine.addVersion(
+    doc.id,
+    { fileName, mimeType: 'application/pdf', body: rendered.body },
+    {
+      reason: options.reason ?? 'Regenerated with the current branding',
+      authorization,
+    },
+  );
+  const { [PDF_INPUT_METADATA_KEY]: _previousInput, ...rest } = meta;
+  await tenantDb().document.update({
+    where: { id: doc.id },
+    data: {
+      metadata: {
+        ...storedPdfMetadata(templateKey, rendered, data, rest),
+        regeneratedAt: new Date().toISOString(),
+      } as Prisma.InputJsonValue,
     },
   });
+  await audit.record({
+    action: 'pdf.regenerate',
+    entityType: 'document',
+    entityId: doc.id,
+    metadata: {
+      templateKey,
+      templateVersion: rendered.templateVersion,
+      versionId: created.id,
+      versionNumber: created.versionNumber,
+      logoFileId: rendered.model.branding.logoFileId,
+    },
+  });
+  return { documentId: doc.id, version: created };
 }

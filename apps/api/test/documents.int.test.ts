@@ -704,4 +704,106 @@ describe.skipIf(!hasTestDatabase)('document engine', () => {
     ).body.data;
     expect(plain.metadata.branding.logoFileId).toBeNull();
   });
+
+  it('regenerates stored generated PDFs with the current branding as a new version', async () => {
+    const letter = (
+      await as('engAdmin')
+        .post('/api/v1/pdf/generate', {
+          templateKey: 'generic_letter',
+          ownerType: 'institution',
+          ownerId: eng,
+          data: { recipientName: 'Ravi', subject: 'Before logo change', body: 'Body text.' },
+        })
+        .expect(201)
+    ).body.data;
+    // The template input is kept for regeneration but never exposed in the DTO.
+    expect(letter.metadata).toMatchObject({
+      templateKey: 'generic_letter',
+      pdfRegeneratable: true,
+    });
+    expect(letter.metadata).not.toHaveProperty('pdfInput');
+    const stored = await prisma.document.findUniqueOrThrow({ where: { id: letter.id } });
+    expect((stored.metadata as Record<string, unknown>).pdfInput).toMatchObject({
+      recipientName: 'Ravi',
+    });
+
+    // New logo uploaded after the letter was saved.
+    const profile = (
+      await http()
+        .post(`/api/v1/branding/institutions/${eng}/logo`)
+        .set('Authorization', auth('engAdmin'))
+        .attach('file', PNG, { filename: 'new-logo.png', contentType: 'image/png' })
+        .expect(201)
+    ).body.data;
+
+    // No pdf.generate → 403; another tenant → 404 (no existence leak).
+    await as('hod').post(`/api/v1/pdf/documents/${letter.id}/regenerate`).expect(403);
+    await as('bcc').post(`/api/v1/pdf/documents/${letter.id}/regenerate`).expect(404);
+
+    const res = (
+      await as('engAdmin').post(`/api/v1/pdf/documents/${letter.id}/regenerate`).expect(201)
+    ).body.data;
+    expect(res.version).toMatchObject({
+      versionNumber: letter.currentVersion.versionNumber + 1,
+      fileName: letter.currentVersion.fileName,
+      mimeType: 'application/pdf',
+      reason: 'Regenerated with the current branding',
+    });
+    expect(res.document).toMatchObject({
+      id: letter.id,
+      title: 'Before logo change',
+      metadata: {
+        templateKey: 'generic_letter',
+        pdfRegeneratable: true,
+        branding: { logoFileId: profile.logoFileId },
+        regeneratedAt: expect.any(String),
+      },
+      currentVersion: { id: res.version.id },
+    });
+    expect(res.document.metadata).not.toHaveProperty('pdfInput');
+    const url = (
+      await as('engAdmin').post(`/api/v1/documents/${letter.id}/download-url`).expect(201)
+    ).body.data.url;
+    const bytes = Buffer.from((await fetchSigned(url).buffer(true).expect(200)).body).toString(
+      'latin1',
+    );
+    expect(bytes).toContain('/Subtype /Image');
+    // History is preserved: both versions remain.
+    const versions = (
+      await as('engAdmin').get(`/api/v1/documents/${letter.id}/versions`).expect(200)
+    ).body.data;
+    expect(versions).toHaveLength(2);
+    expect(
+      await prisma.auditLog.count({
+        where: { organizationId: abbs, action: 'pdf.regenerate', entityId: letter.id },
+      }),
+    ).toBe(1);
+
+    // Uploaded files are not template-generated.
+    const uploaded = (
+      await upload('engAdmin', '/api/v1/documents/files', pdf('uploaded-letter'), {
+        metadata: { ownerType: 'institution', ownerId: eng, title: 'Scan', category: 'other' },
+      }).expect(201)
+    ).body.data;
+    const notGenerated = await as('engAdmin')
+      .post(`/api/v1/pdf/documents/${uploaded.id}/regenerate`)
+      .expect(409);
+    expect(notGenerated.body.error.code).toBe('NOT_REGENERATABLE');
+
+    // Legacy documents stored before inputs were kept cannot be re-rendered faithfully.
+    const { pdfInput: _input, ...legacy } = stored.metadata as Record<string, unknown>;
+    await prisma.document.update({
+      where: { id: letter.id },
+      data: { metadata: legacy as object },
+    });
+    const missing = await as('engAdmin')
+      .post(`/api/v1/pdf/documents/${letter.id}/regenerate`)
+      .expect(409);
+    expect(missing.body.error.code).toBe('REGENERATE_INPUT_MISSING');
+
+    await http()
+      .delete(`/api/v1/branding/institutions/${eng}/logo`)
+      .set('Authorization', auth('engAdmin'))
+      .expect(200);
+  });
 });

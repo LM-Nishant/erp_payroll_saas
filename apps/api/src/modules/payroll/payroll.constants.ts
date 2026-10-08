@@ -4,6 +4,7 @@ export const REIMBURSEMENT_WORKFLOW = 'reimbursement_claim';
 
 export const COMPUTE_BATCH_JOB = 'payroll.compute_batch';
 export const GENERATE_PAYSLIPS_JOB = 'payroll.generate_payslips';
+export const REFRESH_PAYSLIP_PDFS_JOB = 'payroll.refresh_payslip_pdfs';
 
 export const PAYROLL_EVENTS = {
   runComputed: 'payroll.run_computed',
