@@ -150,7 +150,6 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/group/transport',
       permission: 'transport.view',
       feature: 'transport',
-      educationOnly: true,
     },
     {
       title: 'Hostel',
@@ -158,7 +157,6 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/group/hostel',
       permission: 'hostel.view',
       feature: 'hostel',
-      educationOnly: true,
     },
     { title: 'Users', icon: 'mdi-account-group', to: '/group/users', permission: 'user.view' },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/group/approvals' },
@@ -255,6 +253,12 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
   ],
   institution: [
     { title: 'Dashboard', icon: 'mdi-view-dashboard', to: '/institution' },
+    {
+      title: 'Branches',
+      icon: 'mdi-source-branch',
+      to: '/institution/branches',
+      permission: 'campus.view',
+    },
     {
       title: 'Departments',
       icon: 'mdi-sitemap',
@@ -369,7 +373,6 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/institution/transport',
       permission: 'transport.view',
       feature: 'transport',
-      educationOnly: true,
     },
     {
       title: 'Hostel',
@@ -377,7 +380,6 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/institution/hostel',
       permission: 'hostel.view',
       feature: 'hostel',
-      educationOnly: true,
     },
     { title: 'Approvals', icon: 'mdi-check-decagram', to: '/institution/approvals' },
     {

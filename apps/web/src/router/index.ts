@@ -301,6 +301,12 @@ export const routes: RouteRecordRaw[] = [
         props: { layout: 'institution' },
       },
       {
+        path: 'branches',
+        name: 'institution-branches',
+        meta: { permission: 'campus.view' },
+        component: () => import('@/pages/BranchesPage.vue'),
+      },
+      {
         path: 'departments',
         name: 'institution-departments',
         meta: { permission: 'department.view' },

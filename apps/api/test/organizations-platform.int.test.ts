@@ -185,5 +185,41 @@ describe.skipIf(!hasTestDatabase)('platform organization management', () => {
     expect(detail.body.data.owners.map((o: { email: string }) => o.email)).toEqual(
       expect.arrayContaining([ownerEmail, email]),
     );
+    // The organization had no institution, so one named after it was created for the owner.
+    const institutions = await prisma.institution.findMany({ where: { organizationId: orgId } });
+    expect(institutions).toEqual([
+      expect.objectContaining({ name: 'Acme Trust', code: slug.toUpperCase(), type: 'INSTITUTE' }),
+    ]);
+    await platform
+      .post(`/api/v1/platform/organizations/${orgId}/owners`, {
+        name: 'Third Owner',
+        email: `third-${stamp}@acme.test`,
+        role: 'institution_owner',
+      })
+      .expect(201);
+    expect(await prisma.institution.count({ where: { organizationId: orgId } })).toBe(1);
+  });
+
+  it('creates the first company for an institution owner of a company organization', async () => {
+    const companySlug = `beta-${stamp}`;
+    const res = await platform
+      .post('/api/v1/platform/organizations', {
+        name: 'Beta Industries',
+        slug: companySlug,
+        kind: 'COMPANY',
+        planId,
+        owner: {
+          name: 'Beta Owner',
+          email: `owner-${companySlug}@beta.test`,
+          role: 'institution_owner',
+        },
+      })
+      .expect(201);
+    const institutions = await prisma.institution.findMany({
+      where: { organizationId: res.body.data.id },
+    });
+    expect(institutions).toEqual([
+      expect.objectContaining({ name: 'Beta Industries', type: 'COMPANY' }),
+    ]);
   });
 });

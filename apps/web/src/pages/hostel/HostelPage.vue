@@ -129,7 +129,7 @@ async function loadRooms() {
   await act(async () => {
     rooms.value = (
       await apiFetch<{ data: HostelRoomDto[] }>(
-        `${API}/rooms?hostelId=${selectedHostel.value}&pageSize=200`,
+        `${API}/rooms?hostelId=${selectedHostel.value}&pageSize=100`,
       )
     ).data;
   });
@@ -188,7 +188,7 @@ async function loadAllocOptions() {
   if (!selectedHostel.value) return;
   const [r, m] = await Promise.all([
     apiFetch<{ data: HostelRoomDto[] }>(
-      `${API}/rooms?hostelId=${selectedHostel.value}&pageSize=200`,
+      `${API}/rooms?hostelId=${selectedHostel.value}&pageSize=100`,
     ),
     get<Row[]>(`/${selectedHostel.value}/mess-plans`),
   ]);

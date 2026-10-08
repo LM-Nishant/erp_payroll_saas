@@ -55,7 +55,7 @@ async function loadStock() {
   try {
     stock.value = (
       await apiFetch<ApiListResponse<LibraryStockVerificationDto>>(
-        `/api/v1/library/stock-verifications?${qs({ institutionId: institutionId.value, pageSize: 20 })}`,
+        `/api/v1/library/stock-verifications?${qs({ institutionId: institutionId.value })}`,
       )
     ).data;
   } catch (e) {
