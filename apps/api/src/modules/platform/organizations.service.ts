@@ -1,7 +1,12 @@
 import type { CreateOrganizationInput, CreatedOrganizationDto } from '@erp/shared';
-import { createOrganizationRecord, runAsPlatform } from '../../core/platform';
+import { audit } from '../../core/audit';
 import { NotFoundError } from '../../core/http/errors';
-import { tenantDb } from '../../core/tenancy';
+import {
+  createOrganizationRecord,
+  getPlatformOrganization,
+  runAsPlatform,
+} from '../../core/platform';
+import { tenantDb, withTenant } from '../../core/tenancy';
 import { userService } from '../users/users.service';
 
 export interface OwnerInviteInput {
@@ -10,16 +15,26 @@ export interface OwnerInviteInput {
   role: 'group_owner' | 'institution_owner';
 }
 
+/** Institution code derived from the organization slug (fits the 32-char code rule). */
+export function institutionCodeFromSlug(slug: string): string {
+  return slug.toUpperCase().slice(0, 32).replace(/-+$/, '') || 'MAIN';
+}
+
 /**
  * Invite (or add) an organization-wide owner inside the tenant. Runs through the audited
  * `runAsPlatform` path and reuses the regular user-invite flow (the invite token is e-mailed,
  * never returned).
+ *
+ * An institution owner cannot create institutions, so when the organization has none yet the
+ * first one is created automatically, named after the organization.
  */
 export async function inviteOrganizationOwner(
   actorUserId: string | null,
   organizationId: string,
   owner: OwnerInviteInput,
 ) {
+  const org =
+    owner.role === 'institution_owner' ? await getPlatformOrganization(organizationId) : null;
   return runAsPlatform(
     {
       organizationId,
@@ -32,6 +47,21 @@ export async function inviteOrganizationOwner(
         select: { id: true },
       });
       if (!role) throw new NotFoundError('Role');
+      if (org && (await tenantDb().institution.count()) === 0) {
+        const institution = await tenantDb().institution.create({
+          data: withTenant({
+            name: org.name,
+            code: institutionCodeFromSlug(org.slug),
+            type: org.kind === 'COMPANY' ? 'COMPANY' : 'INSTITUTE',
+          }),
+        });
+        await audit.record({
+          action: 'institution.create',
+          entityType: 'institution',
+          entityId: institution.id,
+          after: institution,
+        });
+      }
       const user = await userService.create({
         email: owner.email,
         name: owner.name,
