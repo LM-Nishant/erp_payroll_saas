@@ -1342,3 +1342,51 @@ The charge runs as the current principal inside its tenant context: it validates
 - The PDF template `fee_receipt` and the daily job.
 
 **Permissions.** The fee and finance keys are `fee.view|manage|collect|refund|concession|view_own` and `finance.view|manage|post`. Institution admins and `finance_manager` get everything except `view_own`. The `accountant` role gets view, manage, collect and post. Principals get view only. Student and parent roles get `fee.view_own`; with it they can use `/fees/me` and `/fees/my-wards`, pay online and download their own receipts. Web pages are in `apps/web/src/pages/fees`, `pages/finance` and `pages/fees/MyFeesPage.vue` (portal). Routes and menus are in `router/fees-finance-routes.ts` and `navigation/fees-finance-menu.ts`. Demo data comes from `scripts/demo/seed-fees_finance.mjs`.
+
+## 21. Transport and hostel
+
+Modules `apps/api/src/modules/transport` and `apps/api/src/modules/hostel` are separate routers mounted under `/api/v1/transport` (`requireFeature('transport')`) and `/api/v1/hostel` (`requireFeature('hostel')`). They follow the same tenant rules as §15: all tables carry `organizationId`, `groupId`, `institutionId` (campus where relevant), derived server-side from the parent row. The migration is `20261007121000_transport_hostel`.
+
+**Transport data model:**
+
+- `TransportVehicle`: registration number unique per org, type and capacity, insurance/fitness/permit/PUC expiry, and service due date/odometer.
+- `TransportStaff`: driver, conductor or attendant, optionally linked to an `Employee`, with licence number and expiry.
+- `TransportRoute` with ordered `TransportStop`s: pickup/drop times, optional lat/lng, distance and annual fare.
+- `TransportAllocation`: a student or staff member on a route/stop with trip type and effective dates. Seat capacity is checked against the route vehicle.
+- `TransportCharge`.
+- Daily operations: `TransportTrip` (with `TransportTripBoarding`), `TransportIncident`, `TransportFuelLog` and `TransportMaintenanceLog`.
+
+**Transport registrations:**
+
+- Document owner types `transport_vehicle` and `transport_staff`, used for RC, insurance and licence scans through the documents engine.
+- Domain events.
+- Notification events `transport.route_broadcast` and `transport.expiry_reminder`. The broadcast goes to parents and students of a route via `publish()`.
+- A daily recurring job `transport.reminders.schedule` that notifies transport managers about upcoming insurance, fitness, permit, licence and service due dates.
+
+**Hostel data model:**
+
+- `Hostel`: BOYS, GIRLS, STAFF or MIXED, with a warden employee.
+- `HostelBlock` (floors are a room attribute), `HostelRoom` (type, capacity, amenities, monthly rent) and `HostelBed`. Beds can be blocked for maintenance.
+- `HostelMessPlan`.
+- `HostelAllocation`: a student or staff member on a bed. Handles vacate/transfer and checks gender compatibility with the hostel type.
+- `HostelCharge`.
+- `HostelOutpass`, `HostelMovement` (in/out register), `HostelVisitor`, `HostelComplaint`, `HostelRollCall` and `HostelRollCallEntry`.
+
+**Out-pass flow:** out-passes are registered as workflow entity `hostel_outpass`. If the organization defines a workflow, submission goes through `submitWorkflow`. Otherwise wardens decide directly via `POST /hostel/outpasses/:id/decide`. Either way the student and the linked guardians are notified (`hostel.outpass_decided`).
+
+**Fees integration:** both modules always keep their own charge rows (`transport_charges` and `hostel_charges`), generated per period via `POST /<module>/charges/generate`. The hook is `modules/transport/charges-hook.ts`; `fees.registrations.ts` registers `registerStudentChargePoster(post, cancel)`. Student charges are posted through `createStudentCharge` (fee head `TRANSPORT` / `HOSTEL`, source `TRANSPORT_CHARGE` / `HOSTEL_CHARGE` + the charge id as the idempotency key, due on the 1st of the period or today) when `finance` is enabled for the institution; the invoice id is stored as `externalRef` and the charge becomes `POSTED`. Waiving a `POSTED` charge calls `cancelStudentCharge` (409 if the invoice is already paid). Staff charges, and charges generated while finance is off, stay `PENDING`.
+
+**Permissions and roles:**
+
+- Permissions: `transport.view|manage|allocate|view_own` and `hostel.view|manage|allocate|outpass_approve|view_own|apply_own`.
+- Roles: `transport_manager` and `hostel_warden`.
+- Student and parent roles get the `_own` permissions for the portal endpoints `GET /transport/me` and `GET /hostel/me`, `/hostel/me/outpasses` and `/hostel/me/complaints`. Parents see their wards.
+
+**Web:**
+
+- `pages/transport/TransportPage.vue` (tabs: dashboard, vehicles, drivers, routes & stops, allocations, trips & logs, maintenance, reports).
+- `pages/hostel/HostelPage.vue` (tabs: dashboard, hostels/rooms, allocations, out-passes, visitors, complaints, roll call, reports).
+- Portal pages `MyTransportPage.vue` and `MyHostelPage.vue`.
+- Both module pages use the generic `components/ResourceTable.vue`.
+
+**Demo seed:** `scripts/demo/seed-transport-hostel.mjs`.

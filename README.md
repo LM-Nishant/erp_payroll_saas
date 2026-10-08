@@ -135,11 +135,12 @@ The foundation was built as an 8-PR stack:
 - student master, guardian/parent login links and admissions pipeline;
 - library: catalogue, copies/barcodes, circulation, reservations, fines, OPAC and portal
   “My library” (demo data: `node scripts/demo/seed-library.mjs`, see ARCHITECTURE §17).
+- transport (fleet, routes, allocations, trips) and hostel (rooms, allocations, out-passes).
 
 **Remaining (future work per §67):**
 
-- education modules still to expand: academics, fees, exams, timetable, transport,
-  hostel, LMS;
+- education modules still to expand: academics, fees, exams, timetable, LMS
+  (transport and hostel are built — see ARCHITECTURE §21);
 - asset management;
 - the AI gateway;
 - the generic reporting/BI engine;
@@ -169,3 +170,11 @@ disposal for ABBS and Logicmines. It also creates these asset-manager logins:
 
 Logicmines employees (e.g. `lmt.it2@logicmines.in`) see their devices under
 **My assets**. See ARCHITECTURE §18.
+
+## Transport and hostel (demo)
+
+After `prisma migrate deploy`, run `pnpm --filter @erp/api db:sync-roles` once so existing
+organizations get the new `transport_manager` / `hostel_manager` / `hostel_warden` roles and
+permissions, then seed with `API_URL=http://127.0.0.1:3100 node scripts/demo/seed-transport-hostel.mjs`.
+Demo logins (password `Abbs@2026Demo`): `aec.transport@abbs.test`, `aec.warden@abbs.test`,
+`ait.warden@abbs.test`. See docs/ARCHITECTURE.md §21.
