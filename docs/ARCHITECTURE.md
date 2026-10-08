@@ -263,7 +263,8 @@ to read, `platform.organization.manage` to write; UI: Platform → Organizations
 - `OrganizationSubscription` (one per org): status `TRIAL | ACTIVE | PAST_DUE | CANCELLED`,
   trial end, period dates, add-on features and limit overrides. A subscription **licenses
   modules** when ACTIVE, PAST_DUE, or TRIAL with `trialEndsAt` in the future. No subscription ⇒
-  no modules and every limit is 0.
+  no modules and every limit is 0. For `COMPANY` orgs the plan-bundled `education` feature is
+  ignored; education is licensed only when listed in the subscription's add-on features.
 - `Invoice`: period, line items, subtotal + GST (`taxRateBps`, default from settings) = amount,
   status `DRAFT|OPEN|PAYMENT_SUBMITTED|PAID|OVERDUE|VOID`. Drafts are hidden from the tenant.
 - **Payments are manual UPI** (no gateway). `PlatformBillingSettings` (global single row:
