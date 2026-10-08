@@ -140,7 +140,7 @@ The foundation was built as an 8-PR stack:
 **Remaining (future work per §67):**
 
 - education modules still to expand: academics, fees, exams, timetable, LMS
-  (transport and hostel are built — see ARCHITECTURE §20);
+  (transport and hostel are built — see ARCHITECTURE §21);
 - asset management;
 - the AI gateway;
 - the generic reporting/BI engine;
@@ -177,4 +177,4 @@ After `prisma migrate deploy`, run `pnpm --filter @erp/api db:sync-roles` once s
 organizations get the new `transport_manager` / `hostel_manager` / `hostel_warden` roles and
 permissions, then seed with `API_URL=http://127.0.0.1:3100 node scripts/demo/seed-transport-hostel.mjs`.
 Demo logins (password `Abbs@2026Demo`): `aec.transport@abbs.test`, `aec.warden@abbs.test`,
-`ait.warden@abbs.test`. See docs/ARCHITECTURE.md §20.
+`ait.warden@abbs.test`. See docs/ARCHITECTURE.md §21.

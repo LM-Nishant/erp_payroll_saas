@@ -157,7 +157,19 @@ describe.skipIf(!hasTestDatabase)('library', () => {
       await librarian.post('/api/v1/library/return', { barcode: c1!.barcode }).expect(200)
     ).body.data;
     expect(returned.loan).toMatchObject({ status: 'RETURNED', fineAmount: 50 });
-    expect(returned.fine).toMatchObject({ amount: 50, reason: 'OVERDUE', status: 'PENDING' });
+    // The fees module posts student fines to the fee account as a LIBRARY charge.
+    expect(returned.fine).toMatchObject({ amount: 50, reason: 'OVERDUE', status: 'POSTED' });
+    const charge = await prisma.feeInvoice.findFirstOrThrow({
+      where: { id: returned.fine.externalChargeId },
+      include: { lines: { include: { feeHead: true } } },
+    });
+    expect(charge).toMatchObject({
+      studentId: students.S1,
+      sourceType: 'LIBRARY_FINE',
+      sourceId: returned.fine.id,
+    });
+    expect(Number(charge.netAmount)).toBe(50);
+    expect(charge.lines[0]?.feeHead.code).toBe('LIBRARY');
     expect(returned.reservation).toMatchObject({ id: reservation.id, status: 'READY' });
 
     // Held copy cannot go to anybody else; the reserving student gets it.
@@ -173,14 +185,11 @@ describe.skipIf(!hasTestDatabase)('library', () => {
     expect(mine.members[0].active[0].book.title).toBe('Engineering Mathematics');
     expect(mine.members[0].reservations).toHaveLength(0);
 
-    // Fines: student cannot settle, librarian collects once.
+    // Fines: student cannot settle; a posted fine is settled through fees, not the library desk.
     await student.post(`/api/v1/library/fines/${returned.fine.id}/collect`).expect(403);
-    const collected = (
-      await librarian
-        .post(`/api/v1/library/fines/${returned.fine.id}/collect`, { note: 'Cash' })
-        .expect(200)
-    ).body.data;
-    expect(collected.status).toBe('COLLECTED');
+    await librarian
+      .post(`/api/v1/library/fines/${returned.fine.id}/collect`, { note: 'Cash' })
+      .expect(409);
     await librarian.post(`/api/v1/library/fines/${returned.fine.id}/waive`).expect(409);
 
     // Renewal works for S3 now that the queue is empty.

@@ -3,12 +3,13 @@
  *
  * Transport and hostel always keep their own `transport_charges` / `hostel_charges` rows
  * (one per allocation per `YYYY-MM` period). When a fees module is present it registers a
- * poster here (e.g. from `fees.registrations.ts`):
+ * poster here — `fees.registrations.ts` does, via `createStudentCharge` / `cancelStudentCharge`:
  *
- *   registerStudentChargePoster((c) => feesService.createStudentCharge({ ... }));
+ *   registerStudentChargePoster(postFn, cancelFn);
  *
  * The poster returns the fee-side reference (stored as `externalRef`, charge → POSTED) or
- * null to leave the charge PENDING. Posting runs inside the caller's tenant context.
+ * null to leave the charge PENDING. Waiving a POSTED charge calls the canceller so the fee
+ * invoice is cancelled too. Both run inside the caller's tenant context.
  */
 export interface ExternalChargeInput {
   source: 'transport' | 'hostel';
@@ -24,10 +25,24 @@ export interface ExternalChargeInput {
 
 export type StudentChargePoster = (charge: ExternalChargeInput) => Promise<string | null>;
 
-let poster: StudentChargePoster | null = null;
+export interface ExternalChargeCancelInput {
+  source: 'transport' | 'hostel';
+  sourceChargeId: string;
+  studentId: string;
+  reason: string;
+}
 
-export function registerStudentChargePoster(fn: StudentChargePoster | null): void {
+export type StudentChargeCanceller = (charge: ExternalChargeCancelInput) => Promise<void>;
+
+let poster: StudentChargePoster | null = null;
+let canceller: StudentChargeCanceller | null = null;
+
+export function registerStudentChargePoster(
+  fn: StudentChargePoster | null,
+  cancel: StudentChargeCanceller | null = null,
+): void {
   poster = fn;
+  canceller = fn ? cancel : null;
 }
 
 export function hasStudentChargePoster(): boolean {
@@ -38,4 +53,9 @@ export function hasStudentChargePoster(): boolean {
 export async function postExternalCharge(charge: ExternalChargeInput): Promise<string | null> {
   if (!poster || !charge.studentId) return null;
   return poster(charge);
+}
+
+/** Cancel the fee-side charge of a POSTED transport/hostel charge (no-op without a canceller). */
+export async function cancelExternalCharge(charge: ExternalChargeCancelInput): Promise<void> {
+  if (canceller) await canceller(charge);
 }

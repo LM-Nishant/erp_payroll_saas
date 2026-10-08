@@ -169,6 +169,27 @@ describe.skipIf(!hasTestDatabase)('transport & hostel', () => {
         .expect(200)
     ).body.data;
     expect(charges.created).toBeGreaterThanOrEqual(1);
+    // The fees module posts student transport charges as TRANSPORT fee invoices.
+    expect(charges.posted).toBe(charges.created);
+    const tc = await prisma.transportCharge.findFirstOrThrow({
+      where: { studentId: boy.id, period: isoDay(0).slice(0, 7) },
+    });
+    expect(tc.status).toBe('POSTED');
+    const invoice = await prisma.feeInvoice.findFirstOrThrow({
+      where: { id: tc.externalRef! },
+      include: { lines: { include: { feeHead: true } } },
+    });
+    expect(invoice).toMatchObject({
+      studentId: boy.id,
+      sourceType: 'TRANSPORT_CHARGE',
+      sourceId: tc.id,
+    });
+    expect(invoice.lines[0]?.feeHead.code).toBe('TRANSPORT');
+    // Waiving the charge cancels the unpaid fee invoice.
+    await engAdmin.patch(`/api/v1/transport/charges/${tc.id}`, { status: 'WAIVED' }).expect(200);
+    expect((await prisma.feeInvoice.findUniqueOrThrow({ where: { id: invoice.id } })).status).toBe(
+      'CANCELLED',
+    );
 
     // Scope & tenant isolation
     await hod.get('/api/v1/transport/vehicles').expect(403);

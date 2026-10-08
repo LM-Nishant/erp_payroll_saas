@@ -165,6 +165,7 @@ export type ScopedModel =
   | 'employee'
   | 'student'
   | 'admission'
+  | 'finance'
   | 'asset'
   | 'assetCategory'
   | 'library'
@@ -213,6 +214,8 @@ const COLUMNS: Record<ScopedModel, Partial<Record<keyof Omit<AccessSet, 'all'>, 
     institutionIds: 'institutionId',
     departmentIds: 'departmentId',
   },
+  /** Fees & finance rows (invoices, receipts, structures, vouchers, expenses…). */
+  finance: { groupIds: 'groupId', institutionIds: 'institutionId', campusIds: 'campusId' },
   // Also used for asset child tables (assignments, maintenance…) that copy the same columns.
   asset: {
     groupIds: 'groupId',

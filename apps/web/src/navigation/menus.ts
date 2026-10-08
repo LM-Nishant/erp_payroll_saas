@@ -1,4 +1,5 @@
 import type { FeatureKey } from '@erp/shared';
+import { feesFinanceMenu, portalFeesMenu } from './fees-finance-menu';
 
 export interface MenuItem {
   title: string;
@@ -221,6 +222,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'ai.view_usage',
       feature: 'ai',
     },
+    ...feesFinanceMenu('/group'),
     {
       title: 'Library',
       icon: 'mdi-bookshelf',
@@ -389,6 +391,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/institution/branding',
       permission: 'branding.view',
     },
+    ...feesFinanceMenu('/institution'),
     {
       title: 'Library',
       icon: 'mdi-bookshelf',
@@ -680,6 +683,7 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'document.view_own',
       feature: 'documents',
     },
+    portalFeesMenu,
     {
       title: 'My library',
       icon: 'mdi-bookshelf',

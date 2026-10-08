@@ -16,7 +16,7 @@ import { emit } from '../../core/events';
 import { AppError, ConflictError, InvalidReferenceError } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
 import { tenantDb, withTenant } from '../../core/tenancy';
-import { postExternalCharge } from './charges-hook';
+import { cancelExternalCharge, postExternalCharge } from './charges-hook';
 import {
   assertVisible,
   authorizeRow,
@@ -545,6 +545,14 @@ export const transportChargeService = {
       'Charge',
     );
     await authorizeRow(before, ALLOCATE);
+    if (input.status === 'WAIVED' && before.status === 'POSTED' && before.studentId) {
+      await cancelExternalCharge({
+        source: 'transport',
+        sourceChargeId: before.id,
+        studentId: before.studentId,
+        reason: `Transport charge ${before.period} waived`,
+      });
+    }
     const c = await db().transportCharge.update({
       where: { id },
       data: { status: input.status },

@@ -47,6 +47,8 @@ import {
 import { holidaysRouter } from './modules/holidays/holidays.routes';
 import { leaveRouter } from './modules/leave/leave.routes';
 import { payrollRouter } from './modules/payroll/payroll.routes';
+import { feesRouter, feesWebhookRouter } from './modules/fees/fees.routes';
+import { financeRouter } from './modules/finance/finance.routes';
 import { shiftsRouter } from './modules/shifts/shifts.routes';
 import {
   allocationsRouter,
@@ -146,6 +148,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use(LOCAL_STORAGE_ROUTE.replace('/api/v1', ''), localStorageRouter());
   // Public machine endpoints: the signature / client secret is the credential.
   api.use('/communication/webhooks', communicationCallbackRouter);
+  api.use('/fees/webhooks', feesWebhookRouter);
   api.use('/oauth', limit('oauth'), oauthRouter);
 
   // Everything below is tenant-scoped: the tenant comes from the authenticated session (JWT).
@@ -182,6 +185,8 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/attendance', requireFeature('hr'), attendanceRouter);
   api.use('/leave', requireFeature('hr'), leaveRouter);
   api.use('/payroll', requireFeature('payroll'), payrollRouter);
+  api.use('/fees', requireFeature('finance'), feesRouter);
+  api.use('/finance', requireFeature('finance'), financeRouter);
   api.use('/assets', requireFeature('assets'), assetsRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
