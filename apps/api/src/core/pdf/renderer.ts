@@ -9,10 +9,28 @@ export interface PdfRenderer {
 
 const MARGIN = 50;
 const FOOTER_HEIGHT = 40;
+/** Brand logo box, anchored to the top-right corner of every page. */
+export const LOGO_BOX = { width: 110, height: 55 } as const;
+const LOGO_GAP = 15;
+/** Top margin of continuation pages when a logo is drawn (keeps body text clear of it). */
+const LOGO_TOP_MARGIN = MARGIN + LOGO_BOX.height + LOGO_GAP;
+
+/**
+ * An image decoded once by pdfkit's `openImage` (missing from @types/pdfkit) and reused on every
+ * page — `doc.image()` accepts it and embeds the XObject a single time.
+ */
+interface OpenedImage {
+  width: number;
+  height: number;
+}
+type ImageOpener = { openImage(src: Buffer): OpenedImage };
 const TEXT = '#111827';
 const MUTED = '#6B7280';
 
-/** pdfkit renderer: A4 letterhead (logo + name + contact), body blocks, footer + page numbers. */
+/**
+ * pdfkit renderer: A4 letterhead (name + contact on page 1), the brand logo in the top-right
+ * corner of EVERY page, body blocks, footer + page numbers.
+ */
 export class PdfKitRenderer implements PdfRenderer {
   readonly id = 'pdfkit';
 
@@ -37,9 +55,17 @@ export class PdfKitRenderer implements PdfRenderer {
       doc.on('end', () => resolve(Buffer.concat(chunks)));
       doc.on('error', reject);
       try {
-        this.letterhead(doc, model);
+        const logo = this.openLogo(doc, model);
+        if (logo) {
+          // Continuation pages start below the logo so body content never collides with it.
+          doc.on('pageAdded', () => {
+            doc.page.margins.top = LOGO_TOP_MARGIN;
+            doc.y = LOGO_TOP_MARGIN;
+          });
+        }
+        this.letterhead(doc, model, logo !== null);
         for (const block of model.blocks) this.block(doc, block, model);
-        this.footers(doc, model);
+        this.pageDecorations(doc, model, logo);
         doc.end();
       } catch (err) {
         reject(err);
@@ -47,20 +73,23 @@ export class PdfKitRenderer implements PdfRenderer {
     });
   }
 
-  private letterhead(doc: PDFKit.PDFDocument, model: PdfDocumentModel) {
+  /** Decode the logo once; an unreadable image renders the PDF without it instead of failing. */
+  private openLogo(doc: PDFKit.PDFDocument, model: PdfDocumentModel): OpenedImage | null {
+    if (!model.branding.logo) return null;
+    try {
+      return (doc as unknown as ImageOpener).openImage(model.branding.logo.body);
+    } catch {
+      return null;
+    }
+  }
+
+  private letterhead(doc: PDFKit.PDFDocument, model: PdfDocumentModel, hasLogo: boolean) {
     const b = model.branding;
     const width = doc.page.width - MARGIN * 2;
     const top = MARGIN;
-    let textX = MARGIN;
-    if (b.logo) {
-      try {
-        doc.image(b.logo.body, MARGIN, top, { fit: [110, 55] });
-        textX = MARGIN + 125;
-      } catch {
-        // Unreadable image: render the letterhead without it rather than failing the PDF.
-      }
-    }
-    const textWidth = width - (textX - MARGIN);
+    const textX = MARGIN;
+    // Name / letterhead text / contact sit on the left, clear of the top-right logo.
+    const textWidth = hasLogo ? width - LOGO_BOX.width - LOGO_GAP : width;
     doc.fillColor(b.primaryColor).font('Helvetica-Bold').fontSize(18);
     doc.text(b.displayName ?? '', textX, top, { width: textWidth });
     doc.font('Helvetica').fontSize(9).fillColor(MUTED);
@@ -69,7 +98,7 @@ export class PdfKitRenderer implements PdfRenderer {
       .filter(Boolean)
       .join('  ·  ');
     if (contact) doc.text(contact, textX, doc.y + 2, { width: textWidth });
-    const ruleY = Math.max(doc.y, b.logo ? top + 58 : doc.y) + 8;
+    const ruleY = Math.max(doc.y, hasLogo ? top + LOGO_BOX.height + 3 : doc.y) + 8;
     doc
       .moveTo(MARGIN, ruleY)
       .lineTo(MARGIN + width, ruleY)
@@ -129,7 +158,25 @@ export class PdfKitRenderer implements PdfRenderer {
         break;
       case 'table': {
         const colWidth = width / Math.max(block.columns.length, 1);
+        const rowHeight = (cells: string[], bold: boolean) =>
+          Math.max(
+            ...cells.map((cell) =>
+              doc
+                .font(bold ? 'Helvetica-Bold' : 'Helvetica')
+                .fontSize(10)
+                .heightOfString(cell, { width: colWidth - 4 }),
+            ),
+            0,
+          ) + 6;
+        const fits = (cells: string[], bold: boolean) =>
+          doc.y + rowHeight(cells, bold) <= doc.page.height - doc.page.margins.bottom;
         const row = (cells: string[], bold: boolean) => {
+          // Break before a row that does not fit (otherwise pdfkit would move every cell of the
+          // row to its own page) and repeat the header row on the new page.
+          if (!fits(cells, bold)) {
+            doc.addPage();
+            if (!bold) row(block.columns, true);
+          }
           const y = doc.y;
           let bottom = y;
           cells.forEach((cell, i) => {
@@ -189,13 +236,24 @@ export class PdfKitRenderer implements PdfRenderer {
     }
   }
 
-  private footers(doc: PDFKit.PDFDocument, model: PdfDocumentModel) {
+  /** Per-page pass over the buffered pages: top-right logo, footer rule/text, page numbers. */
+  private pageDecorations(
+    doc: PDFKit.PDFDocument,
+    model: PdfDocumentModel,
+    logo: OpenedImage | null,
+  ) {
     const range = doc.bufferedPageRange();
     for (let i = range.start; i < range.start + range.count; i += 1) {
       doc.switchToPage(i);
       const bottom = doc.page.margins.bottom;
       doc.page.margins.bottom = 0;
       const width = doc.page.width - MARGIN * 2;
+      if (logo) {
+        doc.image(logo as unknown as Buffer, doc.page.width - MARGIN - LOGO_BOX.width, MARGIN, {
+          fit: [LOGO_BOX.width, LOGO_BOX.height],
+          align: 'right',
+        });
+      }
       const y = doc.page.height - MARGIN - FOOTER_HEIGHT / 2;
       doc
         .moveTo(MARGIN, y - 6)

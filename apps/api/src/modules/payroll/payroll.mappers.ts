@@ -310,6 +310,7 @@ export function toPayslipDto(
 export function toForm16Dto(
   r: Form16Record,
   employee?: { employeeCode: string } | null,
+  generated = false,
 ): Form16RecordDto {
   return {
     id: r.id,
@@ -318,6 +319,7 @@ export function toForm16Dto(
     institutionId: r.institutionId,
     financialYear: r.financialYear,
     documentId: r.documentId,
+    generated,
     status: r.status as Form16RecordDto['status'],
     publishedAt: iso(r.publishedAt),
     createdAt: r.createdAt.toISOString(),

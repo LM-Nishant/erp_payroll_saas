@@ -17,6 +17,7 @@ import { apiFetch } from '@/api/client';
 import EmployeeLoginCard from '@/components/EmployeeLoginCard.vue';
 import DraftWithAiButton from '@/components/ai/DraftWithAiButton.vue';
 import ProfilePhotoCard from '@/components/ProfilePhotoCard.vue';
+import { canRegeneratePdf, regeneratePdf, REGENERATE_CONFIRM } from '@/api/pdf';
 import { useAuthStore } from '@/stores/auth';
 import EmployeeFormDialog from './EmployeeFormDialog.vue';
 import MovementDialog from './MovementDialog.vue';
@@ -385,6 +386,16 @@ async function generateLetter() {
     tab.value = 'documents';
     await loadTab('documents');
     await download(doc);
+  } catch (e) {
+    fail(e);
+  }
+}
+async function regenerate(doc: DocumentDto) {
+  if (!confirm(REGENERATE_CONFIRM)) return;
+  try {
+    const res = await regeneratePdf(doc);
+    notice.value = `"${doc.title}" regenerated with the current branding (version ${res.version.versionNumber}).`;
+    await loadTab('documents');
   } catch (e) {
     fail(e);
   }
@@ -806,6 +817,14 @@ const personalRows = computed(() => {
               <td>{{ d.createdAt.slice(0, 10) }}</td>
               <td class="text-right">
                 <v-btn size="small" variant="text" icon="mdi-download" @click="download(d)" />
+                <v-btn
+                  v-if="canRegeneratePdf(d, auth.can)"
+                  size="small"
+                  variant="text"
+                  icon="mdi-refresh"
+                  title="Regenerate PDF with the current branding"
+                  @click="regenerate(d)"
+                />
               </td>
             </tr>
             <tr v-if="!documents.length">

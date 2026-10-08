@@ -20,6 +20,8 @@ const FIN = 'l8.fin.art@abbs.test';
 const GFIN = 'l8.gfin@abbs.test';
 const EMP1 = 'l8.emp1@abbs.test';
 const EMP2 = 'l8.emp2@abbs.test';
+const BCC_FIN = 'l8.fin@bcc.test';
+const BCC_PM = 'l8.pm@bcc.test';
 
 type Client = Awaited<ReturnType<typeof signIn>>;
 type Emp = { id: string; employeeCode: string };
@@ -54,6 +56,8 @@ describe.skipIf(!hasTestDatabase)('Payroll rule engine, runs and payslips', () =
   let emp1: Client;
   let emp2: Client;
   let bcc: Client;
+  let bccFin: Client;
+  let bccPm: Client;
   let seq = 0;
 
   let E1: Emp; // ART, self-service user EMP1
@@ -150,6 +154,20 @@ describe.skipIf(!hasTestDatabase)('Payroll rule engine, runs and payslips', () =
           role: 'employee',
           scope: institution('ABBS-ART'),
         },
+        {
+          email: BCC_FIN,
+          name: 'L8 BCC Finance',
+          organization: 'bcc',
+          role: 'group_finance',
+          scope: { type: 'GROUP', group: 'BCC' },
+        },
+        {
+          email: BCC_PM,
+          name: 'L8 BCC Payroll',
+          organization: 'bcc',
+          role: 'payroll_manager',
+          scope: { type: 'GROUP', group: 'BCC' },
+        },
       ],
     });
     userIds = { ...fixture.userIds, ...extra };
@@ -172,6 +190,8 @@ describe.skipIf(!hasTestDatabase)('Payroll rule engine, runs and payslips', () =
     emp1 = await signIn(app, EMP1, DEMO_PASSWORD);
     emp2 = await signIn(app, EMP2, DEMO_PASSWORD);
     bcc = await signIn(app, 'admin@bcc.test', DEMO_PASSWORD);
+    bccFin = await signIn(app, BCC_FIN, DEMO_PASSWORD);
+    bccPm = await signIn(app, BCC_PM, DEMO_PASSWORD);
 
     E1 = await createEmployee({ institutionId: art, departmentId: artCse, userId: userIds[EMP1] });
     E2 = await createEmployee({ institutionId: art, departmentId: artCse, userId: userIds[EMP2] });
@@ -947,6 +967,87 @@ describe.skipIf(!hasTestDatabase)('Payroll rule engine, runs and payslips', () =
       expect(mine.map((f) => f.id)).toContain(rec.id);
       await emp1.post(`/api/v1/payroll/me/form16/${rec.id}/download-url`).expect(201);
       await emp2.post(`/api/v1/payroll/me/form16/${rec.id}/download-url`).expect(404);
+    });
+
+    it('regenerates stored payslip and Form 16 PDFs as new versions', async () => {
+      const slip = (
+        (await emp1.get('/api/v1/payroll/me/payslips').expect(200)).body.data as {
+          id: string;
+          runId: string;
+          documentId: string;
+        }[]
+      ).find((p) => p.runId === artApril.id)!;
+      const versionsOf = (documentId: string) =>
+        prisma.documentVersion.count({ where: { documentId } });
+      const before = await versionsOf(slip.documentId);
+      const stored = await prisma.document.findUniqueOrThrow({ where: { id: slip.documentId } });
+      expect(stored.metadata).toMatchObject({
+        templateKey: 'payroll_payslip',
+        runId: artApril.id,
+        pdfInput: expect.any(Object),
+      });
+
+      // Permission (payroll.lock) and tenancy.
+      await pm.post(`/api/v1/payroll/payslips/${slip.id}/regenerate`).expect(403);
+      await emp1.post(`/api/v1/payroll/payslips/${slip.id}/regenerate`).expect(403);
+      await bccFin.post(`/api/v1/payroll/payslips/${slip.id}/regenerate`).expect(404);
+
+      const one = (await fin.post(`/api/v1/payroll/payslips/${slip.id}/regenerate`).expect(201))
+        .body.data;
+      expect(one).toMatchObject({
+        payslipId: slip.id,
+        documentId: slip.documentId,
+        versionNumber: before + 1,
+      });
+      expect(await versionsOf(slip.documentId)).toBe(before + 1);
+
+      // Legacy payslips (no stored input) are rebuilt from the frozen run results.
+      const { pdfInput: _input, ...legacy } = stored.metadata as Record<string, unknown>;
+      await prisma.document.update({
+        where: { id: slip.documentId },
+        data: { metadata: legacy as object },
+      });
+
+      // Whole run: background job, one new version per stored payslip.
+      const slipDocs = await prisma.payslip.findMany({
+        where: { runId: artApril.id, documentId: { not: null } },
+        select: { documentId: true },
+      });
+      const counts = await Promise.all(slipDocs.map((s) => versionsOf(s.documentId!)));
+      await bccFin.post(`/api/v1/payroll/runs/${artApril.id}/payslips/regenerate-pdfs`).expect(404);
+      const queued = (
+        await fin.post(`/api/v1/payroll/runs/${artApril.id}/payslips/regenerate-pdfs`).expect(202)
+      ).body.data;
+      expect(queued).toMatchObject({ queued: true, payslips: slipDocs.length });
+      await drainJobs();
+      expect(await Promise.all(slipDocs.map((s) => versionsOf(s.documentId!)))).toEqual(
+        counts.map((c) => c + 1),
+      );
+      const rebuilt = await prisma.document.findUniqueOrThrow({ where: { id: slip.documentId } });
+      expect(rebuilt.metadata).toMatchObject({
+        templateKey: 'payroll_payslip',
+        runId: artApril.id,
+        pdfInput: expect.any(Object),
+        regeneratedAt: expect.any(String),
+      });
+      // Employees keep downloading the same payslip (now the latest version).
+      await emp1.post(`/api/v1/payroll/me/payslips/${slip.id}/download-url`).expect(201);
+
+      // Form 16.
+      const rec = (await pm.get('/api/v1/payroll/form16').expect(200)).body.data.find(
+        (f: { employeeId: string; generated: boolean }) => f.employeeId === E1.id,
+      );
+      expect(rec.generated).toBe(true);
+      const f16Before = await versionsOf(rec.documentId);
+      await emp1.post(`/api/v1/payroll/form16/${rec.id}/regenerate`).expect(403);
+      await bccPm.post(`/api/v1/payroll/form16/${rec.id}/regenerate`).expect(404);
+      await pm.post(`/api/v1/payroll/form16/${rec.id}/regenerate`).expect(200);
+      expect(await versionsOf(rec.documentId)).toBe(f16Before + 1);
+      expect(
+        await prisma.auditLog.count({
+          where: { action: { in: ['payroll.payslip.regenerate_pdf', 'pdf.regenerate'] } },
+        }),
+      ).toBeGreaterThan(0);
     });
   });
 });

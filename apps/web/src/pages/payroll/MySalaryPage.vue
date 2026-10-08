@@ -1,7 +1,13 @@
 <script setup lang="ts">
-import type { MySalaryComponentDto, MySalaryDto, SalaryStatementDto } from '@erp/shared';
+import type {
+  MySalaryComponentDto,
+  MySalaryDto,
+  SalaryStatementDto,
+  SignedUrlDto,
+} from '@erp/shared';
 import { computed, onMounted, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
 import { money } from './payroll';
 
 /**
@@ -75,10 +81,34 @@ const statementSections = computed(() => {
   ).filter(([, r]) => r.length);
 });
 
+/* Print-only letterhead: brand name on the left, the company logo in the top-right corner
+ * (same placement as generated PDFs). The signed logo URL is audited, so fetch it once. */
+const auth = useAuthStore();
+const brandName = computed(
+  () => auth.me?.branding?.displayName ?? auth.me?.organization?.name ?? '',
+);
+const logoUrl = ref<string | null>(null);
+async function loadLogo() {
+  if (!auth.me?.branding?.logoFileId) return;
+  try {
+    logoUrl.value =
+      (await apiFetch<{ data: SignedUrlDto | null }>('/api/v1/branding/home-logo-url')).data?.url ??
+      null;
+  } catch {
+    logoUrl.value = null;
+  }
+}
+onMounted(loadLogo);
+
 const print = () => window.print();
 </script>
 
 <template>
+  <div class="print-letterhead d-none d-print-flex align-start mb-4">
+    <div class="text-h6 font-weight-bold">{{ brandName }}</div>
+    <v-spacer />
+    <img v-if="logoUrl" :src="logoUrl" alt="" class="print-logo" />
+  </div>
   <div class="d-flex align-center mb-4">
     <h2 class="text-h5">My salary</h2>
     <v-spacer />
@@ -307,3 +337,15 @@ const print = () => window.print();
     </v-window-item>
   </v-window>
 </template>
+
+<style scoped>
+.print-letterhead {
+  border-bottom: 2px solid currentColor;
+  padding-bottom: 8px;
+}
+.print-logo {
+  max-width: 150px;
+  max-height: 75px;
+  object-fit: contain;
+}
+</style>
