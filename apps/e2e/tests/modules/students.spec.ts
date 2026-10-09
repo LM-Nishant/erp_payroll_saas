@@ -42,7 +42,7 @@ test.describe('Admissions & students · registrar@greenwood.demo', () => {
     await pick(s.page, 'Status', 'APPROVED');
     await s.settle();
     await appRow().getByRole('button', { name: 'Enroll' }).click();
-    await s.settle();
+    await saveDialog(s, 'Enroll');
     await pick(s.page, 'Status', 'ENROLLED');
     await s.settle();
     await expect(appRow()).toContainText('ENROLLED');

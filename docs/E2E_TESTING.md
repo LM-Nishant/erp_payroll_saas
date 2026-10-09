@@ -110,27 +110,31 @@ licensed + permitted menu → every visible menu page opens with no error alert,
 Named scenario specs: `login` (wrong password, unknown e-mail, sign-in/sign-out, signed-out redirect), `licence` (menu +
 direct-URL + API-level blocks), `roles` (key pages per role and a forbidden page each),
 `subscription` (ACTIVE / PAST_DUE / TRIAL / CANCELLED), `smoke-greenwood` (seeded rows on every
-module's main list).
+module's main list), `education-roles` (every user of an education-licensed org: each
+education page its roles permit opens cleanly, every other one is blocked by URL, and
+create/manage buttons show only when permitted — expectations come from `DEFAULT_TENANT_ROLES`;
+warm the Vite dev server with one pass first, a cold server reloads pages mid-test).
 
 Functional flows (`tests/modules/`, Greenwood):
 
-| Spec               | Actors                                    | Flow                                                                                                        |
-| ------------------ | ----------------------------------------- | ----------------------------------------------------------------------------------------------------------- |
-| academics          | principal                                 | class + sections, extra section, subject, subject-teacher allocation, timetable cell                        |
-| students           | registrar                                 | admission apply → review → approve → enroll; student create/edit/profile                                    |
-| student-attendance | teacher, student                          | mark a section with an absentee, register read-back, student view                                           |
-| exams              | principal, teacher, student               | term + paper, marks entry + lock, compute + publish, report card PDF, student result                        |
-| leave              | employee, HR                              | apply ×2 → approve / reject → outcomes → cancel; student leave is `fixme`                                   |
-| fees               | admin, accountant, student, parent        | fee head + structure, generate invoices, part payment, receipt PDF, portal fees                             |
-| hostel             | hostel manager, warden                    | hostel, room, mess plan, allocate, out-pass, complaint, vacate                                              |
-| library            | librarian, student                        | title + copies, labels PDF, issue, return, fines/reports, OPAC                                              |
-| transport          | transport manager                         | vehicle, driver, route + stops, fare slab, allocate, end allocation                                         |
-| hr                 | HR, admin, owner                          | department, designation, employee type, shift, holiday, leave type, employee create/edit                    |
-| payroll            | HR, payroll, finance, group finance/admin | component, structure, salary (PF opt-out), revision, run maker-checker → finalize, payslip, Form 16, reopen |
-| finance            | owner, accountant, finance manager        | account, voucher post/cancel, vendor, expense, trial balance export, ledger                                 |
-| assets             | assets manager, employee                  | asset, QR label PDF, check-out/in, maintenance, register labels, My assets                                  |
-| documents          | registrar, employee                       | upload, signed download, new version, delete; employee read-only                                            |
-| communication      | owner                                     | e-mail template, preview, publish version, logs; announcement composer is `fixme`                           |
-| users-branding     | owner, admin, new user                    | add user with role, new user signs in, change role, deactivate; branding update + restore                   |
-| platform           | superadmin, support                       | create org, add-on, invoice + PDF + mark paid, plan, invoices/billing, archive; support read-only           |
-| self-service       | employee, student, parent                 | profile, salary PDF, payslip PDF, selfie punch prompt; portal profile/timetable/results/fees                |
+| Spec               | Actors                                    | Flow                                                                                                         |
+| ------------------ | ----------------------------------------- | ------------------------------------------------------------------------------------------------------------ |
+| academics          | principal                                 | class + sections, extra section, subject, subject-teacher allocation, timetable cell                         |
+| students           | registrar                                 | admission apply → review → approve → enroll; student create/edit/profile                                     |
+| admissions-actions | principal                                 | per-status action buttons; reject → reopen → approve → enroll (class picker) → view student; reject → delete |
+| student-attendance | teacher, student                          | mark a section with an absentee, register read-back, student view                                            |
+| exams              | principal, teacher, student               | term + paper, marks entry + lock, compute + publish, report card PDF, student result                         |
+| leave              | employee, HR                              | apply ×2 → approve / reject → outcomes → cancel; student leave is `fixme`                                    |
+| fees               | admin, accountant, student, parent        | fee head + structure, generate invoices, part payment, receipt PDF, portal fees                              |
+| hostel             | hostel manager, warden                    | hostel, room, mess plan, allocate, out-pass, complaint, vacate                                               |
+| library            | librarian, student                        | title + copies, labels PDF, issue, return, fines/reports, OPAC                                               |
+| transport          | transport manager                         | vehicle, driver, route + stops, fare slab, allocate, end allocation                                          |
+| hr                 | HR, admin, owner                          | department, designation, employee type, shift, holiday, leave type, employee create/edit                     |
+| payroll            | HR, payroll, finance, group finance/admin | component, structure, salary (PF opt-out), revision, run maker-checker → finalize, payslip, Form 16, reopen  |
+| finance            | owner, accountant, finance manager        | account, voucher post/cancel, vendor, expense, trial balance export, ledger                                  |
+| assets             | assets manager, employee                  | asset, QR label PDF, check-out/in, maintenance, register labels, My assets                                   |
+| documents          | registrar, employee                       | upload, signed download, new version, delete; employee read-only                                             |
+| communication      | owner                                     | e-mail template, preview, publish version, logs; announcement composer is `fixme`                            |
+| users-branding     | owner, admin, new user                    | add user with role, new user signs in, change role, deactivate; branding update + restore                    |
+| platform           | superadmin, support                       | create org, add-on, invoice + PDF + mark paid, plan, invoices/billing, archive; support read-only            |
+| self-service       | employee, student, parent                 | profile, salary PDF, payslip PDF, selfie punch prompt; portal profile/timetable/results/fees                 |

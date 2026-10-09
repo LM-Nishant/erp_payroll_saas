@@ -41,6 +41,20 @@ export const ADMISSION_STATUSES = [
 export const admissionStatusSchema = z.enum(ADMISSION_STATUSES);
 export type AdmissionStatus = z.infer<typeof admissionStatusSchema>;
 
+/**
+ * Allowed admission status moves (shared so the UI only offers what the API accepts).
+ * A rejection can be reopened back to review; ENROLLED is final.
+ */
+export const ADMISSION_TRANSITIONS: Record<AdmissionStatus, readonly AdmissionStatus[]> = {
+  DRAFT: ['SUBMITTED'],
+  SUBMITTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'WAITLISTED'],
+  UNDER_REVIEW: ['APPROVED', 'REJECTED', 'WAITLISTED'],
+  WAITLISTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED'],
+  APPROVED: ['ENROLLED', 'REJECTED'],
+  REJECTED: ['UNDER_REVIEW'],
+  ENROLLED: [],
+};
+
 export const addressJsonSchema = z.record(z.string(), z.unknown()).nullish();
 
 export const guardianInputSchema = z

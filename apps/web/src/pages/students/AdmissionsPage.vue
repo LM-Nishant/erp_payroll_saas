@@ -1,6 +1,12 @@
 <script setup lang="ts">
-import type { AdmissionApplicationDto, ApiListResponse } from '@erp/shared';
-import { onMounted, reactive, ref, watch } from 'vue';
+import {
+  ADMISSION_TRANSITIONS,
+  type AdmissionApplicationDto,
+  type AdmissionStatus,
+  type ApiListResponse,
+} from '@erp/shared';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 interface Option {
@@ -10,6 +16,9 @@ interface Option {
   institutionId?: string;
 }
 const auth = useAuthStore();
+const route = useRoute();
+const studentsBase = computed(() => route.path.replace(/\/admissions.*$/, '/students'));
+const notice = ref<string | null>(null);
 const items = ref<AdmissionApplicationDto[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -36,6 +45,7 @@ const headers = [
   { title: 'Year', key: 'academicYear' },
   { title: 'Guardian', key: 'guardianName' },
   { title: 'Status', key: 'status' },
+  { title: 'Remarks', key: 'decisionComment', sortable: false },
   { title: 'Actions', key: 'actions', sortable: false },
 ];
 function query() {
@@ -91,23 +101,139 @@ async function createAdmission() {
   createOpen.value = false;
   await load();
 }
-async function transition(a: AdmissionApplicationDto, status: string) {
-  const ok = await act(() =>
-    apiFetch(`/api/v1/admissions/${a.id}/transition`, {
-      method: 'POST',
-      body: JSON.stringify({ status, comment: `Marked ${status}` }),
-    }),
-  );
-  if (ok) await load();
+type Move = Exclude<AdmissionStatus, 'DRAFT' | 'ENROLLED'>;
+const STATUS_COLORS: Partial<Record<AdmissionStatus, string>> = {
+  SUBMITTED: 'info',
+  UNDER_REVIEW: 'info',
+  WAITLISTED: 'warning',
+  APPROVED: 'success',
+  REJECTED: 'error',
+  ENROLLED: 'primary',
+};
+/** Buttons offered for an application, derived from the same transition map the API enforces. */
+function actionsFor(a: AdmissionApplicationDto) {
+  const next = ADMISSION_TRANSITIONS[a.status];
+  const out: Array<{ label: string; to: Move | 'ENROLLED'; color?: string; confirm?: boolean }> =
+    [];
+  if (next.includes('SUBMITTED')) out.push({ label: 'Submit', to: 'SUBMITTED' });
+  if (next.includes('UNDER_REVIEW'))
+    out.push(
+      a.status === 'REJECTED'
+        ? { label: 'Reopen', to: 'UNDER_REVIEW', color: 'primary', confirm: true }
+        : { label: a.status === 'WAITLISTED' ? 'Back to review' : 'Review', to: 'UNDER_REVIEW' },
+    );
+  if (next.includes('WAITLISTED')) out.push({ label: 'Waitlist', to: 'WAITLISTED' });
+  if (next.includes('APPROVED')) out.push({ label: 'Approve', to: 'APPROVED', color: 'success' });
+  if (next.includes('ENROLLED')) out.push({ label: 'Enroll', to: 'ENROLLED', color: 'primary' });
+  if (next.includes('REJECTED'))
+    out.push({ label: 'Reject', to: 'REJECTED', color: 'error', confirm: true });
+  return out;
 }
-async function enroll(a: AdmissionApplicationDto) {
+
+const confirm = reactive({
+  open: false,
+  kind: 'REJECTED' as 'REJECTED' | 'UNDER_REVIEW' | 'DELETE',
+  item: null as AdmissionApplicationDto | null,
+  comment: '',
+  busy: false,
+});
+const CONFIRM_TEXT = {
+  REJECTED: {
+    title: 'Reject application',
+    body: 'The application can be reopened later if this was a mistake.',
+    button: 'Reject',
+    color: 'error',
+  },
+  UNDER_REVIEW: {
+    title: 'Reopen application',
+    body: 'Moves the application back to Under review so it can be approved and enrolled.',
+    button: 'Reopen',
+    color: 'primary',
+  },
+  DELETE: {
+    title: 'Delete application',
+    body: 'Removes the application from the list. Enrolled applications cannot be deleted.',
+    button: 'Delete',
+    color: 'error',
+  },
+} as const;
+function ask(kind: typeof confirm.kind, item: AdmissionApplicationDto) {
+  error.value = null;
+  Object.assign(confirm, { open: true, kind, item, comment: '', busy: false });
+}
+async function runConfirm() {
+  const a = confirm.item;
+  if (!a) return;
+  confirm.busy = true;
+  const ok =
+    confirm.kind === 'DELETE'
+      ? await act(() => apiFetch(`/api/v1/admissions/${a.id}`, { method: 'DELETE' }))
+      : await act(() => move(a, confirm.kind as Move, confirm.comment));
+  confirm.busy = false;
+  if (!ok) return;
+  confirm.open = false;
+  notice.value = `${a.applicationNo} ${
+    confirm.kind === 'DELETE' ? 'deleted' : confirm.kind === 'REJECTED' ? 'rejected' : 'reopened'
+  }`;
+  await load();
+}
+function move(a: AdmissionApplicationDto, status: Move, comment?: string) {
+  return apiFetch(`/api/v1/admissions/${a.id}/transition`, {
+    method: 'POST',
+    body: JSON.stringify({ status, ...(comment?.trim() ? { comment: comment.trim() } : {}) }),
+  });
+}
+async function perform(a: AdmissionApplicationDto, action: ReturnType<typeof actionsFor>[number]) {
+  if (action.to === 'ENROLLED') return openEnroll(a);
+  if (action.confirm) return ask(action.to as 'REJECTED' | 'UNDER_REVIEW', a);
+  error.value = null;
+  if (await act(() => move(a, action.to as Move))) {
+    notice.value = `${a.applicationNo} moved to ${action.to.replace('_', ' ').toLowerCase()}`;
+    await load();
+  }
+}
+
+const enrollForm = reactive({
+  open: false,
+  item: null as AdmissionApplicationDto | null,
+  classSectionId: '',
+  rollNo: '',
+  busy: false,
+});
+const enrollClasses = computed(() =>
+  classes.value.filter(
+    (c) =>
+      !enrollForm.item || !c.institutionId || c.institutionId === enrollForm.item.institutionId,
+  ),
+);
+function openEnroll(a: AdmissionApplicationDto) {
+  error.value = null;
+  Object.assign(enrollForm, {
+    open: true,
+    item: a,
+    classSectionId: a.classSectionId ?? '',
+    rollNo: '',
+    busy: false,
+  });
+}
+async function enroll() {
+  const a = enrollForm.item;
+  if (!a) return;
+  enrollForm.busy = true;
   const ok = await act(() =>
     apiFetch(`/api/v1/admissions/${a.id}/enroll`, {
       method: 'POST',
-      body: JSON.stringify({ classSectionId: a.classSectionId || undefined }),
+      body: JSON.stringify({
+        classSectionId: enrollForm.classSectionId,
+        ...(enrollForm.rollNo.trim() ? { rollNo: enrollForm.rollNo.trim() } : {}),
+      }),
     }),
   );
-  if (ok) await load();
+  enrollForm.busy = false;
+  if (!ok) return;
+  enrollForm.open = false;
+  notice.value = `${a.applicantDisplayName} enrolled as a student`;
+  await load();
 }
 onMounted(async () => {
   await Promise.all([load(), loadOptions()]);
@@ -149,37 +275,42 @@ watch([page, () => filters.status], load);
     :loading="loading"
     @update:page="page = $event"
     ><template #[`item.status`]="{ item }"
-      ><v-chip size="small">{{ item.status }}</v-chip></template
+      ><v-chip size="small" :color="STATUS_COLORS[item.status]">{{
+        item.status.replace('_', ' ')
+      }}</v-chip></template
+    ><template #[`item.decisionComment`]="{ item }"
+      ><span class="text-medium-emphasis text-body-2">{{
+        item.decisionComment ?? ''
+      }}</span></template
     ><template #[`item.actions`]="{ item }"
-      ><v-btn
-        v-if="auth.can('admission.manage') && item.status === 'SUBMITTED'"
-        size="small"
-        variant="text"
-        @click="transition(item, 'UNDER_REVIEW')"
-        >Review</v-btn
-      ><v-btn
-        v-if="
-          auth.can('admission.manage') &&
-          ['SUBMITTED', 'UNDER_REVIEW', 'WAITLISTED'].includes(item.status)
-        "
-        size="small"
-        variant="text"
-        @click="transition(item, 'APPROVED')"
-        >Approve</v-btn
-      ><v-btn
-        v-if="auth.can('admission.manage') && item.status === 'APPROVED'"
-        size="small"
-        color="primary"
-        variant="text"
-        @click="enroll(item)"
-        >Enroll</v-btn
-      ><v-btn
-        v-if="auth.can('admission.manage') && item.status !== 'ENROLLED'"
-        size="small"
-        variant="text"
-        @click="transition(item, 'REJECTED')"
-        >Reject</v-btn
-      ></template
+      ><div class="d-flex flex-wrap ga-1 py-1">
+        <template v-if="auth.can('admission.manage')"
+          ><v-btn
+            v-for="a in actionsFor(item)"
+            :key="a.label"
+            size="small"
+            variant="text"
+            :color="a.color"
+            @click="perform(item, a)"
+            >{{ a.label }}</v-btn
+          ><v-btn
+            v-if="item.status !== 'ENROLLED'"
+            size="small"
+            variant="text"
+            color="error"
+            icon="mdi-delete-outline"
+            :aria-label="`Delete ${item.applicationNo}`"
+            title="Delete"
+            @click="ask('DELETE', item)"
+        /></template>
+        <v-btn
+          v-if="item.status === 'ENROLLED' && item.studentId && auth.can('student.view')"
+          size="small"
+          variant="text"
+          :to="`${studentsBase}/${item.studentId}`"
+          >View student</v-btn
+        >
+      </div></template
     ></v-data-table-server
   ><v-dialog v-model="createOpen" max-width="640"
     ><v-card
@@ -216,5 +347,58 @@ watch([page, () => filters.status], load);
         ><v-btn color="primary" @click="createAdmission">Create</v-btn></v-card-actions
       ></v-card
     ></v-dialog
-  >
+  ><v-dialog v-model="confirm.open" max-width="480"
+    ><v-card v-if="confirm.item"
+      ><v-card-title>{{ CONFIRM_TEXT[confirm.kind].title }}</v-card-title
+      ><v-card-text
+        ><v-alert v-if="error" type="error" density="compact" class="mb-3">{{ error }}</v-alert>
+        <p class="mb-3">
+          <strong>{{ confirm.item.applicationNo }}</strong> ·
+          {{ confirm.item.applicantDisplayName }}
+        </p>
+        <p class="mb-3 text-medium-emphasis">{{ CONFIRM_TEXT[confirm.kind].body }}</p>
+        <v-textarea
+          v-if="confirm.kind !== 'DELETE'"
+          v-model="confirm.comment"
+          label="Reason (optional)"
+          rows="2"
+          auto-grow /></v-card-text
+      ><v-card-actions
+        ><v-spacer /><v-btn variant="text" @click="confirm.open = false">Cancel</v-btn
+        ><v-btn
+          :color="CONFIRM_TEXT[confirm.kind].color"
+          :loading="confirm.busy"
+          @click="runConfirm"
+          >{{ CONFIRM_TEXT[confirm.kind].button }}</v-btn
+        ></v-card-actions
+      ></v-card
+    ></v-dialog
+  ><v-dialog v-model="enrollForm.open" max-width="480"
+    ><v-card v-if="enrollForm.item"
+      ><v-card-title>Enroll {{ enrollForm.item.applicantDisplayName }}</v-card-title
+      ><v-card-text
+        ><v-alert v-if="error" type="error" density="compact" class="mb-3">{{ error }}</v-alert
+        ><v-autocomplete
+          v-model="enrollForm.classSectionId"
+          :items="enrollClasses"
+          item-title="name"
+          item-value="id"
+          label="Class section"
+          :rules="[(v: string) => !!v || 'Pick the class to enroll into']" /><v-text-field
+          v-model="enrollForm.rollNo"
+          label="Roll no (optional)" /></v-card-text
+      ><v-card-actions
+        ><v-spacer /><v-btn variant="text" @click="enrollForm.open = false">Cancel</v-btn
+        ><v-btn
+          color="primary"
+          :disabled="!enrollForm.classSectionId"
+          :loading="enrollForm.busy"
+          @click="enroll"
+          >Enroll</v-btn
+        ></v-card-actions
+      ></v-card
+    ></v-dialog
+  ><v-snackbar :model-value="!!notice" color="success" @update:model-value="notice = null">{{
+    notice
+  }}</v-snackbar>
 </template>

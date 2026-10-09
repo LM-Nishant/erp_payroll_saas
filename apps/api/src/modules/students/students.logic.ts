@@ -1,14 +1,8 @@
-export const ADMISSION_TRANSITIONS: Record<string, readonly string[]> = {
-  DRAFT: ['SUBMITTED'],
-  SUBMITTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED', 'WAITLISTED'],
-  UNDER_REVIEW: ['APPROVED', 'REJECTED', 'WAITLISTED'],
-  WAITLISTED: ['UNDER_REVIEW', 'APPROVED', 'REJECTED'],
-  APPROVED: ['ENROLLED', 'REJECTED'],
-  REJECTED: [],
-  ENROLLED: [],
-};
+import { ADMISSION_TRANSITIONS, type AdmissionStatus } from '@erp/shared';
+
+export { ADMISSION_TRANSITIONS };
 export function canTransitionAdmission(from: string, to: string): boolean {
-  return ADMISSION_TRANSITIONS[from]?.includes(to) ?? false;
+  return ADMISSION_TRANSITIONS[from as AdmissionStatus]?.includes(to as AdmissionStatus) ?? false;
 }
 export function formatStudentNumber(prefix: string, padding: number, nextNumber: number): string {
   return `${prefix}${String(nextNumber).padStart(padding, '0')}`;
