@@ -138,6 +138,9 @@ test.describe('Platform · support@erp.local', () => {
     const s = session();
     await s.go('/platform/organizations');
     const mark = s.mark();
+    // Archived "E2E Academy" orgs from earlier runs can push Greenwood off the first page.
+    await fill(s.page, 'Search', 'Greenwood');
+    await s.settle();
     await expect(rows(s.page).filter({ hasText: 'Greenwood' }).first()).toBeVisible();
     await expect(s.page.getByRole('button', { name: 'New organization' })).toHaveCount(0);
     await expectClean(s, mark, 'support org list');

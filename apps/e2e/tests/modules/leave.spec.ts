@@ -60,7 +60,8 @@ test.describe('Leave · employee applies', () => {
       await expect(s.page.locator('tbody tr').filter({ hasText: day }).first()).toContainText(
         /Pending/i,
       );
-    await expectClean(s, mark, 'apply leave');
+    // applyLeave retries on another day when the random one overlaps an earlier run's request.
+    await expectClean(s, mark, 'apply leave', ['CONFLICT']);
   });
 });
 

@@ -12,6 +12,8 @@ interface RoleCase {
   denied: string[];
   /** Text that must be visible on the first allowed page. */
   shows?: RegExp;
+  /** Typed into the page's Search box before checking `shows` (lists grow across runs). */
+  search?: string;
 }
 
 const CASES: RoleCase[] = [
@@ -88,6 +90,7 @@ const CASES: RoleCase[] = [
     allowed: ['/platform/organizations'],
     denied: ['/institution/students', '/hr/employees'],
     shows: /Greenwood/,
+    search: 'Greenwood',
   },
 ];
 
@@ -118,6 +121,10 @@ for (const c of CASES) {
       expect(problems).toEqual([]);
       if (c.shows) {
         await s.go(c.allowed[0]!);
+        if (c.search) {
+          await s.page.getByLabel('Search').fill(c.search);
+          await s.settle();
+        }
         await expect(s.page.getByText(c.shows).first()).toBeVisible();
       }
     });
