@@ -9,6 +9,9 @@ describe('student/admission pure rules', () => {
     expect(canTransitionAdmission('SUBMITTED', 'UNDER_REVIEW')).toBe(true);
     expect(canTransitionAdmission('APPROVED', 'ENROLLED')).toBe(true);
     expect(canTransitionAdmission('REJECTED', 'APPROVED')).toBe(false);
+    expect(canTransitionAdmission('REJECTED', 'UNDER_REVIEW')).toBe(true);
+    expect(canTransitionAdmission('REJECTED', 'REJECTED')).toBe(false);
+    expect(canTransitionAdmission('DRAFT', 'REJECTED')).toBe(false);
     expect(canTransitionAdmission('ENROLLED', 'REJECTED')).toBe(false);
   });
 });

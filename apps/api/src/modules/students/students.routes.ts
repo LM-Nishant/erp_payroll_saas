@@ -133,6 +133,10 @@ admissionsRouter.post(
     });
   },
 );
+admissionsRouter.delete('/:id', requirePermission('admission.manage'), async (req, res) => {
+  await admissionsService.remove(idOf(req));
+  res.status(204).end();
+});
 admissionsRouter.post('/:id/enroll', requirePermission('admission.manage'), async (req, res) => {
   res.status(201).json({
     data: await admissionsService.enroll(idOf(req), parseInput(enrollAdmissionSchema, req.body)),

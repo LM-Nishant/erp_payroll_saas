@@ -60,7 +60,10 @@ async function resolveAdmissionRefs(
 
 async function nextApplicationNo(tx: Tx, institutionId: string) {
   const year = new Date().getFullYear();
-  const count = await tx.admissionApplication.count({ where: { institutionId } });
+  // Count deleted applications too so numbers are never reused after a delete.
+  const count = await tx.admissionApplication.count({
+    where: { institutionId, deletedAt: undefined },
+  });
   const inst = await tx.institution.findUnique({
     where: { id: institutionId },
     select: { code: true },
@@ -224,7 +227,9 @@ export const admissionsService = {
         decisionComment: input.comment,
         decidedAt: ['APPROVED', 'REJECTED', 'WAITLISTED'].includes(input.status)
           ? new Date()
-          : before.decidedAt,
+          : before.status === 'REJECTED'
+            ? null
+            : before.decidedAt,
         submittedAt: input.status === 'SUBMITTED' ? new Date() : before.submittedAt,
       },
     });
@@ -235,7 +240,9 @@ export const admissionsService = {
           ? 'admission.rejected'
           : input.status === 'WAITLISTED'
             ? 'admission.waitlisted'
-            : 'admission.updated';
+            : before.status === 'REJECTED'
+              ? 'admission.reopened'
+              : 'admission.updated';
     await audit.record({
       action,
       entityType: 'admission_application',
@@ -246,6 +253,25 @@ export const admissionsService = {
     if (['APPROVED', 'REJECTED'].includes(input.status))
       await emit(action, { applicationId: id }, { institutionId: updated.institutionId });
     return toAdmissionDto(updated);
+  },
+
+  async remove(id: string) {
+    const before = await loadVisible(id);
+    await authorize(currentPrincipal(), 'admission.manage', hierarchyResource.admission(before));
+    if (before.status === 'ENROLLED')
+      throw new ConflictError(
+        'Enrolled applications cannot be deleted; withdraw the student instead',
+      );
+    await tenantDb().admissionApplication.update({
+      where: { id },
+      data: { deletedAt: new Date() },
+    });
+    await audit.record({
+      action: 'admission.deleted',
+      entityType: 'admission_application',
+      entityId: id,
+      before: toAdmissionDto(before),
+    });
   },
 
   async enroll(id: string, input: EnrollAdmissionInput) {

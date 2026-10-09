@@ -17,6 +17,8 @@ export interface DemoUser {
   name: string;
   org: string | null;
   roleKey: string;
+  /** Every role assignment of the user (key + scope). */
+  roles?: Array<{ key: string; scope: string; scopeName: string }>;
   institution: string | null;
   persona: string;
   loginOk: boolean;
