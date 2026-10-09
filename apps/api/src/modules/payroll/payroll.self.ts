@@ -6,6 +6,8 @@ import type {
   SalaryStatementMonthDto,
   SalaryStatementRowDto,
 } from '@erp/shared';
+import type { Employee } from '@prisma/client';
+import { audit } from '../../core/audit';
 import { currentPrincipal, hasPermission } from '../../core/authz';
 import { AppError, NotFoundError } from '../../core/http/errors';
 import { tenantDb } from '../../core/tenancy';
@@ -14,7 +16,9 @@ import { employeeAssignmentAsOf, employeeIdsForUser } from '../employees/employe
 import { dateStr } from '../employees/employees.mappers';
 import { PayrollEngineError } from './engine';
 import { computeEmployee, salarySnapshot } from './payroll.compute';
+import { payrollEmployee } from './payroll.access';
 import { num } from './payroll.mappers';
+import { salaryStructurePdfFile } from './payroll.salary-pdf';
 
 /*
  * Employee self-service "My salary": the salary structure in force today (monthly + annual per
@@ -104,70 +108,77 @@ const nameOf = async (
   return row?.name ?? null;
 };
 
-export const selfSalaryService = {
-  async mySalary(today = dateStr(new Date())): Promise<MySalaryDto> {
-    const employee = await myEmployee();
-    const salary = await salarySnapshot(employee.id, today);
-    if (!salary) throw new NotFoundError('Salary');
-    const assignment = await employeeAssignmentAsOf(employee.id, today);
-    const institutionId = assignment?.institutionId ?? employee.institutionId;
-    const ym = today.slice(0, 7);
-    const periodStart = `${ym}-01`;
-    const end = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0));
-    const periodEnd = dateStr(end);
-    const days = end.getUTCDate();
-    let lines: PayrollLineDto[];
-    let warnings: string[] = [];
-    try {
-      const { result } = await computeEmployee({
-        institutionId,
-        periodStart,
-        periodEnd,
-        salary,
-        basis: {
-          calendarDays: days,
-          employedDays: days,
-          payableDays: days,
-          lopDays: 0,
-          presentDays: days,
-          overtimeHours: 0,
-          institutionDays: days,
-          locked: false,
-          factor: 1,
-          warnings: [],
-        },
-        employmentType: assignment?.employmentType ?? null,
-        adjustments: [],
-      });
-      lines = result.lines;
-      warnings = result.warnings;
-    } catch (e) {
-      if (e instanceof PayrollEngineError) {
-        throw new AppError(422, 'PAYROLL_COMPUTE_FAILED', e.message);
-      }
-      throw e;
+/**
+ * Salary structure in force on `today` for one employee (monthly + annual per component, computed
+ * by the payroll engine for a full month). Callers authorize access to `employee` first.
+ */
+export async function salaryOverview(
+  employee: Employee,
+  today = dateStr(new Date()),
+): Promise<{ dto: MySalaryDto; institutionId: string }> {
+  const salary = await salarySnapshot(employee.id, today);
+  if (!salary) throw new NotFoundError('Salary');
+  const assignment = await employeeAssignmentAsOf(employee.id, today);
+  const institutionId = assignment?.institutionId ?? employee.institutionId;
+  const ym = today.slice(0, 7);
+  const periodStart = `${ym}-01`;
+  const end = new Date(Date.UTC(Number(ym.slice(0, 4)), Number(ym.slice(5, 7)), 0));
+  const periodEnd = dateStr(end);
+  const days = end.getUTCDate();
+  let lines: PayrollLineDto[];
+  let warnings: string[] = [];
+  try {
+    const { result } = await computeEmployee({
+      institutionId,
+      periodStart,
+      periodEnd,
+      salary,
+      basis: {
+        calendarDays: days,
+        employedDays: days,
+        payableDays: days,
+        lopDays: 0,
+        presentDays: days,
+        overtimeHours: 0,
+        institutionDays: days,
+        locked: false,
+        factor: 1,
+        warnings: [],
+      },
+      employmentType: assignment?.employmentType ?? null,
+      adjustments: [],
+    });
+    lines = result.lines;
+    warnings = result.warnings;
+  } catch (e) {
+    if (e instanceof PayrollEngineError) {
+      throw new AppError(422, 'PAYROLL_COMPUTE_FAILED', e.message);
     }
-    const groups = componentsByCategory(lines);
-    const sum = (xs: MySalaryComponentDto[]) => round2(xs.reduce((a, x) => a + x.monthly, 0));
-    const grossMonthly = sum(groups.earnings);
-    const deductionsMonthly = sum(groups.deductions);
-    const [structure, history, designation, department, institution] = await Promise.all([
-      salary.structureId
-        ? db().salaryStructure.findFirst({
-            where: { id: salary.structureId },
-            select: { name: true },
-          })
-        : null,
-      db().employeeSalaryHistory.findMany({
-        where: { employeeId: employee.id },
-        orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
-      }),
-      nameOf('designation', assignment?.designationId ?? employee.designationId),
-      nameOf('department', assignment?.departmentId ?? employee.departmentId),
-      nameOf('institution', institutionId),
-    ]);
-    const current = history.find((h) => h.id === salary.salaryHistoryId);
-    return {
+    throw e;
+  }
+  const groups = componentsByCategory(lines);
+  const sum = (xs: MySalaryComponentDto[]) => round2(xs.reduce((a, x) => a + x.monthly, 0));
+  const grossMonthly = sum(groups.earnings);
+  const deductionsMonthly = sum(groups.deductions);
+  const [structure, history, designation, department, institution] = await Promise.all([
+    salary.structureId
+      ? db().salaryStructure.findFirst({
+          where: { id: salary.structureId },
+          select: { name: true },
+        })
+      : null,
+    db().employeeSalaryHistory.findMany({
+      where: { employeeId: employee.id },
+      orderBy: [{ effectiveFrom: 'desc' }, { createdAt: 'desc' }],
+    }),
+    nameOf('designation', assignment?.designationId ?? employee.designationId),
+    nameOf('department', assignment?.departmentId ?? employee.departmentId),
+    nameOf('institution', institutionId),
+  ]);
+  const current = history.find((h) => h.id === salary.salaryHistoryId);
+  return {
+    institutionId,
+    dto: {
       employeeId: employee.id,
       employeeCode: employee.employeeCode,
       employeeName: employee.displayName,
@@ -191,7 +202,25 @@ export const selfSalaryService = {
         reason: h.revisionReason,
       })),
       warnings,
-    };
+    },
+  };
+}
+
+export const selfSalaryService = {
+  async mySalary(today = dateStr(new Date())): Promise<MySalaryDto> {
+    return (await salaryOverview(await myEmployee(), today)).dto;
+  },
+
+  /** Own salary structure as a branded PDF. */
+  async mySalaryPdf(today = dateStr(new Date())) {
+    const employee = await myEmployee();
+    return salaryStructurePdf(await salaryOverview(employee, today), employee.id, true);
+  },
+
+  /** HR / payroll: an employee's current salary structure as a branded PDF. */
+  async employeeSalaryPdf(employeeId: string, today = dateStr(new Date())) {
+    const employee = await payrollEmployee(employeeId, 'salary.view');
+    return salaryStructurePdf(await salaryOverview(employee, today), employee.id, false);
   },
 
   async statement(fy?: string, today = dateStr(new Date())): Promise<SalaryStatementDto> {
@@ -293,3 +322,18 @@ export const selfSalaryService = {
     };
   },
 };
+
+async function salaryStructurePdf(
+  overview: { dto: MySalaryDto; institutionId: string },
+  employeeId: string,
+  self: boolean,
+) {
+  const file = await salaryStructurePdfFile(overview.dto, overview.institutionId);
+  await audit.record({
+    action: 'payroll.salary_structure.download',
+    entityType: 'employee',
+    entityId: employeeId,
+    metadata: { self, effectiveFrom: overview.dto.effectiveFrom },
+  });
+  return file;
+}

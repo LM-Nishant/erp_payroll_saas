@@ -4,6 +4,7 @@ import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import NotificationBell from '@/components/NotificationBell.vue';
+import SubscriptionBanner from '@/components/SubscriptionBanner.vue';
 import AiAssistantPanel from '@/components/ai/AiAssistantPanel.vue';
 import { MENUS, visibleMenu, type LayoutKey } from '@/navigation/menus';
 import { useTerms } from '@/lib/terms';
@@ -87,6 +88,7 @@ async function signOut() {
   </v-app-bar>
   <v-main>
     <v-container fluid>
+      <SubscriptionBanner />
       <router-view />
     </v-container>
   </v-main>

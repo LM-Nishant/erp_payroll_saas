@@ -34,10 +34,13 @@ const SELFIE_MAX_BYTES = 3 * 1024 * 1024;
 
 /* ---- self-service (before parameterised routes) ---- */
 
-/** JSON, or multipart with a `file` selfie + fields (direction, source, geo, faceDescriptor JSON). */
+/**
+ * JSON (direction, source, geo, faceDescriptor). Legacy multipart bodies are still accepted, but
+ * any attached selfie image is discarded — punch selfies are never stored.
+ */
 attendanceRouter.post('/me/punch', async (req, res) => {
   if (req.is('multipart/form-data')) {
-    const { file, fields } = await parseMultipartFile(req, {
+    const { fields } = await parseMultipartFile(req, {
       maxBytes: SELFIE_MAX_BYTES,
       maxFields: 8,
     });
@@ -51,7 +54,7 @@ attendanceRouter.post('/me/punch', async (req, res) => {
           : v;
     }
     const input = parseInput(selfPunchSchema, body);
-    res.status(201).json({ data: await attendanceService.selfPunch(input, file) });
+    res.status(201).json({ data: await attendanceService.selfPunch(input) });
     return;
   }
   const input = parseInput(selfPunchSchema, req.body);

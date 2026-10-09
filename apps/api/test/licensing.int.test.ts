@@ -154,6 +154,9 @@ describe.skipIf(!hasTestDatabase)('module licensing + subscriptions', () => {
       expect(state('whatsapp')).toMatchObject({ enabled: false, licensed: false });
       const org = (await bccAdmin.get('/api/v1/features').expect(200)).body.data;
       expect(org.features.find((f: { key: string }) => f.key === 'hr').enabled).toBe(true);
+      // Module routes that name the institution honour the institution override.
+      const blocked = await bccAdmin.get(`/api/v1/employees?institutionId=${inst.id}`).expect(403);
+      expect(blocked.body.error.code).toBe('FEATURE_DISABLED');
     } finally {
       await bccAdmin.delete(`/api/v1/features/overrides/${off.id}`).expect(204);
     }

@@ -20,7 +20,6 @@ import {
   scopeWhere,
 } from '../../core/authz';
 import { isUniqueViolation } from '../../core/db/helpers';
-import { documentEngine } from '../../core/documents';
 import { emit } from '../../core/events';
 import {
   AppError,
@@ -29,11 +28,10 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../core/http/errors';
-import type { MultipartFile } from '../../core/http/multipart';
 import { toPageWindow } from '../../core/http/pagination';
 import { tenantDb, withTenant } from '../../core/tenancy';
 import { parseCsv } from '../employees/employees.import';
-import { faceDistance, imageUploadPolicy, storedDescriptor } from '../employees/employees.photo';
+import { faceDistance, storedDescriptor } from '../employees/employees.photo';
 import { resolveDaysForEmployee } from '../holidays/holidays.service';
 import {
   assertActionable,
@@ -97,16 +95,12 @@ export async function punchDay(
 export const FACE_MATCH_THRESHOLD = 0.5;
 
 /**
- * Selfie punch check: the browser sends the selfie and its descriptor; the server compares the
- * descriptor with the one stored from the profile photo and keeps the selfie as evidence.
- * (Descriptors are computed client-side, so this deters casual proxy punching; it is not
- * liveness detection.)
+ * Selfie punch check: the browser captures a live selfie and sends only its face descriptor; the
+ * server compares it with the one stored from the profile photo. The selfie image is never
+ * uploaded or stored — only the match distance is kept on the punch. (Descriptors are computed
+ * client-side, so this deters casual proxy punching; it is not liveness detection.)
  */
-async function verifySelfie(
-  employee: Employee,
-  descriptor: number[] | undefined,
-  selfie: MultipartFile | undefined,
-) {
+async function verifySelfie(employee: Employee, descriptor: number[] | undefined) {
   const stored = storedDescriptor(employee);
   if (!stored) {
     throw new AppError(
@@ -115,7 +109,7 @@ async function verifySelfie(
       'Upload a clear profile photo before punching with a selfie',
     );
   }
-  if (!descriptor || !selfie) {
+  if (!descriptor) {
     throw new AppError(400, 'SELFIE_REQUIRED', 'A selfie is required to punch');
   }
   const distance = Math.round(faceDistance(stored, descriptor) * 10_000) / 10_000;
@@ -131,21 +125,7 @@ async function verifySelfie(
       threshold: FACE_MATCH_THRESHOLD,
     });
   }
-  const doc = await documentEngine.attach({
-    ownerType: 'employee',
-    ownerId: employee.id,
-    module: 'attendance',
-    metadata: {
-      title: `Punch selfie ${new Date().toISOString()}`,
-      category: 'employment',
-      documentType: 'attendance_selfie',
-      confidentiality: 'CONFIDENTIAL',
-    },
-    file: selfie,
-    policy: imageUploadPolicy(3 * 1024 * 1024),
-    authorization: 'caller',
-  });
-  return { documentId: doc.id, distance };
+  return { distance };
 }
 
 async function insertPunch(
@@ -314,7 +294,7 @@ async function assertNotFuture(ctx: AttendanceContext, institutionId: string, da
 export const attendanceService = {
   /* ---- punches ---- */
 
-  async selfPunch(input: SelfPunchInput, selfie?: MultipartFile) {
+  async selfPunch(input: SelfPunchInput) {
     const employee = await ownEmployee('attendance.punch_own');
     assertActionable(employee);
     const ctx = new AttendanceContext();
@@ -330,11 +310,10 @@ export const attendanceService = {
     }
     await ctx.assertUnlocked(day.institutionId, day.date);
     const face = policy.requireFaceMatch
-      ? await verifySelfie(employee, input.faceDescriptor, selfie)
+      ? await verifySelfie(employee, input.faceDescriptor)
       : null;
     const punch = await insertPunch(employee, instant, day.date, {
       ...input,
-      selfieDocumentId: face?.documentId ?? null,
       faceDistance: face?.distance ?? null,
     });
     if (!punch) throw new ConflictError('Punch already recorded');

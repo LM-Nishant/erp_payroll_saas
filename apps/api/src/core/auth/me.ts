@@ -4,15 +4,27 @@ import { effectivePermissions, type Principal } from '../authz/principal';
 import { resolveBranding } from '../branding';
 import { documentEngine } from '../documents';
 import { enabledFeaturesAnywhere } from '../features/features';
+import { loadLicense } from '../features/license';
 import type { SettingTarget } from '../settings/target';
 import { getUserById } from './identity';
 
 async function licensing(principal: Principal) {
-  if (!principal.organizationId) return { features: [], branding: null };
+  if (!principal.organizationId) return { features: [], branding: null, subscription: null };
   const organizationId = principal.organizationId;
+  const license = await loadLicense(organizationId);
+  const sub = license.subscription;
   return {
     features: await enabledFeaturesAnywhere({ organizationId }),
     branding: await homeBranding(principal, organizationId),
+    subscription: sub
+      ? {
+          status: sub.status,
+          planName: sub.plan.name,
+          active: license.active,
+          trialEndsAt: sub.trialEndsAt?.toISOString() ?? null,
+          currentPeriodEnd: sub.currentPeriodEnd?.toISOString() ?? null,
+        }
+      : null,
   };
 }
 

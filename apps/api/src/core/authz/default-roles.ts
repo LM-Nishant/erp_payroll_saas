@@ -248,6 +248,8 @@ const PAYROLL = [
   'salary.update',
   'document.view',
   'document.download',
+  // Payslips / Form 16 are CONFIDENTIAL documents.
+  'document.view_confidential',
   'ai.use',
 ] as PermissionCode[];
 

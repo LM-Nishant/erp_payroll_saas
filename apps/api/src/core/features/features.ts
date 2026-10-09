@@ -149,15 +149,21 @@ export async function assertFeatureEnabled(key: FeatureKey, target: FeatureTarge
 
 export type FeatureTargetResolver = (req: Request) => FeatureTarget | Promise<FeatureTarget>;
 
+function queryInstitutionTarget(req: Request): FeatureTarget {
+  const id = req.query?.institutionId;
+  return typeof id === 'string' && id.length > 0 ? { institutionId: id } : {};
+}
+
 /**
  * Route guard: 403 FEATURE_DISABLED unless the module is enabled. Without a resolver the module
  * must be enabled somewhere in the organization (coarse gate; services then call
- * `assertFeatureEnabled(key, { institutionId })` for the concrete resource). With a resolver it
- * must be enabled for the resolved target. Mount AFTER tenant context.
+ * `assertFeatureEnabled(key, { institutionId })` for the concrete resource) — or, when the request
+ * names an institution (`?institutionId=`), for that institution so institution-level overrides
+ * apply. With a resolver it must be enabled for the resolved target. Mount AFTER tenant context.
  */
 export function requireFeature(key: FeatureKey, resolver?: FeatureTargetResolver): RequestHandler {
   return async (req, _res, next) => {
-    await assertFeatureEnabled(key, resolver ? await resolver(req) : {});
+    await assertFeatureEnabled(key, resolver ? await resolver(req) : queryInstitutionTarget(req));
     next();
   };
 }

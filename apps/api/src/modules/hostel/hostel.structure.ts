@@ -18,6 +18,7 @@ import type {
   UpdateMessPlanInput,
 } from '@erp/shared';
 import { audit } from '../../core/audit';
+import { assertFeatureEnabled } from '../../core/features';
 import { isUniqueViolation } from '../../core/db/helpers';
 import { ConflictError, InvalidReferenceError } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
@@ -142,6 +143,8 @@ export const hostelService = {
   async create(input: CreateHostelInput) {
     const inst = await resolveInstitution(input.institutionId);
     await authorizeRow({ institutionId: inst.id, groupId: inst.groupId }, HOSTEL_MANAGE);
+    // Institution-level overrides can switch the module off for this campus.
+    await assertFeatureEnabled('hostel', { institutionId: inst.id, groupId: inst.groupId });
     const warden = await resolveWarden(input.wardenEmployeeId, inst.id);
     try {
       const h = await db().hostel.create({

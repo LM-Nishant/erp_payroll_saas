@@ -6,7 +6,7 @@ import type {
   MyAttendanceDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ApiError, apiFetch } from '@/api/client';
+import { ApiError, apiFetch, isNotLinked } from '@/api/client';
 import SelfieCaptureDialog from '@/components/SelfieCaptureDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { label } from './useHrOptions';
@@ -26,19 +26,36 @@ const month = ref(currentMonth());
 const data = ref<MyAttendanceDto | null>(null);
 const regularizations = ref<AttendanceRegularizationDto[]>([]);
 const error = ref<string | null>(null);
+const notLinked = ref(false);
 const notice = ref<string | null>(null);
 const run = async (fn: () => Promise<void>) => {
   error.value = null;
   try {
     await fn();
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   }
 };
+
+// Today's punches decide the single punch button: last punch IN -> offer OUT, otherwise IN.
+const todayPunches = ref<AttendancePunchDto[]>([]);
+const nextDirection = computed<'IN' | 'OUT'>(() =>
+  todayPunches.value.at(-1)?.direction === 'IN' ? 'OUT' : 'IN',
+);
+async function loadToday() {
+  if (!auth.can('attendance.punch_own')) return;
+  const now = new Date();
+  const d = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  todayPunches.value = (
+    await apiFetch<{ data: MyAttendanceDto }>(`/api/v1/attendance/me?from=${d}&to=${d}`)
+  ).data.punches;
+}
 
 async function load() {
   const { from, to } = monthRange(month.value);
   await run(async () => {
+    await loadToday();
     [data.value, regularizations.value] = await Promise.all([
       apiFetch<{ data: MyAttendanceDto }>(`/api/v1/attendance/me?from=${from}&to=${to}`).then(
         (r) => r.data,
@@ -80,7 +97,7 @@ async function startSelfie(direction: 'IN' | 'OUT') {
   });
 }
 
-async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor: number[] }) {
+async function punch(direction: 'IN' | 'OUT', capture?: { descriptor: number[] }) {
   if (!capture && data.value?.faceMatchRequired) return startSelfie(direction);
   const pos = await position();
   const fields: Record<string, string | number> = {
@@ -88,16 +105,8 @@ async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor
     direction,
     ...(pos ? { latitude: pos.coords.latitude, longitude: pos.coords.longitude } : {}),
   };
-  let body: string | FormData;
-  if (capture) {
-    const form = new FormData();
-    for (const [k, v] of Object.entries(fields)) form.append(k, String(v));
-    form.append('faceDescriptor', JSON.stringify(capture.descriptor));
-    form.append('file', capture.file, 'selfie.jpg');
-    body = form;
-  } else {
-    body = JSON.stringify(fields);
-  }
+  // Only the face descriptor leaves the browser; the selfie image is never uploaded.
+  const body = JSON.stringify(capture ? { ...fields, faceDescriptor: capture.descriptor } : fields);
   error.value = null;
   try {
     const res = await apiFetch<{ data: { punch: AttendancePunchDto } }>(
@@ -111,8 +120,7 @@ async function punch(direction: 'IN' | 'OUT', capture?: { file: Blob; descriptor
     error.value = (e as Error).message;
   }
 }
-const onSelfie = (file: Blob, descriptor: number[]) =>
-  punch(selfie.direction, { file, descriptor });
+const onSelfie = (_file: Blob, descriptor: number[]) => punch(selfie.direction, { descriptor });
 
 // Calendar grid (Sunday-first weeks)
 const byDate = computed(
@@ -181,8 +189,13 @@ const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
     <h2 class="text-h5">My attendance</h2>
     <v-spacer />
     <template v-if="auth.can('attendance.punch_own')">
-      <v-btn color="success" prepend-icon="mdi-login" @click="punch('IN')">Punch in</v-btn>
-      <v-btn color="primary" prepend-icon="mdi-logout" @click="punch('OUT')">Punch out</v-btn>
+      <v-btn
+        :color="nextDirection === 'IN' ? 'success' : 'primary'"
+        :prepend-icon="nextDirection === 'IN' ? 'mdi-login' : 'mdi-logout'"
+        @click="punch(nextDirection)"
+      >
+        {{ nextDirection === 'IN' ? 'Punch in' : 'Punch out' }}
+      </v-btn>
       <v-chip v-if="data?.faceMatchRequired" size="small" prepend-icon="mdi-face-recognition">
         Selfie required
       </v-chip>
@@ -197,6 +210,9 @@ const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
       @change="load"
     />
   </div>
+  <v-alert v-if="notLinked" type="info" variant="tonal" class="mb-4"
+    >Your account is not linked to an employee record. Contact HR.</v-alert
+  >
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>

@@ -847,10 +847,11 @@ transfer files and never persist clear values.
   (`Employee.photoDocumentId`) and the face descriptor (`Employee.faceDescriptor`).
   `GET …/photo-url` returns a signed URL; `GET /employees/me/face` returns the reference descriptor.
 - **Selfie punch.** When `AttendancePolicy.requireFaceMatch` is on, `POST /attendance/me/punch`
-  must be multipart with a selfie `file` and `faceDescriptor` (400 `SELFIE_REQUIRED`). The server
+  must include the live selfie's `faceDescriptor` (400 `SELFIE_REQUIRED`). The server
   compares Euclidean distance with the stored descriptor (threshold 0.5): no reference →
-  409 `PROFILE_PHOTO_REQUIRED`, mismatch → 422 `FACE_MISMATCH`. The selfie is stored as a document
-  (`AttendancePunch.selfieDocumentId`, `faceDistance`). Descriptors are computed in the browser with
+  409 `PROFILE_PHOTO_REQUIRED`, mismatch → 422 `FACE_MISMATCH`. The selfie image is **never uploaded or
+  stored**; only `AttendancePunch.faceDistance` is kept (`selfieDocumentId` is legacy, now always
+  null; a multipart image sent by old clients is discarded). Descriptors are computed in the browser with
   `@vladmandic/face-api` (models in `apps/web/public/models`). There is **no liveness detection**,
   so a printed photo can pass; treat this as a deterrent, not strong biometric proof.
   Browsers expose the camera only on HTTPS or localhost; for phones on the LAN run the web dev

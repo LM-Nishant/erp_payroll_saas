@@ -57,6 +57,7 @@ const dialog = reactive({
   level: null as number | null,
 });
 async function openDialog(d?: DesignationDto) {
+  error.value = null;
   await loadForInstitution(d?.institutionId ?? null);
   Object.assign(dialog, {
     open: true,
@@ -216,6 +217,7 @@ const categories = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value)
   <v-dialog v-model="dialog.open" max-width="520">
     <v-card :title="dialog.id ? 'Edit designation' : 'New designation'">
       <v-card-text>
+        <v-alert v-if="error" type="error" density="compact" class="mb-3">{{ error }}</v-alert>
         <v-text-field v-model="dialog.code" label="Code *" />
         <v-text-field v-model="dialog.name" label="Name *" />
         <v-autocomplete

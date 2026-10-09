@@ -6,6 +6,7 @@ import {
   type LeaveLedgerEntryDto,
   type LeaveRequestDto,
   type LeaveTypeDto,
+  type WorkflowInboxItemDto,
 } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
@@ -33,15 +34,35 @@ const typeCode = (id: string) => types.value.find((t) => t.id === id)?.code ?? i
 const status = ref<string | null>('PENDING_APPROVAL');
 const requests = ref<LeaveRequestDto[]>([]);
 const loading = ref(false);
+/** Leave request id -> workflow instance id, for requests awaiting the signed-in user's decision. */
+const myApprovals = ref(new Map<string, string>());
 async function loadRequests() {
   loading.value = true;
   await run(async () => {
     const q = status.value ? `&status=${status.value}` : '';
-    requests.value = (
-      await apiFetch<ApiListResponse<LeaveRequestDto>>(`/api/v1/leave/requests?pageSize=100${q}`)
-    ).data;
+    const [list, inbox] = await Promise.all([
+      apiFetch<ApiListResponse<LeaveRequestDto>>(`/api/v1/leave/requests?pageSize=100${q}`),
+      apiFetch<ApiListResponse<WorkflowInboxItemDto>>('/api/v1/workflows/inbox?pageSize=100'),
+    ]);
+    requests.value = list.data;
+    myApprovals.value = new Map(
+      inbox.data.filter((i) => i.entityType === 'leave_request').map((i) => [i.entityId, i.id]),
+    );
   });
   loading.value = false;
+}
+const decision = reactive({ open: false, instanceId: '', comment: '', busy: false });
+async function decide(instanceId: string, action: 'approve' | 'reject', comment?: string) {
+  decision.busy = true;
+  await run(async () => {
+    await apiFetch(`/api/v1/workflows/instances/${instanceId}/actions`, {
+      method: 'POST',
+      body: JSON.stringify({ action, comment: comment?.trim() || null }),
+    });
+    decision.open = false;
+    await loadRequests();
+  });
+  decision.busy = false;
 }
 const cancel = reactive({ open: false, id: '', reason: '' });
 async function saveCancel() {
@@ -190,6 +211,32 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
         <v-chip :color="REQUEST_COLORS[item.status]" size="small">{{ label(item.status) }}</v-chip>
       </template>
       <template #[`item.actions`]="{ item }">
+        <template v-if="item.status === 'PENDING_APPROVAL' && myApprovals.has(item.id)">
+          <v-btn
+            size="small"
+            variant="tonal"
+            color="success"
+            :loading="decision.busy"
+            @click="decide(myApprovals.get(item.id)!, 'approve')"
+          >
+            Approve
+          </v-btn>
+          <v-btn
+            size="small"
+            variant="text"
+            color="error"
+            class="ml-1"
+            @click="
+              Object.assign(decision, {
+                open: true,
+                instanceId: myApprovals.get(item.id),
+                comment: '',
+              })
+            "
+          >
+            Reject
+          </v-btn>
+        </template>
         <v-btn
           v-if="
             auth.can('leave.apply') &&
@@ -269,6 +316,25 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
     </v-table>
   </template>
 
+  <v-dialog v-model="decision.open" max-width="480">
+    <v-card title="Reject leave request">
+      <v-card-text>
+        <v-textarea v-model="decision.comment" label="Reason *" rows="3" auto-grow />
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn variant="text" @click="decision.open = false">Close</v-btn>
+        <v-btn
+          color="error"
+          :loading="decision.busy"
+          :disabled="!decision.comment.trim()"
+          @click="decide(decision.instanceId, 'reject', decision.comment)"
+        >
+          Reject
+        </v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
   <v-dialog v-model="cancel.open" max-width="480">
     <v-card title="Cancel leave">
       <v-card-text>

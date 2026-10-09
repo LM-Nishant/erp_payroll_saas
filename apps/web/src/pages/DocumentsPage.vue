@@ -62,6 +62,7 @@ async function load() {
 
 onMounted(async () => {
   await load();
+  if (!auth.can('institution.view')) return;
   try {
     institutions.value = (
       await apiFetch<ApiListResponse<Option>>('/api/v1/institutions?pageSize=100')

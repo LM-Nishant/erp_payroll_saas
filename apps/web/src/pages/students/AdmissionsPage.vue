@@ -64,33 +64,50 @@ async function loadOptions() {
     await apiFetch<ApiListResponse<Option>>('/api/v1/class-sections?pageSize=100')
   ).data;
 }
+async function act(fn: () => Promise<unknown>) {
+  error.value = null;
+  try {
+    await fn();
+    return true;
+  } catch (e) {
+    error.value = (e as Error).message;
+    return false;
+  }
+}
 async function createAdmission() {
   const program = programs.value.find((p) => p.id === form.programId);
-  await apiFetch('/api/v1/admissions', {
-    method: 'POST',
-    body: JSON.stringify({
-      ...form,
-      institutionId: form.institutionId || program?.institutionId,
-      classSectionId: form.classSectionId || null,
-      guardianPhone: form.guardianPhone || null,
+  const ok = await act(() =>
+    apiFetch('/api/v1/admissions', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...form,
+        institutionId: form.institutionId || program?.institutionId,
+        classSectionId: form.classSectionId || null,
+        guardianPhone: form.guardianPhone || null,
+      }),
     }),
-  });
+  );
+  if (!ok) return;
   createOpen.value = false;
   await load();
 }
 async function transition(a: AdmissionApplicationDto, status: string) {
-  await apiFetch(`/api/v1/admissions/${a.id}/transition`, {
-    method: 'POST',
-    body: JSON.stringify({ status, comment: `Marked ${status}` }),
-  });
-  await load();
+  const ok = await act(() =>
+    apiFetch(`/api/v1/admissions/${a.id}/transition`, {
+      method: 'POST',
+      body: JSON.stringify({ status, comment: `Marked ${status}` }),
+    }),
+  );
+  if (ok) await load();
 }
 async function enroll(a: AdmissionApplicationDto) {
-  await apiFetch(`/api/v1/admissions/${a.id}/enroll`, {
-    method: 'POST',
-    body: JSON.stringify({ classSectionId: a.classSectionId || undefined }),
-  });
-  await load();
+  const ok = await act(() =>
+    apiFetch(`/api/v1/admissions/${a.id}/enroll`, {
+      method: 'POST',
+      body: JSON.stringify({ classSectionId: a.classSectionId || undefined }),
+    }),
+  );
+  if (ok) await load();
 }
 onMounted(async () => {
   await Promise.all([load(), loadOptions()]);
@@ -104,7 +121,7 @@ watch([page, () => filters.status], load);
       v-if="auth.can('admission.manage')"
       color="primary"
       prepend-icon="mdi-plus"
-      @click="createOpen = true"
+      @click="((error = null), (createOpen = true))"
       >New application</v-btn
     >
   </div>
@@ -168,6 +185,7 @@ watch([page, () => filters.status], load);
     ><v-card
       ><v-card-title>Application</v-card-title
       ><v-card-text
+        ><v-alert v-if="error" type="error" density="compact" class="mb-3">{{ error }}</v-alert
         ><v-autocomplete
           v-model="form.programId"
           :items="programs"

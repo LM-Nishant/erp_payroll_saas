@@ -6,7 +6,7 @@ import type {
   SignedUrlDto,
 } from '@erp/shared';
 import { computed, onMounted, ref, watch } from 'vue';
-import { apiFetch } from '@/api/client';
+import { apiDownload, apiFetch, isNotLinked } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { money } from './payroll';
 
@@ -20,6 +20,7 @@ const statement = ref<SalaryStatementDto | null>(null);
 const fy = ref<string | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const notLinked = ref(false);
 
 const inr = (v: number) => `₹${money(v)}`;
 const fmtDate = (d: string | null) =>
@@ -31,7 +32,8 @@ async function loadSalary() {
   try {
     salary.value = (await apiFetch<{ data: MySalaryDto }>('/api/v1/payroll/me/salary')).data;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   }
 }
 
@@ -44,7 +46,8 @@ async function loadStatement() {
     ).data;
     fy.value = statement.value.financialYear;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   } finally {
     loading.value = false;
   }
@@ -101,6 +104,17 @@ async function loadLogo() {
 onMounted(loadLogo);
 
 const print = () => window.print();
+const downloading = ref(false);
+async function downloadPdf() {
+  downloading.value = true;
+  try {
+    await apiDownload('/api/v1/payroll/me/salary/pdf', 'salary-structure.pdf');
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    downloading.value = false;
+  }
+}
 </script>
 
 <template>
@@ -112,10 +126,23 @@ const print = () => window.print();
   <div class="d-flex align-center mb-4">
     <h2 class="text-h5">My salary</h2>
     <v-spacer />
+    <v-btn
+      v-if="salary"
+      prepend-icon="mdi-file-pdf-box"
+      color="primary"
+      class="d-print-none mr-2"
+      :loading="downloading"
+      @click="downloadPdf"
+    >
+      Download PDF
+    </v-btn>
     <v-btn prepend-icon="mdi-printer" variant="tonal" class="d-print-none" @click="print">
       Print / save PDF
     </v-btn>
   </div>
+  <v-alert v-if="notLinked" type="info" variant="tonal" class="mb-4"
+    >Your account is not linked to an employee record. Contact HR.</v-alert
+  >
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
