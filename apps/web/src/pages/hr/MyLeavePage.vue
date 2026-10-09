@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { LeaveBalanceDto, LeavePreviewDto, LeaveRequestDto, LeaveTypeDto } from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
-import { apiFetch } from '@/api/client';
+import { apiFetch, isNotLinked } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { REQUEST_COLORS } from './timeOffice';
 import { label } from './useHrOptions';
@@ -12,13 +12,15 @@ const balances = ref<LeaveBalanceDto[]>([]);
 const requests = ref<LeaveRequestDto[]>([]);
 const types = ref<LeaveTypeDto[]>([]);
 const error = ref<string | null>(null);
+const notLinked = ref(false);
 const notice = ref<string | null>(null);
 const run = async (fn: () => Promise<void>) => {
   error.value = null;
   try {
     await fn();
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   }
 };
 
@@ -127,6 +129,9 @@ const cancellable = (r: LeaveRequestDto) =>
       Apply leave
     </v-btn>
   </div>
+  <v-alert v-if="notLinked" type="info" variant="tonal" class="mb-4"
+    >Your account is not linked to an employee record. Contact HR.</v-alert
+  >
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>

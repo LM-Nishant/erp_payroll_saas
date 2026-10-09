@@ -2,6 +2,14 @@ import type { ApiErrorResponse } from '@erp/shared';
 
 const BASE_URL = import.meta.env.VITE_API_BASE_URL ?? '';
 
+/**
+ * True for a 404 from a self-service endpoint (`/me`, `/my`): the signed-in login has no linked
+ * employee / student record. Pages show an informational notice instead of an error.
+ */
+export function isNotLinked(err: unknown): boolean {
+  return err instanceof ApiError && err.status === 404;
+}
+
 export class ApiError extends Error {
   constructor(
     readonly status: number,

@@ -49,7 +49,7 @@ const punchedIn = computed(() => {
 
 onMounted(async () => {
   if (props.layout !== 'employee') return;
-  if (!auth.can('employee.view_own')) {
+  if (!auth.can('employee.view_own') || !auth.hasFeature('hr')) {
     notLinked.value = true;
     return;
   }

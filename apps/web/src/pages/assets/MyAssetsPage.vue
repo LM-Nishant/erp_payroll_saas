@@ -2,11 +2,12 @@
 import { ASSET_MAINTENANCE_PRIORITIES } from '@erp/shared';
 import type { MyAssetDto, SignedUrlDto } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
-import { apiFetch } from '@/api/client';
+import { apiFetch, isNotLinked } from '@/api/client';
 import { ASSET_STATUS_COLORS, label, opts } from './assetUi';
 
 const items = ref<MyAssetDto[]>([]);
 const error = ref<string | null>(null);
+const notLinked = ref(false);
 const notice = ref<string | null>(null);
 const loading = ref(false);
 const issueFor = ref<MyAssetDto | null>(null);
@@ -17,7 +18,8 @@ async function load() {
   try {
     items.value = (await apiFetch<{ data: MyAssetDto[] }>('/api/v1/assets/my')).data;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   } finally {
     loading.value = false;
   }
@@ -68,6 +70,9 @@ onMounted(load);
 
 <template>
   <h2 class="text-h5 mb-4">My assets</h2>
+  <v-alert v-if="notLinked" type="info" variant="tonal" class="mb-4"
+    >Your account is not linked to an employee record. Contact HR.</v-alert
+  >
   <v-alert v-if="error" type="error" class="mb-3" closable @click:close="error = null">{{
     error
   }}</v-alert>
@@ -79,7 +84,7 @@ onMounted(load);
     >{{ notice }}</v-snackbar
   >
   <v-progress-linear v-if="loading" indeterminate />
-  <v-alert v-if="!loading && !items.length" type="info" variant="tonal"
+  <v-alert v-if="!loading && !notLinked && !items.length" type="info" variant="tonal"
     >No assets are assigned to you.</v-alert
   >
   <v-row>

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { MySalaryComponentDto, MySalaryDto, SalaryStatementDto } from '@erp/shared';
 import { computed, onMounted, ref, watch } from 'vue';
-import { apiDownload, apiFetch } from '@/api/client';
+import { apiDownload, apiFetch, isNotLinked } from '@/api/client';
 import { money } from './payroll';
 
 /**
@@ -14,6 +14,7 @@ const statement = ref<SalaryStatementDto | null>(null);
 const fy = ref<string | null>(null);
 const loading = ref(false);
 const error = ref<string | null>(null);
+const notLinked = ref(false);
 
 const inr = (v: number) => `₹${money(v)}`;
 const fmtDate = (d: string | null) =>
@@ -25,7 +26,8 @@ async function loadSalary() {
   try {
     salary.value = (await apiFetch<{ data: MySalaryDto }>('/api/v1/payroll/me/salary')).data;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   }
 }
 
@@ -38,7 +40,8 @@ async function loadStatement() {
     ).data;
     fy.value = statement.value.financialYear;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   } finally {
     loading.value = false;
   }
@@ -107,6 +110,9 @@ async function downloadPdf() {
       Print / save PDF
     </v-btn>
   </div>
+  <v-alert v-if="notLinked" type="info" variant="tonal" class="mb-4"
+    >Your account is not linked to an employee record. Contact HR.</v-alert
+  >
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>

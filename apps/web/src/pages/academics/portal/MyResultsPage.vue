@@ -1,20 +1,22 @@
 <script setup lang="ts">
 import type { ExamResultDto, OwnResultsDto } from '@erp/shared';
 import { onMounted, ref, watch } from 'vue';
-import { apiDownload, apiFetch } from '@/api/client';
+import { apiDownload, apiFetch, isNotLinked } from '@/api/client';
 import { useWard } from './useWard';
 import WardPicker from './WardPicker.vue';
 
 const { wards, studentId, loadWards, withStudent } = useWard();
 const data = ref<OwnResultsDto | null>(null);
 const error = ref<string | null>(null);
+const notLinked = ref(false);
 async function load() {
   try {
     data.value = (
       await apiFetch<{ data: OwnResultsDto }>(withStudent('/api/v1/exams/my-results'))
     ).data;
   } catch (e) {
-    error.value = (e as Error).message;
+    if (isNotLinked(e)) notLinked.value = true;
+    else error.value = (e as Error).message;
   }
 }
 async function download(r: ExamResultDto) {
@@ -38,6 +40,9 @@ watch(studentId, load);
     Results<span v-if="data"> · {{ data.student.displayName }}</span>
   </h2>
   <WardPicker v-model="studentId" :wards="wards" />
+  <v-alert v-if="notLinked" type="info" variant="tonal" class="mb-4"
+    >Your account is not linked to a student record.</v-alert
+  >
   <v-alert v-if="error" type="error">{{ error }}</v-alert>
   <template v-else-if="data">
     <v-chip v-if="data.cgpa !== null" color="primary" class="mb-3">CGPA {{ data.cgpa }}</v-chip>
