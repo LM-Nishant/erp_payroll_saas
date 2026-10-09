@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed } from 'vue';
 import { useRouter } from 'vue-router';
+import SubscriptionBanner from '@/components/SubscriptionBanner.vue';
 import { WORKSPACES, visibleMenu } from '@/navigation/menus';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
@@ -34,6 +35,7 @@ async function signOut() {
         Signed in as {{ auth.me?.user.name }}
         <template v-if="auth.me?.organization">· {{ auth.me.organization.name }}</template>
       </p>
+      <SubscriptionBanner />
       <v-alert v-if="!hasOrganization" type="info" variant="tonal" class="mb-6">
         You are signed in as a platform administrator. Platform admins manage organizations, plans
         and billing only. Employees, attendance, approvals and HR live inside an organization: open

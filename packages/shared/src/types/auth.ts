@@ -1,5 +1,5 @@
 import type { ScopeType } from '../auth/permissions';
-import type { FeatureKey } from '../licensing/features';
+import type { FeatureKey, SubscriptionStatus } from '../licensing/features';
 import type { ResolvedBrandingDto } from './licensing';
 
 export interface AuthTokens {
@@ -38,4 +38,18 @@ export interface MeResponse {
   features: FeatureKey[];
   /** Branding resolved for the user's home scope (single institution → group → org). */
   branding: ResolvedBrandingDto | null;
+  /**
+   * Tenant subscription state for the app-shell banner (trial / past due / cancelled). Null for
+   * platform sessions and organizations without a subscription.
+   */
+  subscription?: MeSubscriptionSummary | null;
+}
+
+export interface MeSubscriptionSummary {
+  status: SubscriptionStatus;
+  planName: string;
+  /** False once cancelled or the trial has lapsed: licensed modules are switched off. */
+  active: boolean;
+  trialEndsAt: string | null;
+  currentPeriodEnd: string | null;
 }
