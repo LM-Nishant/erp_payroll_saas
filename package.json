@@ -20,7 +20,8 @@
     "db:migrate": "pnpm --filter @erp/api db:migrate",
     "db:deploy": "pnpm --filter @erp/api db:deploy",
     "db:seed": "pnpm --filter @erp/api db:seed",
-    "demo:seed": "node scripts/demo/seed-demo.mjs"
+    "demo:seed": "node scripts/demo/seed-demo.mjs",
+    "test:e2e": "pnpm --filter @erp/e2e e2e"
   },
   "devDependencies": {
     "@eslint/js": "^9.17.0",
