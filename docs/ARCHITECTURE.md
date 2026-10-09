@@ -492,15 +492,35 @@ ctx) })` → returns a `PdfDocumentModel` of blocks (`heading`, `paragraph`, `ke
   resolves the latest version unless pinned; generated documents record
   `metadata.templateKey/templateVersion` so old PDFs stay reproducible.
 - Renderer is pluggable (`setPdfRenderer`); default `PdfKitRenderer` (pure JS) draws the
-  letterhead from `resolveBranding` (logo, display name, colors, letterhead text, contact
-  line) and a footer with page numbers on every page.
+  letterhead from `resolveBranding` (display name, colors, letterhead text, contact line on
+  the left of page 1) and a footer with page numbers on every page. The brand logo (PNG/JPEG,
+  fit into 110×55 pt) is drawn in the **top-right corner of every page**; it is decoded once
+  and embedded once per PDF, continuation pages reserve top space for it, and an unreadable
+  logo is skipped instead of failing the PDF. Long tables break between rows and repeat their header row on each page. Platform subscription invoices are rendered
+  separately (`core/features`) and are not affected.
 - `generatePdf({ templateKey, version?, data, ownerType, ownerId, title?, category?,
 confidentiality? })` checks `pdf.generate` + `document.upload` in the owner's scope, renders
   with the owner's branding and stores the result through the document engine (module `pdf`).
   `renderPdfTemplate()` renders without storing. Sample: `generic_letter` v1. Later layers
   register `offer_letter`, `relieving_letter`, `payslip`, … in their module and call
   `generatePdf` (or `renderPdfTemplate` + `documentEngine.attach` with
-  `authorization: 'caller'` for batch jobs).
+  `authorization: 'caller'` for batch jobs). Stored PDFs must record
+  `storedPdfMetadata(templateKey, rendered, input, extra)` as document metadata: template
+  key/version, branding snapshot and the validated template input (`pdfInput`, stripped from
+  document DTOs, which expose `metadata.pdfRegeneratable` instead).
+- **Regenerate** (`regenerateStoredPdf(documentId, opts)`): re-renders a stored generated PDF
+  from its recorded input with the _current_ branding and adds it as a **new document
+  version** (same document id, history, grants and download links; reason "Regenerated with
+  the current branding"; audited `pdf.regenerate`). Endpoints:
+  `POST /pdf/documents/:id/regenerate` (`pdf.generate` + `document.upload_version`; letters,
+  handover forms, generic letters), `POST /payroll/payslips/:id/regenerate` and
+  `POST /payroll/runs/:id/payslips/regenerate-pdfs` (`payroll.lock`; the run-wide variant is
+  the background job `payroll.refresh_payslip_pdfs`), `POST /payroll/form16/:id/regenerate`
+  (`form16.manage`). Legacy payslips without a stored input are rebuilt from the frozen run
+  results; legacy generated Form 16 is recomputed from finalized payroll of its financial
+  year. Uploaded files (`NOT_REGENERATABLE`) and legacy letters/handover forms stored before
+  inputs were kept (`REGENERATE_INPUT_MISSING`) cannot be regenerated — re-issue them.
+  On-demand PDFs (receipts, report cards, reports, labels) always use the current branding.
 
 ### 7.5 Permissions, roles, env
 

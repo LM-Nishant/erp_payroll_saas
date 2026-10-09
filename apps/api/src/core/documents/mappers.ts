@@ -48,6 +48,21 @@ export type DocumentWithRelations = Document & {
   reminders: DocumentExpiryReminder[];
 };
 
+/**
+ * Metadata key holding the template input of a stored generated PDF (kept so the file can be
+ * re-rendered, e.g. with a new logo). It may contain the document's content, so it is never
+ * returned in DTOs; `pdfRegeneratable: true` is exposed instead.
+ */
+export const PDF_INPUT_METADATA_KEY = 'pdfInput';
+
+function publicMetadata(raw: unknown): Record<string, unknown> | null {
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return null;
+  const { [PDF_INPUT_METADATA_KEY]: input, ...rest } = raw as Record<string, unknown>;
+  return input != null && typeof rest.templateKey === 'string'
+    ? { ...rest, pdfRegeneratable: true }
+    : rest;
+}
+
 export function toDocumentDto(
   d: DocumentWithRelations,
   allowed: ReadonlySet<DocumentAction>,
@@ -74,7 +89,7 @@ export function toDocumentDto(
       .filter((r) => r.status !== 'CANCELLED')
       .map((r) => r.daysBefore)
       .sort((a, b) => b - a),
-    metadata: (d.metadata as Record<string, unknown> | null) ?? null,
+    metadata: publicMetadata(d.metadata),
     currentVersion: d.currentVersion
       ? toVersionDto(d.currentVersion, d.currentVersionId, names)
       : null,

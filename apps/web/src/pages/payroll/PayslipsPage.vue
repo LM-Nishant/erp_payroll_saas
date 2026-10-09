@@ -17,6 +17,8 @@ const page = ref(1);
 const form16 = ref<Form16RecordDto[]>([]);
 const error = ref<string | null>(null);
 const canForm16 = computed(() => auth.can('form16.manage'));
+const canRegenerateSlips = computed(() => auth.can('payroll.lock'));
+const notice = ref<string | null>(null);
 
 async function load() {
   error.value = null;
@@ -91,6 +93,18 @@ async function publish(r: Form16RecordDto) {
   }
 }
 
+/** Re-render a saved PDF with the current logo / branding (stored as a new version). */
+async function regenerate(path: string, what: string) {
+  if (!confirm(`Regenerate this ${what} PDF with the current logo and branding?`)) return;
+  error.value = null;
+  try {
+    await apiFetch(path, { method: 'POST', body: '{}' });
+    notice.value = `${what[0]!.toUpperCase()}${what.slice(1)} PDF regenerated with the current branding.`;
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
 const headers = [
   { title: 'Employee', key: 'employee', sortable: false },
   { title: 'Period', key: 'periodStart' },
@@ -124,6 +138,16 @@ const headers = [
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
+  <v-alert
+    v-if="notice"
+    type="success"
+    density="compact"
+    closable
+    class="mb-4"
+    @click:close="notice = null"
+  >
+    {{ notice }}
+  </v-alert>
   <v-tabs v-model="tab" class="mb-2">
     <v-tab value="payslips">Payslips</v-tab>
     <v-tab v-if="canForm16" value="form16">Form 16</v-tab>
@@ -149,6 +173,14 @@ const headers = [
         size="small"
         variant="text"
         @click="open(`/api/v1/payroll/payslips/${item.id}/download-url`)"
+      />
+      <v-btn
+        v-if="canRegenerateSlips"
+        icon="mdi-refresh"
+        size="small"
+        variant="text"
+        title="Regenerate PDF with the current branding"
+        @click="regenerate(`/api/v1/payroll/payslips/${item.id}/regenerate`, 'payslip')"
       />
     </template>
   </v-data-table-server>
@@ -176,6 +208,14 @@ const headers = [
             size="small"
             variant="text"
             @click="open(`/api/v1/payroll/form16/${r.id}/download-url`)"
+          />
+          <v-btn
+            v-if="r.generated"
+            icon="mdi-refresh"
+            size="small"
+            variant="text"
+            title="Regenerate PDF with the current branding"
+            @click="regenerate(`/api/v1/payroll/form16/${r.id}/regenerate`, 'Form 16')"
           />
         </td>
       </tr>

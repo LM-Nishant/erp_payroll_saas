@@ -224,6 +224,49 @@ const reports = computed(() => [
 const withFormat = (path: string, f: string) =>
   `${path}${path.includes('?') ? '&' : '?'}format=${f}`;
 
+/* ---- regenerate stored payslip PDFs with the current branding (new document versions) ---- */
+const notice = ref<string | null>(null);
+const canRegenerate = computed(() => auth.can('payroll.lock'));
+async function regenerateSlip(p: PayslipDto) {
+  if (!confirm(`Regenerate the payslip PDF of ${p.employeeName} with the current branding?`))
+    return;
+  busy.value = true;
+  error.value = null;
+  try {
+    const res = await apiFetch<{ data: { versionNumber: number } }>(
+      `/api/v1/payroll/payslips/${p.id}/regenerate`,
+      { method: 'POST', body: '{}' },
+    );
+    notice.value = `Payslip regenerated (version ${res.data.versionNumber}).`;
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+async function regenerateAllSlips() {
+  if (
+    !confirm(
+      'Regenerate every saved payslip PDF of this run with the current logo and branding? ' +
+        'Each PDF gets a new version; amounts are not recalculated.',
+    )
+  )
+    return;
+  busy.value = true;
+  error.value = null;
+  try {
+    const res = await apiFetch<{ data: { payslips: number } }>(
+      `${base.value}/payslips/regenerate-pdfs`,
+      { method: 'POST', body: '{}' },
+    );
+    notice.value = `Regenerating ${res.data.payslips} payslip PDF(s) in the background.`;
+  } catch (e) {
+    error.value = (e as Error).message;
+  } finally {
+    busy.value = false;
+  }
+}
+
 async function slipDownload(p: PayslipDto) {
   try {
     await openSignedUrl(`/api/v1/payroll/payslips/${p.id}/download-url`);
@@ -501,9 +544,29 @@ const empHeaders = [
             variant="tonal"
             @click="act('payslips/regenerate')"
           >
-            Regenerate payslips
+            Generate missing payslips
+          </v-btn>
+          <v-btn
+            v-if="payslips.length && canRegenerate"
+            variant="tonal"
+            class="ml-2"
+            prepend-icon="mdi-refresh"
+            :loading="busy"
+            @click="regenerateAllSlips"
+          >
+            Regenerate PDFs (current branding)
           </v-btn>
         </div>
+        <v-alert
+          v-if="notice"
+          type="success"
+          density="compact"
+          closable
+          class="mb-2"
+          @click:close="notice = null"
+        >
+          {{ notice }}
+        </v-alert>
         <v-table density="compact">
           <thead>
             <tr>
@@ -524,6 +587,15 @@ const empHeaders = [
               <td>{{ p.publishedAt.slice(0, 10) }}</td>
               <td>
                 <v-btn icon="mdi-download" size="small" variant="text" @click="slipDownload(p)" />
+                <v-btn
+                  v-if="canRegenerate"
+                  icon="mdi-refresh"
+                  size="small"
+                  variant="text"
+                  title="Regenerate PDF with the current branding"
+                  :disabled="busy"
+                  @click="regenerateSlip(p)"
+                />
               </td>
             </tr>
           </tbody>

@@ -8,16 +8,18 @@ import {
   PAYROLL_EVENTS,
   PAYROLL_NOTIFICATIONS,
   PAYROLL_RUN_WORKFLOW,
+  REFRESH_PAYSLIP_PDFS_JOB,
   REIMBURSEMENT_WORKFLOW,
 } from './payroll.constants';
 import { reimbursementWorkflowCallbacks } from './payroll.loans';
-import { generatePayslipsJob } from './payroll.payslips';
+import { generatePayslipsJob, refreshPayslipPdfsJob } from './payroll.payslips';
 import './payroll.reports';
 import {
   computeBatchJob,
   payrollRunWorkflowCallbacks,
   type ComputeBatchJob,
   type PayslipJob,
+  type PayslipRefreshJob,
 } from './payroll.runs';
 import { SALARY_REVISION_WORKFLOW, salaryRevisionWorkflowCallbacks } from './payroll.salary';
 
@@ -77,4 +79,9 @@ defineJob<PayslipJob>({
   name: GENERATE_PAYSLIPS_JOB,
   attempts: 3,
   handler: (data) => generatePayslipsJob(data),
+});
+defineJob<PayslipRefreshJob>({
+  name: REFRESH_PAYSLIP_PDFS_JOB,
+  attempts: 1,
+  handler: (data) => refreshPayslipPdfsJob(data),
 });

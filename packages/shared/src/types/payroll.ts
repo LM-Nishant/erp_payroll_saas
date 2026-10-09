@@ -316,6 +316,8 @@ export interface Form16RecordDto {
   institutionId: string;
   financialYear: string;
   documentId: string;
+  /** Generated from payroll (PDF template) — can be regenerated with the current branding. */
+  generated: boolean;
   status: 'DRAFT' | 'PUBLISHED';
   publishedAt: string | null;
   createdAt: string;

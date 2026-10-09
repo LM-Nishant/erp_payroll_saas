@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { z } from 'zod';
 import { interpolate, interpolateBlocks, type PdfBranding, type PdfDocumentModel } from './model';
-import { PdfKitRenderer } from './renderer';
+import { LOGO_BOX, PdfKitRenderer } from './renderer';
 import { pdfTemplate, pdfTemplates, registerPdfTemplate, unregisterPdfTemplate } from './templates';
 import './generic-letter';
 
@@ -118,5 +118,89 @@ describe('pdfkit renderer', () => {
   it('renders without a logo', async () => {
     const pdf = await new PdfKitRenderer({ compress: false }).render(model(false));
     expect(pdf.toString('latin1')).not.toContain('/Subtype /Image');
+  });
+
+  const A4 = { width: 595.28, height: 841.89 };
+  /** Page content streams (those drawing text), in page order. */
+  const pageStreams = (raw: string) => raw.split('endstream').filter((s) => / Tm\b/.test(s));
+  /** Logo draws: `w 0 0 -h x y cm /In Do` (pdfkit's flipped y → top = y - h). */
+  const logoDraws = (stream: string) =>
+    [...stream.matchAll(/([\d.]+) 0 0 -([\d.]+) ([\d.]+) ([\d.]+) cm\s*\/(I\d+) Do/g)].map((m) => ({
+      width: Number(m[1]),
+      height: Number(m[2]),
+      x: Number(m[3]),
+      top: Number(m[4]) - Number(m[2]),
+      name: m[5],
+    }));
+  /** Top-down y of the first text line drawn on a page. */
+  const firstTextTop = (stream: string) => {
+    const m = stream.match(/1 0 0 1 [\d.]+ ([\d.]+) Tm/);
+    return A4.height - Number(m![1]);
+  };
+
+  it('draws the brand logo in the top-right corner of every page (embedded once)', async () => {
+    const pdf = await new PdfKitRenderer({ compress: false }).render(model(true));
+    const raw = pdf.toString('latin1');
+    const pages = pageStreams(raw);
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    for (const page of pages) {
+      const draws = logoDraws(page);
+      expect(draws).toHaveLength(1);
+      const [logo] = draws;
+      // Right edge flush with the right margin, top edge on the top margin, within the box.
+      expect(logo!.x + logo!.width).toBeCloseTo(A4.width - 50, 1);
+      expect(logo!.top).toBeCloseTo(50, 1);
+      expect(logo!.width).toBeLessThanOrEqual(LOGO_BOX.width);
+      expect(logo!.height).toBeLessThanOrEqual(LOGO_BOX.height);
+    }
+    // The same image XObject is reused on every page.
+    expect(new Set(pages.flatMap((p) => logoDraws(p).map((d) => d.name))).size).toBe(1);
+    // Continuation pages start their body below the logo.
+    for (const page of pages.slice(1)) {
+      expect(firstTextTop(page)).toBeGreaterThan(50 + LOGO_BOX.height);
+    }
+    // Page 1 letterhead text stays on the left, clear of the logo column.
+    const textXs = [...pages[0]!.matchAll(/1 0 0 1 ([\d.]+) ([\d.]+) Tm/g)]
+      .filter((m) => A4.height - Number(m[2]) < 50 + LOGO_BOX.height)
+      .map((m) => Number(m[1]));
+    expect(textXs.length).toBeGreaterThan(0);
+    expect(Math.max(...textXs)).toBeLessThan(A4.width - 50 - LOGO_BOX.width);
+  });
+
+  it('keeps the plain layout when there is no logo', async () => {
+    const pdf = await new PdfKitRenderer({ compress: false }).render(model(false));
+    const pages = pageStreams(pdf.toString('latin1'));
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    for (const page of pages) expect(logoDraws(page)).toHaveLength(0);
+    // Continuation pages use the normal top margin.
+    expect(firstTextTop(pages[1]!)).toBeLessThan(50 + LOGO_BOX.height);
+  });
+
+  it('renders without the logo when the image is unreadable', async () => {
+    const broken = model(true);
+    broken.branding.logo = { mimeType: 'image/png', body: Buffer.from('not an image') };
+    const pdf = await new PdfKitRenderer({ compress: false }).render(broken);
+    const raw = pdf.toString('latin1');
+    expect(raw.startsWith('%PDF-')).toBe(true);
+    expect(raw).not.toContain('/Subtype /Image');
+    expect(raw).toContain(Buffer.from('age 2 of').toString('hex'));
+  });
+
+  it('breaks long tables between rows and repeats the header row', async () => {
+    const rows = Array.from({ length: 70 }, (_, i) => [`Row ${i + 1}`, `${i + 1}`]);
+    const pdf = await new PdfKitRenderer({ compress: false }).render({
+      ...model(true),
+      blocks: [{ type: 'table', columns: ['Component', 'Amount'], rows }],
+    });
+    const pages = pageStreams(pdf.toString('latin1'));
+    // Two or three pages — not one page per cell.
+    expect(pages.length).toBeGreaterThanOrEqual(2);
+    expect(pages.length).toBeLessThanOrEqual(3);
+    const header = Buffer.from('Component').toString('hex');
+    for (const page of pages) expect(page).toContain(header);
+    // Continuation pages start below the logo.
+    for (const page of pages.slice(1)) {
+      expect(firstTextTop(page)).toBeGreaterThan(50 + LOGO_BOX.height);
+    }
   });
 });

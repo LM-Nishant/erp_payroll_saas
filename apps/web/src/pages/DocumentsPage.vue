@@ -12,6 +12,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { canRegeneratePdf, regeneratePdf, REGENERATE_CONFIRM } from '@/api/pdf';
 import { useAuthStore } from '@/stores/auth';
 
 interface Option {
@@ -80,6 +81,16 @@ async function download(doc: DocumentDto, versionId?: string) {
       body: JSON.stringify(versionId ? { versionId } : {}),
     });
     window.open(res.data.url, '_blank', 'noopener');
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
+async function regenerate(doc: DocumentDto) {
+  if (!confirm(REGENERATE_CONFIRM)) return;
+  try {
+    await regeneratePdf(doc);
+    await load();
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -233,6 +244,14 @@ const formatSize = (n: number) =>
         variant="text"
         title="Download"
         @click="download(item)"
+      />
+      <v-btn
+        v-if="canRegeneratePdf(item, auth.can)"
+        icon="mdi-refresh"
+        size="small"
+        variant="text"
+        title="Regenerate PDF with the current branding"
+        @click="regenerate(item)"
       />
       <v-btn
         icon="mdi-history"
