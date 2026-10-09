@@ -9,7 +9,7 @@ import type {
   WebhookDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
-import { apiFetch } from '@/api/client';
+import { ApiError, apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -20,6 +20,8 @@ const auth = useAuthStore();
 const canManage = computed(() => auth.can('integration.manage'));
 const tab = ref<'clients' | 'webhooks'>('clients');
 const error = ref<string | null>(null);
+/** Webhooks are organization-wide: a scoped integration.view grant can't list them. */
+const webhooksDenied = ref(false);
 const shownSecret = ref<{ label: string; value: string } | null>(null);
 
 /* ---------------------------- API clients ---------------------------- */
@@ -136,10 +138,13 @@ async function replay(d: WebhookDeliveryDto) {
 }
 
 onMounted(async () => {
-  try {
-    await Promise.all([loadClients(), loadWebhooks()]);
-  } catch (e) {
-    error.value = (e as Error).message;
+  const results = await Promise.allSettled([loadClients(), loadWebhooks()]);
+  const [clientsResult, webhooksResult] = results;
+  if (clientsResult.status === 'rejected') error.value = (clientsResult.reason as Error).message;
+  if (webhooksResult.status === 'rejected') {
+    const e = webhooksResult.reason;
+    if (e instanceof ApiError && e.status === 403) webhooksDenied.value = true;
+    else error.value ??= (e as Error).message;
   }
 });
 
@@ -211,6 +216,9 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
     </v-data-table>
   </template>
 
+  <v-alert v-else-if="webhooksDenied" type="info" variant="tonal">
+    Webhooks are managed by organization-level integration admins.
+  </v-alert>
   <template v-else>
     <div class="d-flex mb-2">
       <v-spacer />

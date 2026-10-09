@@ -24,6 +24,8 @@ const items = ref<DepartmentRow[]>([]);
 const designations = ref<DesignationDto[]>([]);
 const loading = ref(false);
 const error = ref<string | null>(null);
+/** Designations (roles inside a department) are part of the HR module. */
+const showRoles = computed(() => auth.hasFeature('hr') && auth.can('designation.view'));
 
 async function load() {
   if (!institutionId.value) return;
@@ -34,9 +36,11 @@ async function load() {
       apiFetch<ApiListResponse<DepartmentRow>>(
         `/api/v1/departments?pageSize=100&institutionId=${institutionId.value}`,
       ).then((r) => r.data),
-      apiFetch<ApiListResponse<DesignationDto>>('/api/v1/designations?pageSize=100').then(
-        (r) => r.data,
-      ),
+      showRoles.value
+        ? apiFetch<ApiListResponse<DesignationDto>>('/api/v1/designations?pageSize=100').then(
+            (r) => r.data,
+          )
+        : Promise.resolve([]),
     ]);
   } catch (e) {
     error.value = (e as Error).message;
@@ -133,7 +137,7 @@ async function saveRole() {
 const headers = computed(() => [
   { title: 'Code', key: 'code' },
   { title: 'Name', key: 'name' },
-  { title: 'Designations / roles', key: 'roles', sortable: false },
+  ...(showRoles.value ? [{ title: 'Designations / roles', key: 'roles', sortable: false }] : []),
   { title: 'Status', key: 'status' },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ]);

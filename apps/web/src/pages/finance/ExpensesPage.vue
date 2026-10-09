@@ -109,6 +109,12 @@ async function cancel(x: ExpenseDto) {
 }
 const vendorDialog = ref(false);
 const vendorForm = reactive({ code: '', name: '', gstin: '', phone: '', email: '', address: '' });
+/** Blank = organization-wide vendor (needs organization-level finance.manage). */
+const vendorInstitutionId = ref<string | null>(null);
+function openVendor() {
+  vendorInstitutionId.value = institutions.value.length === 1 ? institutions.value[0]!.id : null;
+  vendorDialog.value = true;
+}
 async function saveVendor() {
   try {
     const body = Object.fromEntries(
@@ -117,6 +123,7 @@ async function saveVendor() {
         v === '' && k !== 'code' && k !== 'name' ? null : v,
       ]),
     );
+    if (vendorInstitutionId.value) body.institutionId = vendorInstitutionId.value;
     await apiFetch('/api/v1/finance/vendors', { method: 'POST', body: JSON.stringify(body) });
     vendorDialog.value = false;
     Object.assign(vendorForm, { code: '', name: '', gstin: '', phone: '', email: '', address: '' });
@@ -143,7 +150,7 @@ watch([page, () => ({ ...filters })], load, { deep: true });
     <template v-if="canManage"
       ><v-btn v-if="tab === 'expenses'" color="primary" prepend-icon="mdi-plus" @click="openCreate"
         >Record expense</v-btn
-      ><v-btn v-else color="primary" prepend-icon="mdi-plus" @click="vendorDialog = true"
+      ><v-btn v-else color="primary" prepend-icon="mdi-plus" @click="openVendor"
         >New vendor</v-btn
       ></template
     >
@@ -288,6 +295,14 @@ watch([page, () => ({ ...filters })], load, { deep: true });
       ><v-card-title>New vendor</v-card-title
       ><v-card-text
         ><v-row dense
+          ><v-col cols="12"
+            ><v-select
+              v-model="vendorInstitutionId"
+              :items="institutions"
+              item-title="name"
+              item-value="id"
+              label="Institution (blank = all)"
+              clearable /></v-col
           ><v-col cols="4"><v-text-field v-model="vendorForm.code" label="Code" /></v-col
           ><v-col cols="8"><v-text-field v-model="vendorForm.name" label="Name" /></v-col
           ><v-col cols="6"><v-text-field v-model="vendorForm.gstin" label="GSTIN" /></v-col

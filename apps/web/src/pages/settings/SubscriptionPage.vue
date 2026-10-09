@@ -7,7 +7,7 @@ import {
   type SubscriptionDto,
 } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
-import { apiDownload, apiFetch } from '@/api/client';
+import { ApiError, apiDownload, apiFetch } from '@/api/client';
 import { invoiceStatusColor, invoiceStatusLabel } from '@/components/billing/billing';
 import { useAuthStore } from '@/stores/auth';
 
@@ -15,6 +15,8 @@ const auth = useAuthStore();
 const subscription = ref<SubscriptionDto | null>(null);
 const invoices = ref<InvoiceDto[]>([]);
 const error = ref<string | null>(null);
+/** Billing is organization-wide: a group/institution-scoped billing.view grant can't list invoices. */
+const invoicesDenied = ref(false);
 
 async function loadInvoices() {
   invoices.value = (
@@ -25,9 +27,15 @@ async function loadInvoices() {
 onMounted(async () => {
   try {
     subscription.value = (await apiFetch<{ data: SubscriptionDto }>('/api/v1/subscription')).data;
-    if (auth.can('billing.view')) await loadInvoices();
   } catch (e) {
     error.value = (e as Error).message;
+  }
+  if (!auth.can('billing.view')) return;
+  try {
+    await loadInvoices();
+  } catch (e) {
+    if (e instanceof ApiError && e.status === 403) invoicesDenied.value = true;
+    else error.value = (e as Error).message;
   }
 });
 
@@ -146,7 +154,10 @@ const invoiceHeaders = [
       </v-card-text>
     </v-card>
   </template>
-  <v-card v-if="auth.can('billing.view')" title="Invoices">
+  <v-alert v-if="invoicesDenied" type="info" variant="tonal" class="mb-4">
+    Invoices are managed by organization-level billing users.
+  </v-alert>
+  <v-card v-else-if="auth.can('billing.view')" title="Invoices">
     <v-data-table :items="invoices" :headers="invoiceHeaders">
       <template #[`item.periodStart`]="{ item }">
         {{ date(item.periodStart) }} – {{ date(item.periodEnd) }}

@@ -8,7 +8,7 @@ import {
   type PayrollRunEmployeeDto,
   type PayslipDto,
 } from '@erp/shared';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiDownload, apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
@@ -75,6 +75,14 @@ async function reload() {
 onMounted(reload);
 watch([tab, empPage], loadTab);
 watch(() => props.id, reload);
+
+// Compute runs in background batches: poll until the run leaves COMPUTING.
+let pollTimer: ReturnType<typeof setTimeout> | undefined;
+watch(run, (r) => {
+  clearTimeout(pollTimer);
+  if (r?.status === 'COMPUTING') pollTimer = setTimeout(reload, 2000);
+});
+onBeforeUnmount(() => clearTimeout(pollTimer));
 
 const status = computed(() => run.value?.status);
 const editable = computed(() => ['DRAFT', 'COMPUTED', 'REOPENED'].includes(status.value ?? ''));

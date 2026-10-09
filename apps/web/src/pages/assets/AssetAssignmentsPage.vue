@@ -1,5 +1,10 @@
 <script setup lang="ts">
-import type { ApiListResponse, AssetAssignmentDto, AssetTransferDto } from '@erp/shared';
+import {
+  ASSET_TRANSFER_STATUSES,
+  type ApiListResponse,
+  type AssetAssignmentDto,
+  type AssetTransferDto,
+} from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
@@ -16,7 +21,7 @@ const assignments = ref<AssetAssignmentDto[]>([]);
 const total = ref(0);
 const page = ref(1);
 const transfers = ref<AssetTransferDto[]>([]);
-const transferStatus = ref('PENDING');
+const transferStatus = ref<string | null>('PENDING_APPROVAL');
 const loading = ref(false);
 const headers = [
   { title: 'Asset', key: 'asset' },
@@ -122,7 +127,7 @@ watch([transferStatus, () => filters.institutionId], loadTransfers);
     <v-col v-else cols="6" md="3"
       ><v-select
         v-model="transferStatus"
-        :items="['PENDING', 'COMPLETED', 'REJECTED', 'CANCELLED']"
+        :items="ASSET_TRANSFER_STATUSES.map((s) => ({ title: label(s), value: s }))"
         label="Status"
         density="compact"
         clearable

@@ -1,6 +1,7 @@
 import type { ApiListResponse, DesignationDto } from '@erp/shared';
 import { ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
 
 export interface Option {
   id: string;
@@ -18,6 +19,7 @@ const list = async <T>(path: string): Promise<T[]> => {
 
 /** Lookup lists for HR forms; every list is already scope-filtered by the API. */
 export function useHrOptions() {
+  const auth = useAuthStore();
   const institutions = ref<Option[]>([]);
   const designations = ref<DesignationDto[]>([]);
   const departments = ref<Option[]>([]);
@@ -26,7 +28,10 @@ export function useHrOptions() {
   async function loadBase() {
     [institutions.value, designations.value] = await Promise.all([
       list<Option>('/api/v1/institutions?pageSize=100'),
-      list<DesignationDto>('/api/v1/designations?pageSize=100&status=ACTIVE'),
+      // Designations belong to the HR module: skip the lookup when it is not licensed/permitted.
+      auth.hasFeature('hr') && auth.can('designation.view')
+        ? list<DesignationDto>('/api/v1/designations?pageSize=100&status=ACTIVE')
+        : Promise.resolve([]),
     ]);
   }
 
