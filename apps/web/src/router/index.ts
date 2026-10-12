@@ -256,6 +256,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/settings/CommunicationPage.vue'),
       },
       {
+        path: 'announcements',
+        name: 'group-announcements',
+        meta: { permission: 'message.broadcast', feature: 'communication' },
+        component: () => import('@/pages/communication/AnnouncementsPage.vue'),
+      },
+      {
         path: 'integrations',
         name: 'group-integrations',
         meta: { permission: 'integration.view' },
@@ -432,6 +438,12 @@ export const routes: RouteRecordRaw[] = [
         name: 'institution-communication',
         meta: { permission: 'communication.view', feature: 'communication' },
         component: () => import('@/pages/settings/CommunicationPage.vue'),
+      },
+      {
+        path: 'announcements',
+        name: 'institution-announcements',
+        meta: { permission: 'message.broadcast', feature: 'communication' },
+        component: () => import('@/pages/communication/AnnouncementsPage.vue'),
       },
       {
         path: 'branding',

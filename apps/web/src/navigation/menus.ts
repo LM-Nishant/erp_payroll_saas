@@ -200,6 +200,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       permission: 'branding.view',
     },
     {
+      title: 'Announcements',
+      icon: 'mdi-bullhorn',
+      to: '/group/announcements',
+      permission: 'message.broadcast',
+      feature: 'communication',
+    },
+    {
       title: 'Communication',
       icon: 'mdi-email-fast',
       to: '/group/communication',
@@ -395,6 +402,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       to: '/institution/documents',
       permission: 'document.view',
       feature: 'documents',
+    },
+    {
+      title: 'Announcements',
+      icon: 'mdi-bullhorn',
+      to: '/institution/announcements',
+      permission: 'message.broadcast',
+      feature: 'communication',
     },
     {
       title: 'Communication',

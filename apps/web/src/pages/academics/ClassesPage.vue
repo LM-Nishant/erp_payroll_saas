@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { programLevelSchema, type ApiListResponse, type ProgramLevel } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 
@@ -23,6 +24,20 @@ interface Section extends Named {
 
 const auth = useAuthStore();
 const can = (p: string) => auth.can(p);
+const route = useRoute();
+const canMessage = computed(
+  () => auth.can('message.broadcast') && auth.hasFeature('communication'),
+);
+function messageLink(type: 'program' | 'class_section', id: string) {
+  const base = route.path.startsWith('/group') ? '/group' : '/institution';
+  const q = new URLSearchParams({
+    institutionId: institutionId.value,
+    type,
+    ids: id,
+    recipients: 'guardians',
+  });
+  return `${base}/announcements?${q}`;
+}
 
 async function all<T>(path: string): Promise<T[]> {
   const out: T[] = [];
@@ -450,6 +465,28 @@ const headers = [
       />
     </template>
     <template #[`item.actions`]="{ item }">
+      <v-menu v-if="canMessage">
+        <template #activator="{ props: menu }">
+          <v-btn
+            v-bind="menu"
+            size="small"
+            variant="text"
+            icon="mdi-message-text-outline"
+            title="Message guardians"
+            :data-testid="`message-class-${item.code}`"
+          />
+        </template>
+        <v-list density="compact">
+          <v-list-subheader>Message guardians of</v-list-subheader>
+          <v-list-item :to="messageLink('program', item.id)" :title="`All of ${item.name}`" />
+          <v-list-item
+            v-for="s in item.sections"
+            :key="s.id"
+            :to="messageLink('class_section', s.id)"
+            :title="`Section ${s.name}`"
+          />
+        </v-list>
+      </v-menu>
       <v-btn
         v-if="can('program.update')"
         size="small"
