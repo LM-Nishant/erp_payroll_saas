@@ -1,12 +1,14 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import { useRouter } from 'vue-router';
+import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue';
 import SubscriptionBanner from '@/components/SubscriptionBanner.vue';
 import { WORKSPACES, visibleMenu } from '@/navigation/menus';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
+const changingPassword = ref(false);
 const router = useRouter();
 const hasOrganization = computed(() => Boolean(auth.me?.organization));
 // Tenant workspaces need an organization; the platform super admin only gets "Platform".
@@ -29,7 +31,12 @@ async function signOut() {
       <div class="d-flex align-center mb-2">
         <h1 class="text-h4">{{ terms.appName }}</h1>
         <v-spacer />
-        <v-btn variant="text" prepend-icon="mdi-logout" @click="signOut">Sign out</v-btn>
+        <div>
+          <v-btn variant="text" prepend-icon="mdi-lock-reset" @click="changingPassword = true">
+            Change password
+          </v-btn>
+          <v-btn variant="text" prepend-icon="mdi-logout" @click="signOut">Sign out</v-btn>
+        </div>
       </div>
       <p class="text-medium-emphasis mb-6">
         Signed in as {{ auth.me?.user.name }}
@@ -48,5 +55,6 @@ async function signOut() {
         </v-col>
       </v-row>
     </v-container>
+    <ChangePasswordDialog v-model="changingPassword" />
   </v-main>
 </template>

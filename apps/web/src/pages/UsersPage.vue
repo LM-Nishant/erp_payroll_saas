@@ -35,6 +35,8 @@ const terms = useTerms();
 const canCreate = computed(() => auth.can('user.create'));
 const canAssign = computed(() => auth.can('user.role.assign'));
 const canDeactivate = computed(() => auth.can('user.deactivate'));
+const canResetPassword = computed(() => auth.can('user.reset_password'));
+const notice = ref<string | null>(null);
 
 const items = ref<UserRow[]>([]);
 const total = ref(0);
@@ -246,6 +248,22 @@ async function setActive(u: UserRow, active: boolean) {
   }
 }
 
+async function sendPasswordReset(u: UserRow) {
+  if (!confirm(`Send a password reset link to ${u.email}?`)) return;
+  try {
+    const res = await apiFetch<{ data: { expiresAt: string; deliveryStatus: string } }>(
+      `/api/v1/users/${u.id}/password-reset`,
+      { method: 'POST' },
+    );
+    notice.value =
+      res.data.deliveryStatus === 'FAILED'
+        ? `Reset link for ${u.email} could not be delivered. Check e-mail settings.`
+        : `Password reset link sent to ${u.email} (valid until ${new Date(res.data.expiresAt).toLocaleString()}).`;
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+
 const headers = [
   { title: 'Name', key: 'name' },
   { title: 'Email', key: 'email' },
@@ -274,6 +292,9 @@ const headers = [
   <v-alert v-if="error" type="error" class="mb-4" closable @click:close="error = null">
     {{ error }}
   </v-alert>
+  <v-alert v-if="notice" type="success" class="mb-4" closable @click:close="notice = null">
+    {{ notice }}
+  </v-alert>
   <v-data-table :items="items" :headers="headers" :loading="loading" :items-length="total">
     <template #[`item.roles`]="{ item }">
       <v-chip v-for="role in item.roles" :key="role.id" size="small" class="mr-1 my-1">
@@ -297,6 +318,17 @@ const headers = [
         @click="openRoles(item)"
       >
         Roles
+      </v-btn>
+      <v-btn
+        v-if="
+          canResetPassword && item.membershipStatus === 'ACTIVE' && item.id !== auth.me?.user?.id
+        "
+        size="small"
+        variant="text"
+        prepend-icon="mdi-lock-reset"
+        @click="sendPasswordReset(item)"
+      >
+        Reset password
       </v-btn>
       <v-btn
         v-if="canDeactivate && item.id !== auth.me?.user?.id"

@@ -100,6 +100,14 @@ async function submitMfa() {
             label="Organization"
           />
           <v-btn type="submit" color="primary" block :loading="loading">Continue</v-btn>
+          <v-btn
+            variant="text"
+            block
+            class="mt-2"
+            :to="{ name: 'forgot-password', query: email ? { email } : {} }"
+          >
+            Forgot password?
+          </v-btn>
         </v-form>
 
         <v-form v-else @submit.prevent="submitMfa">
