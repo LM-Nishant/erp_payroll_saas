@@ -1,5 +1,7 @@
 import type {
   AdmissionStatus,
+  CertificateStatus,
+  CertificateType,
   GuardianRelation,
   StudentEnrollmentStatus,
   StudentStatus,
@@ -107,4 +109,71 @@ export interface AdmissionApplicationDto {
   enrolledAt: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface StudentPreviousSchoolDto {
+  id: string;
+  institutionId: string;
+  studentId: string | null;
+  admissionApplicationId: string | null;
+  schoolName: string;
+  board: string | null;
+  location: string | null;
+  lastClass: string | null;
+  lastAcademicYear: string | null;
+  marksPercent: number | null;
+  grade: string | null;
+  tcNumber: string | null;
+  tcDate: string | null;
+  tcDocumentId: string | null;
+  tcFileName: string | null;
+  remarks: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface StudentCertificateDto {
+  id: string;
+  certificateNo: string;
+  type: CertificateType;
+  status: CertificateStatus;
+  studentId: string;
+  studentName: string;
+  admissionNo: string;
+  institutionId: string;
+  issueDate: string;
+  leavingDate: string | null;
+  reason: string | null;
+  conduct: string;
+  lastClass: string | null;
+  academicYear: string;
+  promotionStatus: string | null;
+  remarks: string | null;
+  feeDuesAmount: number;
+  feeDuesWaived: boolean;
+  feeDuesWaiverReason: string | null;
+  documentId: string | null;
+  issuedById: string | null;
+  issuedByName: string | null;
+  cancelledAt: string | null;
+  cancelReason: string | null;
+  replacesId: string | null;
+  replacedById: string | null;
+  createdAt: string;
+}
+
+export interface CertificateEligibilityDto {
+  type: CertificateType;
+  /** Outstanding fee dues (0 when the finance module is disabled). */
+  feeDues: number;
+  /** Whether the fee-dues check applies (TC only, finance enabled). */
+  duesChecked: boolean;
+  /** An ISSUED transfer certificate already exists. */
+  existingTransfer: { id: string; certificateNo: string } | null;
+  canWaiveDues: boolean;
+  defaults: {
+    lastClass: string | null;
+    academicYear: string;
+    leavingDate: string | null;
+  };
 }

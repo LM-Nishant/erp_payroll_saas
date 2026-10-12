@@ -25,6 +25,7 @@ import {
 import { toPageWindow } from '../../core/http/pagination';
 import { tenantDb, withTenant } from '../../core/tenancy';
 import { displayName, toAdmissionDto, toDateOrNull } from './students.mappers';
+import { previousSchoolService } from './previous-schools.service';
 import { studentService } from './students.service';
 import { canTransitionAdmission } from './students.logic';
 
@@ -310,6 +311,7 @@ export const admissionsService = {
       where: { id },
       data: { status: 'ENROLLED', studentId: student.id, enrolledAt: new Date() },
     });
+    await previousSchoolService.linkAdmissionToStudent(id, student.id);
     await audit.record({
       action: 'admission.enrolled',
       entityType: 'admission_application',

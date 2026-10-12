@@ -3,6 +3,7 @@ import { registerEventType } from '../../core/events';
 import { registerUsageSource } from '../../core/features/limits';
 import { tenantDb } from '../../core/tenancy';
 import { runAsSystem } from '../../core/queue';
+import './certificates.templates';
 
 registerDocumentOwnerType({
   type: 'student',
@@ -55,6 +56,8 @@ for (const [key, label] of [
   ['admission.approved', 'Admission approved'],
   ['admission.rejected', 'Admission rejected'],
   ['admission.enrolled', 'Admission enrolled'],
+  ['student.certificate_issued', 'Transfer / character certificate issued'],
+  ['student.certificate_cancelled', 'Transfer / character certificate cancelled'],
 ] as const)
   registerEventType({ key, label, webhook: true });
 
