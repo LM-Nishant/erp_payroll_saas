@@ -586,13 +586,20 @@ const empHeaders = [
               <td>{{ label(p.status) }}</td>
               <td>{{ p.publishedAt.slice(0, 10) }}</td>
               <td>
-                <v-btn icon="mdi-download" size="small" variant="text" @click="slipDownload(p)" />
+                <v-btn
+                  icon="mdi-download"
+                  aria-label="Download PDF"
+                  size="small"
+                  variant="text"
+                  @click="slipDownload(p)"
+                />
                 <v-btn
                   v-if="canRegenerate"
                   icon="mdi-refresh"
                   size="small"
                   variant="text"
                   title="Regenerate PDF with the current branding"
+                  aria-label="Regenerate PDF"
                   :disabled="busy"
                   @click="regenerateSlip(p)"
                 />

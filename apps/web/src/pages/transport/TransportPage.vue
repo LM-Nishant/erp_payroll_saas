@@ -198,7 +198,20 @@ const allocate = reactive({
 });
 const allocRoutes = ref<{ value: string; title: string }[]>([]);
 const allocStops = ref<{ value: string; title: string }[]>([]);
-const people = ref<{ value: string; title: string }[]>([]);
+const people = ref<{ value: string; title: string; props?: { disabled: boolean } }[]>([]);
+/** Passengers that already ride a route; the API refuses a second active allocation. */
+const riding = ref(new Set<string>());
+async function loadRiding() {
+  const ids = new Set<string>();
+  for (let page = 1; ; page++) {
+    const r = await apiFetch<{ data: Row[]; meta: { total: number } }>(
+      `${API}/allocations?status=ACTIVE&pageSize=100&page=${page}`,
+    );
+    for (const a of r.data) ids.add(String(a.studentId ?? a.employeeId));
+    if (page * 100 >= r.meta.total || !r.data.length) break;
+  }
+  riding.value = ids;
+}
 async function searchPeople(search = '') {
   const isStudent = allocate.passengerType === 'STUDENT';
   const r = await apiFetch<{ data: Row[] }>(
@@ -206,16 +219,22 @@ async function searchPeople(search = '') {
       search ? `&search=${encodeURIComponent(search)}` : ''
     }`,
   );
-  people.value = r.data.map((p) => ({
-    value: String(p.id),
-    title: isStudent ? `${p.displayName} (${p.admissionNo})` : employeeTitle(p),
-  }));
+  people.value = r.data.map((p) => {
+    const busy = riding.value.has(String(p.id));
+    const name = isStudent ? `${p.displayName} (${p.admissionNo})` : employeeTitle(p);
+    return {
+      value: String(p.id),
+      title: busy ? `${name} · already allocated` : name,
+      props: { disabled: busy },
+    };
+  });
 }
 async function openAllocate() {
   allocate.open = true;
   await act(async () => {
     const r = await apiFetch<{ data: TransportRouteDto[] }>(`${API}/routes?pageSize=100`);
     allocRoutes.value = r.data.map((x) => ({ value: x.id, title: `${x.code} · ${x.name}` }));
+    await loadRiding();
     await searchPeople();
   });
 }

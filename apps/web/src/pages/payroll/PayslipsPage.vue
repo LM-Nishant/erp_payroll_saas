@@ -170,6 +170,7 @@ const headers = [
     <template #[`item.actions`]="{ item }">
       <v-btn
         icon="mdi-download"
+        aria-label="Download PDF"
         size="small"
         variant="text"
         @click="open(`/api/v1/payroll/payslips/${item.id}/download-url`)"
@@ -180,6 +181,7 @@ const headers = [
         size="small"
         variant="text"
         title="Regenerate PDF with the current branding"
+        aria-label="Regenerate PDF"
         @click="regenerate(`/api/v1/payroll/payslips/${item.id}/regenerate`, 'payslip')"
       />
     </template>
@@ -205,6 +207,7 @@ const headers = [
           </v-btn>
           <v-btn
             icon="mdi-download"
+            aria-label="Download PDF"
             size="small"
             variant="text"
             @click="open(`/api/v1/payroll/form16/${r.id}/download-url`)"
@@ -215,6 +218,7 @@ const headers = [
             size="small"
             variant="text"
             title="Regenerate PDF with the current branding"
+            aria-label="Regenerate PDF"
             @click="regenerate(`/api/v1/payroll/form16/${r.id}/regenerate`, 'Form 16')"
           />
         </td>

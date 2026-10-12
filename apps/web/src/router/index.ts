@@ -773,8 +773,32 @@ export const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    // Self-service notification links (`/me/payslips`, `/me/attendance`, `/me/employee`, …).
+    path: '/me/:page',
+    redirect: (to) =>
+      `/employee/${to.params.page === 'employee' ? 'profile' : String(to.params.page)}`,
+  },
+  {
+    // Workflow notifications link to `/approvals/<instanceId>`: open it in the approvals inbox of
+    // the workspace the user is in (self-service by default).
+    path: '/approvals/:id',
+    name: 'approval-link',
+    component: () => import('@/pages/ApprovalsPage.vue'),
+    beforeEnter: (to, from) => ({
+      path: `/${approvalsWorkspace(from.path)}/approvals`,
+      query: { open: String(to.params.id) },
+      replace: true,
+    }),
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
+
+const APPROVAL_WORKSPACES = ['group', 'institution', 'hr', 'employee', 'assets'];
+function approvalsWorkspace(fromPath: string): string {
+  const segment = fromPath.split('/')[1] ?? '';
+  return APPROVAL_WORKSPACES.includes(segment) ? segment : 'employee';
+}
 
 export const router = createRouter({ history: createWebHistory(), routes });
 
