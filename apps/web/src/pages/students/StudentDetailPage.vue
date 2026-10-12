@@ -3,6 +3,8 @@ import type { StudentDetailDto } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import PreviousSchoolsPanel from '@/components/students/PreviousSchoolsPanel.vue';
+import StudentCertificatesPanel from '@/components/students/StudentCertificatesPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 const route = useRoute();
 const auth = useAuthStore();
@@ -84,6 +86,8 @@ onMounted(load);
     <v-tabs v-model="tab"
       ><v-tab value="profile">Profile</v-tab><v-tab value="guardians">Guardians</v-tab
       ><v-tab value="enrollments">Enrollment history</v-tab
+      ><v-tab value="previous-schools">Previous schools</v-tab
+      ><v-tab v-if="auth.can('certificate.view')" value="certificates">Certificates</v-tab
       ><v-tab value="login">Login access</v-tab></v-tabs
     ><v-window v-model="tab" class="mt-4"
       ><v-window-item value="profile"
@@ -153,6 +157,14 @@ onMounted(load);
             </tr>
           </tbody></v-table
         ></v-window-item
+      ><v-window-item value="previous-schools"
+        ><PreviousSchoolsPanel
+          owner="students"
+          :owner-id="student.id"
+          :can-edit="auth.can('student.update')"
+          @changed="load" /></v-window-item
+      ><v-window-item v-if="auth.can('certificate.view')" value="certificates"
+        ><StudentCertificatesPanel :student-id="student.id" @changed="load" /></v-window-item
       ><v-window-item value="login"
         ><v-card
           ><v-card-text

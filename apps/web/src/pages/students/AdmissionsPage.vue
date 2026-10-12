@@ -8,6 +8,7 @@ import {
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import PreviousSchoolsPanel from '@/components/students/PreviousSchoolsPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 interface Option {
   id: string;
@@ -25,6 +26,7 @@ const page = ref(1);
 const error = ref<string | null>(null);
 const loading = ref(false);
 const createOpen = ref(false);
+const previousFor = ref<AdmissionApplicationDto | null>(null);
 const programs = ref<Option[]>([]);
 const classes = ref<Option[]>([]);
 const filters = reactive({ status: '', search: '' });
@@ -304,6 +306,14 @@ watch([page, () => filters.status], load);
             @click="ask('DELETE', item)"
         /></template>
         <v-btn
+          size="small"
+          variant="text"
+          prepend-icon="mdi-school-outline"
+          :aria-label="`Previous school of ${item.applicationNo}`"
+          @click="previousFor = item"
+          >Previous school</v-btn
+        >
+        <v-btn
           v-if="item.status === 'ENROLLED' && item.studentId && auth.can('student.view')"
           size="small"
           variant="text"
@@ -396,6 +406,27 @@ watch([page, () => filters.status], load);
           @click="enroll"
           >Enroll</v-btn
         ></v-card-actions
+      ></v-card
+    ></v-dialog
+  ><v-dialog
+    :model-value="!!previousFor"
+    max-width="960"
+    @update:model-value="
+      (v: boolean) => {
+        if (!v) previousFor = null;
+      }
+    "
+    ><v-card v-if="previousFor"
+      ><v-card-title
+        >{{ previousFor.applicationNo }} · {{ previousFor.applicantDisplayName }}</v-card-title
+      ><v-card-text
+        ><PreviousSchoolsPanel
+          owner="admissions"
+          :owner-id="previousFor.id"
+          :can-edit="auth.can('admission.manage') && previousFor.status !== 'ENROLLED'"
+          @changed="load" /></v-card-text
+      ><v-card-actions
+        ><v-spacer /><v-btn variant="text" @click="previousFor = null">Close</v-btn></v-card-actions
       ></v-card
     ></v-dialog
   ><v-snackbar :model-value="!!notice" color="success" @update:model-value="notice = null">{{
