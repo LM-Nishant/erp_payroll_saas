@@ -1,17 +1,20 @@
 <script setup lang="ts">
 import {
+  COMPANY_EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPES,
   type ApiListResponse,
   type DesignationDto,
   type EmployeeCodeSequenceDto,
 } from '@erp/shared';
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { label, useHrOptions } from './useHrOptions';
 
 /** Designation / position master and per-institution employee code numbering. */
 const auth = useAuthStore();
+const terms = useTerms();
 const { institutions, departments, loadBase, loadForInstitution } = useHrOptions();
 const items = ref<DesignationDto[]>([]);
 const sequences = ref<EmployeeCodeSequenceDto[]>([]);
@@ -43,7 +46,7 @@ onMounted(async () => {
 const instName = (id: string | null) =>
   id ? (institutions.value.find((i) => i.id === id)?.name ?? id) : null;
 const scopeOf = (d: DesignationDto) =>
-  d.institutionId ? instName(d.institutionId) : d.groupId ? 'Group' : 'Organization';
+  d.institutionId ? instName(d.institutionId) : d.groupId ? terms.value.group : 'Organization';
 
 // Create / edit designation
 const dialog = reactive({
@@ -135,7 +138,12 @@ const headers = [
   { title: 'Status', key: 'status' },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ];
-const categories = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value) }));
+const categories = computed(() =>
+  (terms.value.isCompany ? COMPANY_EMPLOYMENT_TYPES : EMPLOYMENT_TYPES).map((value) => ({
+    value,
+    title: label(value),
+  })),
+);
 </script>
 
 <template>
@@ -226,7 +234,7 @@ const categories = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value)
           :items="institutions"
           item-title="name"
           item-value="id"
-          label="Institution (empty = organization-wide)"
+          :label="`${terms.institution} (empty = organization-wide)`"
           clearable
           @update:model-value="
             (id: string | null) => {
@@ -263,7 +271,7 @@ const categories = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value)
           :items="institutions"
           item-title="name"
           item-value="id"
-          label="Institution (empty = organization default)"
+          :label="`${terms.institution} (empty = organization default)`"
           clearable
         />
         <v-text-field v-model="seq.prefix" label="Prefix" />
