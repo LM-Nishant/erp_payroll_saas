@@ -73,6 +73,12 @@ export const resetPasswordSchema = z
   .object({ token: opaqueTokenSchema, newPassword: passwordInputSchema })
   .strict();
 
+/** Self-service "forgot password": always answered with 204 so accounts can't be enumerated. */
+export const forgotPasswordSchema = z
+  .object({ email: emailSchema, organization: slugSchema.optional() })
+  .strict();
+export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>;
+
 // ---------------------------------------------------------------------------
 // Users, roles & scopes
 // ---------------------------------------------------------------------------
