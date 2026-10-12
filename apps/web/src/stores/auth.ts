@@ -5,6 +5,10 @@ import { ApiError, installAuthHooks, rawFetch } from '@/api/client';
 
 type Data<T> = { data: T };
 
+const REFRESH_RETRIES = 4;
+const REFRESH_BACKOFF_MS = 1000;
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
+
 export type LoginOutcome =
   | { status: 'ok' }
   | { status: 'mfa' }
@@ -78,15 +82,30 @@ export const useAuthStore = defineStore('auth', () => {
     await acceptTokens(data);
   }
 
-  /** Single-flight refresh using the httpOnly cookie. */
+  /**
+   * Single-flight refresh using the httpOnly cookie. A rate-limited refresh (429) was not
+   * processed, so the same cookie is retried with backoff instead of signing the user out.
+   * Other failures are not retried: the token may already have rotated, and replaying it would
+   * look like token theft and revoke the session.
+   */
   function refresh(): Promise<boolean> {
     refreshing ??= (async () => {
       try {
-        const { data } = await rawFetch<Data<LoginResult>>('/api/v1/auth/refresh', {
-          method: 'POST',
-          body: JSON.stringify({}),
-        });
-        accessToken.value = data.accessToken ?? null;
+        for (let attempt = 0; ; attempt++) {
+          try {
+            const { data } = await rawFetch<Data<LoginResult>>('/api/v1/auth/refresh', {
+              method: 'POST',
+              body: JSON.stringify({}),
+            });
+            accessToken.value = data.accessToken ?? null;
+            break;
+          } catch (err) {
+            if (!(err instanceof ApiError && err.status === 429) || attempt >= REFRESH_RETRIES) {
+              throw err;
+            }
+            await sleep(REFRESH_BACKOFF_MS * 2 ** attempt);
+          }
+        }
         if (!me.value) await loadMe();
         return true;
       } catch {
