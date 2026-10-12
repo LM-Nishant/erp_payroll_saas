@@ -114,15 +114,7 @@ test.describe('Transport · transport@greenwood.demo', () => {
     await s.page.getByRole('tab', { name: 'Allocations' }).click();
     await s.settle();
     const mark = s.mark();
-    // Seeded students (and earlier runs) may already ride a route: pick a student who is free.
-    const busy = new Set(
-      (
-        await rows(s.page)
-          .filter({ hasText: /\bACTIVE\b/ })
-          .locator('td:first-child')
-          .allInnerTexts()
-      ).map((t) => t.trim()),
-    );
+    // Students who already ride a route are listed as disabled "already allocated" options.
     await s.page.getByRole('button', { name: 'Allocate', exact: true }).click();
     const d = dialog(s.page);
     await d
@@ -132,7 +124,7 @@ test.describe('Transport · transport@greenwood.demo', () => {
       .click();
     await expect(menu(s.page).first()).toBeVisible();
     const titles = (await menu(s.page).allInnerTexts()).map((t) => t.trim());
-    const free = titles.filter((t) => /\(/.test(t) && !busy.has(t.replace(/\s*\(.*$/, '')));
+    const free = titles.filter((t) => /\(/.test(t) && !/already allocated/.test(t));
     expect(free.length, 'a student without an active allocation').toBeGreaterThan(0);
     const title = free[Math.floor(Math.random() * free.length)]!;
     await menu(s.page).filter({ hasText: title }).first().click();

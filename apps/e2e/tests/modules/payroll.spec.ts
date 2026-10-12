@@ -228,7 +228,7 @@ test.describe('Payroll · payroll@greenwood.demo (payslips & Form 16)', () => {
     await s.page.getByRole('tab', { name: 'Payslips' }).click();
     const slip = s.page.locator('tbody tr').filter({ hasText: last }).filter({ hasText: ' · ' });
     await expect(slip).toBeVisible({ timeout: 60_000 });
-    await expectSignedPdf(s.page, () => slip.getByRole('button').click());
+    await expectSignedPdf(s.page, () => slip.getByRole('button', { name: 'Download PDF' }).click());
     await expectClean(s, mark, 'payslip download');
   });
 
@@ -249,7 +249,7 @@ test.describe('Payroll · payroll@greenwood.demo (payslips & Form 16)', () => {
     await row.getByRole('button', { name: 'Publish' }).click();
     await s.settle();
     await expect(row).toContainText('Published');
-    await expectSignedPdf(s.page, () => row.getByRole('button').last().click());
+    await expectSignedPdf(s.page, () => row.getByRole('button', { name: 'Download PDF' }).click());
     await expectClean(s, mark, 'form 16');
   });
 });

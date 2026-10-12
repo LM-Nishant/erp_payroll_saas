@@ -4,6 +4,7 @@ import {
   dialog,
   expectClean,
   expectDownload,
+  expectRow,
   fill,
   pick,
   RUN_ID,
@@ -113,6 +114,7 @@ test.describe('Platform · superadmin@erp.local', () => {
     await pick(d, 'Modules', /^Academic structure/);
     await pick(d, 'Status', /^INACTIVE$/);
     await saveDialog(s);
+    await expectRow(s.page, planKey);
     const row = rows(s.page).filter({ hasText: planKey });
     await expect(row).toHaveCount(1);
     await expect(row).toContainText('INACTIVE');
