@@ -736,11 +736,5 @@ test.describe('Users · admin@greenwood.demo (institution admin) cannot escalate
     await expect(rows(s.page).filter({ hasText: email })).toHaveCount(0);
   });
 
-  test.fixme("an admin resets another user's password", async () => {
-    // Product gap: the API has POST /users/:id/password-reset but the Users page has no action.
-  });
-
-  test.fixme('a user changes their own password', async () => {
-    // Product gap: the API has POST /auth/password/change but there is no profile/password UI.
-  });
+  // Password reset / change / invite flows: see passwords.spec.ts.
 });
