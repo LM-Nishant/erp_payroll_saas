@@ -9,6 +9,7 @@ import {
   type AttendanceSummaryDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -21,7 +22,8 @@ import { label, useHrOptions } from './useHrOptions';
  */
 const auth = useAuthStore();
 const { institutions, loadBase } = useHrOptions();
-const tab = ref('register');
+const route = useRoute();
+const tab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'register');
 const institutionId = ref<string | null>(null);
 const month = ref(currentMonth());
 const range = computed(() => monthRange(month.value));

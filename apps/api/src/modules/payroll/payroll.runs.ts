@@ -563,7 +563,7 @@ async function decide(
 }
 
 export const payrollRunWorkflowCallbacks = {
-  linkFor: (ref: { entityId: string }) => `/payroll/runs/${ref.entityId}`,
+  linkFor: (ref: { entityId: string }) => `/hr/payroll/runs/${ref.entityId}`,
   onApproved: (ref: WorkflowInstanceRef) => decide(ref, true),
   onRejected: (ref: WorkflowInstanceRef) => decide(ref, false),
   onCancelled: (ref: WorkflowInstanceRef) => decide(ref, false),
@@ -817,7 +817,7 @@ export const runService = {
     await notify(PAYROLL_NOTIFICATIONS.runFinalized, [run.createdByUserId], {
       title: `${run.label} finalized`,
       body: `Net payout ${num(run.netTotal).toFixed(2)} for ${ok.length} employee(s).`,
-      link: `/payroll/runs/${id}`,
+      link: `/hr/payroll/runs/${id}`,
       institutionId: run.institutionId,
     });
     return runDto(await db().payrollRun.findFirstOrThrow({ where: { id } }));

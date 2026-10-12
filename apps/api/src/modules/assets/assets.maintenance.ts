@@ -315,7 +315,7 @@ export const maintenanceService = {
         await notifyUsers('asset.maintenance_closed', [before.reportedByUserId], {
           title: `Ticket ${before.ticketNo} ${input.status.toLowerCase()}`,
           body: input.resolution ?? undefined,
-          link: '/my/assets',
+          link: '/employee/assets',
           institutionId: asset.institutionId,
         });
       }

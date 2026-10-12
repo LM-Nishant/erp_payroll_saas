@@ -248,7 +248,7 @@ export const custodyService = {
       await notifyUsers('asset.assigned', [employee.userId], {
         title: `Asset assigned: ${asset.name} (${asset.assetTag})`,
         body: 'Please review and acknowledge receipt in My assets.',
-        link: '/my/assets',
+        link: '/employee/assets',
         institutionId: asset.institutionId,
         data: { assetId: asset.id, assignmentId: assignment.id },
       });
@@ -667,7 +667,7 @@ export async function closeTransfer(
     await notifyUsers('asset.transfer_decided', [transfer.requestedByUserId], {
       title: 'Asset transfer rejected',
       body: comment ?? undefined,
-      link: `/assets/${transfer.assetId}`,
+      link: `/assets/register/${transfer.assetId}`,
       institutionId: transfer.institutionId,
     });
   }
@@ -680,7 +680,7 @@ export const transferWorkflowCallbacks = {
     if (i.requesterUserId)
       await notifyUsers('asset.transfer_decided', [i.requesterUserId], {
         title: 'Asset transfer approved',
-        link: `/assets/${row.assetId}`,
+        link: `/assets/register/${row.assetId}`,
         institutionId: row.toInstitutionId,
       });
   },

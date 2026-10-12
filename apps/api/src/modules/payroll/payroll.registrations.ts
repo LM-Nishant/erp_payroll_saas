@@ -32,7 +32,6 @@ import { SALARY_REVISION_WORKFLOW, salaryRevisionWorkflowCallbacks } from './pay
 registerWorkflowEntity({
   entityType: SALARY_REVISION_WORKFLOW,
   label: 'Salary revision',
-  linkFor: (ref) => `/payroll/revisions/${ref.entityId}`,
   ...salaryRevisionWorkflowCallbacks,
 });
 registerWorkflowEntity({
