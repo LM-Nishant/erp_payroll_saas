@@ -4,6 +4,9 @@ import {
   type CampaignDto,
   type CommunicationProviderCreatedDto,
   type CommunicationProviderDto,
+  type AudiencePreviewDto,
+  type CampaignAudienceDto,
+  type CreateBroadcastInput,
   type CreateCampaignInput,
   type CreateCommunicationProviderInput,
   type CreateMessageTemplateInput,
@@ -19,6 +22,8 @@ import {
   type SendMessageInput,
   type UpdateCommunicationProviderInput,
   type PaginationQuery,
+  type PreviewAudienceInput,
+  type ProviderTestResultDto,
 } from '@erp/shared';
 import {
   Prisma,
@@ -53,7 +58,14 @@ import {
   type SettingTarget,
 } from '../settings/target';
 import { tenantDb, withTenant } from '../tenancy/tenant-db';
-import { assertChannelEnabled, sendMessages, type SentMessageRef } from './messaging';
+import { resolveAudience } from './audience';
+import {
+  assertChannelEnabled,
+  sendMessages,
+  sendProviderTest,
+  type MessageRecipient,
+  type SentMessageRef,
+} from './messaging';
 import { providerAdapter, type CallbackRequest, type DeliveryUpdate } from './providers';
 import { extractVariables, TemplateSyntaxError, validateTemplate } from './renderer';
 import { listDefaultTemplates, renderMessage, resolveTemplate, targetFor } from './templates';
@@ -284,6 +296,19 @@ export const providersService = {
       metadata: credential ? { credentialsRotated: true } : undefined,
     });
     return providerDto(row);
+  },
+
+  /** Send one test message through exactly this provider (no fallback) and report the result. */
+  async test(id: string, to: string): Promise<ProviderTestResultDto> {
+    const row = await findProvider(id, 'communication.manage');
+    const result = await sendProviderTest(row, to);
+    await audit.record({
+      action: 'communication_provider.test',
+      entityType: 'communication_provider',
+      entityId: id,
+      metadata: { to: result.to, status: result.status, messageId: result.id },
+    });
+    return { messageId: result.id, status: result.status, to: result.to, error: result.error };
   },
 
   /** Issue a new delivery-callback signing secret (returned once). */
@@ -567,11 +592,26 @@ export const templatesService = {
 
 /* --------------------------------------------------------------- messages ---- */
 
+type ProviderInfo = Pick<CommunicationProvider, 'id' | 'name' | 'scopeType'>;
+
+/** Name + level of the providers that delivered these logs (institution / group / org). */
+async function providersOf(rows: MessageLog[]): Promise<Map<string, ProviderInfo>> {
+  const ids = [...new Set(rows.map((r) => r.providerId).filter((v): v is string => !!v))];
+  if (ids.length === 0) return new Map();
+  const providers = await tenantDb().communicationProvider.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true, scopeType: true },
+  });
+  return new Map(providers.map((p) => [p.id, p]));
+}
+
 function logDto(
   row: MessageLog & {
     events?: Array<{ status: string; rawStatus: string | null; occurredAt: Date }>;
   },
+  providers: Map<string, ProviderInfo> = new Map(),
 ): MessageLogDto {
+  const provider = row.providerId ? providers.get(row.providerId) : undefined;
   return {
     id: row.id,
     channel: row.channel as MessageChannel,
@@ -585,6 +625,9 @@ function logDto(
     eventKey: row.eventKey,
     campaignId: row.campaignId,
     providerType: row.providerType,
+    providerId: row.providerId,
+    providerName: provider?.name ?? null,
+    providerScope: provider?.scopeType ?? null,
     providerMessageId: row.providerMessageId,
     cost: num(row.cost),
     attempts: row.attempts,
@@ -669,7 +712,12 @@ export const messagesService = {
       db.messageLog.findMany({ where, orderBy: { createdAt: 'desc' }, ...toPageWindow(query) }),
       db.messageLog.count({ where }),
     ]);
-    return toListResponse(rows.map(logDto), total, query);
+    const providers = await providersOf(rows);
+    return toListResponse(
+      rows.map((r) => logDto(r, providers)),
+      total,
+      query,
+    );
   },
 
   async get(id: string) {
@@ -682,7 +730,7 @@ export const messagesService = {
     if (!access.all && !(row.institutionId && access.institutionIds.has(row.institutionId))) {
       throw new NotFoundError('Message');
     }
-    return logDto(row);
+    return logDto(row, await providersOf([row]));
   },
 };
 
@@ -699,6 +747,10 @@ function campaignDto(row: Campaign): CampaignDto {
     totalRecipients: row.totalRecipients,
     sentCount: row.sentCount,
     failedCount: row.failedCount,
+    skippedCount: row.skippedCount,
+    audience: (row.audience as CampaignAudienceDto | null) ?? null,
+    subject: row.subject,
+    createdById: row.createdById,
     scheduledAt: iso(row.scheduledAt),
     startedAt: iso(row.startedAt),
     completedAt: iso(row.completedAt),
@@ -706,10 +758,13 @@ function campaignDto(row: Campaign): CampaignDto {
   };
 }
 
+/** Visible: campaigns of institutions where the caller may send, plus the caller's own. */
 async function findCampaign(id: string) {
   const row = await tenantDb().campaign.findFirst({ where: { id } });
   if (!row) throw new NotFoundError('Campaign');
-  const access = await accessFor(currentPrincipal(), 'message.send');
+  const principal = currentPrincipal();
+  if (row.createdById && row.createdById === principal.userId) return row;
+  const access = await accessFor(principal, 'message.send');
   if (!access.all && !(row.institutionId && access.institutionIds.has(row.institutionId))) {
     throw new NotFoundError('Campaign');
   }
@@ -717,6 +772,192 @@ async function findCampaign(id: string) {
 }
 
 const CAMPAIGN_BATCH = 100;
+const MAX_CAMPAIGN_RECIPIENTS = 5000;
+
+interface CampaignDraft {
+  institutionId: string | null;
+  name: string;
+  channel: MessageChannel;
+  templateKey: string | null;
+  subject: string | null;
+  body: string | null;
+  variables: Record<string, unknown>;
+  recipients: MessageRecipient[];
+  scheduledAt: Date | null;
+  audience?: CampaignAudienceDto;
+  skippedCount?: number;
+}
+
+/** Validate content, store the campaign + recipients and queue (or schedule) the sending job. */
+async function insertCampaign(draft: CampaignDraft): Promise<Campaign> {
+  await assertChannelEnabled(draft.channel, draft.institutionId);
+  await assertWithinLimit('communication_messages', draft.recipients.length);
+  if (draft.templateKey) {
+    const t = await resolveTemplate(
+      draft.templateKey,
+      draft.channel,
+      await targetFor(draft.institutionId),
+    );
+    if (!t)
+      throw new ValidationError(`No ${draft.channel} template "${draft.templateKey}"`, {
+        field: 'templateKey',
+      });
+  } else {
+    assertTemplateSyntax(draft.subject, draft.body);
+  }
+  const db = tenantDb();
+  const scheduled = !!draft.scheduledAt && draft.scheduledAt.getTime() > Date.now();
+  const row = await db.campaign.create({
+    data: withTenant({
+      institutionId: draft.institutionId,
+      name: draft.name,
+      channel: draft.channel,
+      status: scheduled ? 'SCHEDULED' : 'QUEUED',
+      templateKey: draft.templateKey,
+      subject: draft.subject,
+      body: draft.body,
+      variables: draft.variables as Prisma.InputJsonValue,
+      totalRecipients: draft.recipients.length,
+      skippedCount: draft.skippedCount ?? 0,
+      audience: draft.audience
+        ? (draft.audience as unknown as Prisma.InputJsonValue)
+        : Prisma.DbNull,
+      scheduledAt: draft.scheduledAt,
+      createdById: currentPrincipal().userId,
+    }),
+  });
+  await db.campaignRecipient.createMany({
+    data: draft.recipients.map((r) =>
+      withTenant({
+        campaignId: row.id,
+        userId: r.userId ?? null,
+        address: r.address ?? null,
+        name: r.name ?? null,
+        variables: r.variables ? (r.variables as Prisma.InputJsonValue) : Prisma.DbNull,
+      }),
+    ),
+  });
+  await enqueue(
+    'communication.campaign',
+    { organizationId: row.organizationId, campaignId: row.id },
+    { delayMs: scheduled ? draft.scheduledAt!.getTime() - Date.now() : 0 },
+  );
+  return row;
+}
+
+/** Render the first recipient's message (template or inline content) for a preview. */
+async function renderFirst(
+  input: PreviewAudienceInput,
+  variables: Record<string, unknown>,
+): Promise<AudiencePreviewDto['rendered']> {
+  if (!input.templateKey && !input.body) return null;
+  const target = await targetFor(input.audience.institutionId);
+  const t = input.templateKey
+    ? await resolveTemplate(input.templateKey, input.channel, target)
+    : null;
+  if (input.templateKey && !t) {
+    throw new ValidationError(`No ${input.channel} template "${input.templateKey}"`, {
+      field: 'templateKey',
+    });
+  }
+  try {
+    return await renderMessage({
+      channel: input.channel,
+      subject: t ? t.subject : (input.subject ?? null),
+      body: t ? t.body : input.body!,
+      htmlBody: t ? t.htmlBody : null,
+      useBrandedLayout: t ? t.useBrandedLayout : true,
+      variables,
+      target,
+    });
+  } catch (err) {
+    if (err instanceof TemplateSyntaxError) {
+      throw new ValidationError(`Template error: ${err.message}`, { field: 'body' });
+    }
+    throw err;
+  }
+}
+
+/**
+ * Announcements: an audience (institution / department / program / class section / students /
+ * staff) is resolved server-side inside the caller's scope and sent as a campaign of the
+ * audience's institution — so its own email / SMS / WhatsApp provider is used.
+ */
+export const broadcastsService = {
+  async preview(input: PreviewAudienceInput): Promise<AudiencePreviewDto> {
+    const resolved = await resolveAudience(input.audience, input.channel);
+    await assertChannelEnabled(input.channel, input.audience.institutionId);
+    const first = resolved.members[0];
+    const rendered = await renderFirst(input, {
+      ...input.variables,
+      ...(first?.variables ?? {}),
+      recipient: first
+        ? { name: first.name, address: first.address, userId: first.userId }
+        : { name: 'Recipient', address: null, userId: null },
+    });
+    return {
+      channel: input.channel,
+      label: resolved.audience.label,
+      total: resolved.members.length,
+      byKind: resolved.byKind,
+      sample: resolved.members.slice(0, 50).map(({ variables: _v, ...m }) => m),
+      skipped: resolved.skipped.slice(0, 200),
+      skippedCount: resolved.skipped.length,
+      rendered,
+    };
+  },
+
+  async create(input: CreateBroadcastInput) {
+    const resolved = await resolveAudience(input.audience, input.channel, {
+      schedule: !!input.scheduledAt,
+    });
+    if (resolved.members.length === 0) {
+      throw new ValidationError(
+        `Nobody in "${resolved.audience.label}" has ${input.channel === 'email' ? 'an e-mail address' : 'a phone number'}`,
+        { field: 'audience' },
+      );
+    }
+    if (resolved.members.length > MAX_CAMPAIGN_RECIPIENTS) {
+      throw new ValidationError(
+        `The audience has ${resolved.members.length} recipients; at most ${MAX_CAMPAIGN_RECIPIENTS} per announcement — narrow it down`,
+        { field: 'audience' },
+      );
+    }
+    const row = await insertCampaign({
+      institutionId: input.audience.institutionId,
+      name: input.name,
+      channel: input.channel,
+      templateKey: input.templateKey ?? null,
+      subject: input.subject ?? null,
+      body: input.body ?? null,
+      variables: input.variables,
+      recipients: resolved.members.map((m) => ({
+        userId: m.userId,
+        address: m.address,
+        name: m.name,
+        variables: m.variables,
+      })),
+      scheduledAt: input.scheduledAt ?? null,
+      audience: resolved.audience,
+      skippedCount: resolved.skipped.length,
+    });
+    await audit.record({
+      action: 'campaign.broadcast',
+      entityType: 'campaign',
+      entityId: row.id,
+      after: {
+        name: row.name,
+        channel: row.channel,
+        audience: resolved.audience,
+        recipients: row.totalRecipients,
+        skipped: row.skippedCount,
+        byKind: resolved.byKind,
+        scheduledAt: iso(row.scheduledAt),
+      },
+    });
+    return campaignDto(row);
+  },
+};
 
 export const campaignsService = {
   async create(input: CreateCampaignInput) {
@@ -724,54 +965,17 @@ export const campaignsService = {
     const principal = currentPrincipal();
     await authorize(principal, 'message.send', resource);
     if (input.scheduledAt) await authorize(principal, 'message.schedule', resource);
-    await assertChannelEnabled(input.channel, input.institutionId);
-    await assertWithinLimit('communication_messages', input.recipients.length);
-    if (input.templateKey) {
-      const t = await resolveTemplate(
-        input.templateKey,
-        input.channel,
-        await targetFor(input.institutionId),
-      );
-      if (!t)
-        throw new ValidationError(`No ${input.channel} template "${input.templateKey}"`, {
-          field: 'templateKey',
-        });
-    } else {
-      assertTemplateSyntax(input.subject, input.body);
-    }
-    const db = tenantDb();
-    const scheduled = input.scheduledAt && input.scheduledAt.getTime() > Date.now();
-    const row = await db.campaign.create({
-      data: withTenant({
-        institutionId: input.institutionId ?? null,
-        name: input.name,
-        channel: input.channel,
-        status: scheduled ? 'SCHEDULED' : 'QUEUED',
-        templateKey: input.templateKey ?? null,
-        subject: input.subject ?? null,
-        body: input.body ?? null,
-        variables: input.variables as Prisma.InputJsonValue,
-        totalRecipients: input.recipients.length,
-        scheduledAt: input.scheduledAt ?? null,
-        createdById: principal.userId,
-      }),
+    const row = await insertCampaign({
+      institutionId: input.institutionId ?? null,
+      name: input.name,
+      channel: input.channel,
+      templateKey: input.templateKey ?? null,
+      subject: input.subject ?? null,
+      body: input.body ?? null,
+      variables: input.variables,
+      recipients: input.recipients,
+      scheduledAt: input.scheduledAt ?? null,
     });
-    await db.campaignRecipient.createMany({
-      data: input.recipients.map((r) =>
-        withTenant({
-          campaignId: row.id,
-          userId: r.userId ?? null,
-          address: r.address ?? null,
-          name: r.name ?? null,
-          variables: r.variables ? (r.variables as Prisma.InputJsonValue) : Prisma.DbNull,
-        }),
-      ),
-    });
-    await enqueue(
-      'communication.campaign',
-      { organizationId: row.organizationId, campaignId: row.id },
-      { delayMs: scheduled ? input.scheduledAt!.getTime() - Date.now() : 0 },
-    );
     await audit.record({
       action: 'campaign.create',
       entityType: 'campaign',
@@ -787,9 +991,12 @@ export const campaignsService = {
   },
 
   async list(query: PaginationQuery) {
-    const access = await accessFor(currentPrincipal(), 'message.send');
+    const principal = currentPrincipal();
+    const access = await accessFor(principal, 'message.send');
     const scope = whereForInstitutionAccess(access);
-    const where: Prisma.CampaignWhereInput = scope ?? {};
+    const where: Prisma.CampaignWhereInput = scope
+      ? { OR: [scope, { createdById: principal.userId }] }
+      : {};
     const db = tenantDb();
     const [rows, total] = await Promise.all([
       db.campaign.findMany({ where, orderBy: { createdAt: 'desc' }, ...toPageWindow(query) }),

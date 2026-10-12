@@ -45,6 +45,149 @@ export const providerConfigSchema = z
   )
   .refine((v) => Object.keys(v).length <= 30, 'At most 30 config entries');
 
+/** One non-secret configuration field of a provider type (drives the settings form). */
+export interface ProviderConfigField {
+  key: string;
+  label: string;
+  type: 'text' | 'email' | 'number' | 'boolean' | 'url' | 'phone';
+  required?: boolean;
+  hint?: string;
+  placeholder?: string;
+}
+
+export interface ProviderTypeForm {
+  label: string;
+  fields: readonly ProviderConfigField[];
+  /** Label of the write-only secret (password / API key / token); absent = no secret. */
+  credentialsLabel?: string;
+  credentialsRequired?: boolean;
+}
+
+const FROM_EMAIL: ProviderConfigField = {
+  key: 'from',
+  label: 'From address',
+  type: 'email',
+  required: true,
+  placeholder: 'office@school.edu',
+};
+const FROM_NAME: ProviderConfigField = {
+  key: 'fromName',
+  label: 'From name',
+  type: 'text',
+  placeholder: 'Greenwood High School',
+};
+
+/** Per-provider-type configuration form (keys match the API adapters). */
+export const PROVIDER_FORMS: Record<ProviderType, ProviderTypeForm> = {
+  smtp: {
+    label: 'SMTP server (own mailbox: Google Workspace, Microsoft 365, cPanel…)',
+    fields: [
+      {
+        key: 'host',
+        label: 'SMTP host',
+        type: 'text',
+        required: true,
+        placeholder: 'smtp.gmail.com',
+      },
+      { key: 'port', label: 'Port', type: 'number', placeholder: '587' },
+      { key: 'secure', label: 'Use TLS from the start (port 465)', type: 'boolean' },
+      { key: 'user', label: 'Username', type: 'text', placeholder: 'office@school.edu' },
+      FROM_EMAIL,
+      FROM_NAME,
+    ],
+    credentialsLabel: 'SMTP password / app password',
+  },
+  ses: {
+    label: 'Amazon SES (SMTP interface)',
+    fields: [
+      { key: 'region', label: 'AWS region', type: 'text', placeholder: 'ap-south-1' },
+      { key: 'user', label: 'SES SMTP username', type: 'text', required: true },
+      FROM_EMAIL,
+      FROM_NAME,
+    ],
+    credentialsLabel: 'SES SMTP password',
+    credentialsRequired: true,
+  },
+  sendgrid: {
+    label: 'SendGrid',
+    fields: [FROM_EMAIL, FROM_NAME],
+    credentialsLabel: 'SendGrid API key',
+    credentialsRequired: true,
+  },
+  twilio: {
+    label: 'Twilio SMS',
+    fields: [
+      { key: 'accountSid', label: 'Account SID', type: 'text', required: true },
+      {
+        key: 'from',
+        label: 'Sender number (E.164)',
+        type: 'phone',
+        placeholder: '+14155550100',
+        hint: 'Or use a messaging service SID below',
+      },
+      { key: 'messagingServiceSid', label: 'Messaging service SID', type: 'text' },
+    ],
+    credentialsLabel: 'Auth token',
+    credentialsRequired: true,
+  },
+  msg91: {
+    label: 'MSG91 (India, DLT)',
+    fields: [
+      {
+        key: 'senderId',
+        label: 'Sender ID (6 letters)',
+        type: 'text',
+        required: true,
+        placeholder: 'GRNWD',
+      },
+      { key: 'dltTemplateId', label: 'DLT template ID', type: 'text' },
+      { key: 'route', label: 'Route', type: 'text', placeholder: '4' },
+      { key: 'country', label: 'Country code', type: 'text', placeholder: '91' },
+    ],
+    credentialsLabel: 'Auth key',
+    credentialsRequired: true,
+  },
+  http: {
+    label: 'Generic HTTP SMS gateway',
+    fields: [
+      { key: 'url', label: 'Gateway URL (POST)', type: 'url', required: true },
+      { key: 'from', label: 'Sender ID / number', type: 'text' },
+      {
+        key: 'messageIdField',
+        label: 'Message id field in the response',
+        type: 'text',
+        placeholder: 'id',
+      },
+    ],
+    credentialsLabel: 'Bearer token',
+  },
+  whatsapp_cloud: {
+    label: 'WhatsApp Cloud API (Meta)',
+    fields: [
+      { key: 'phoneNumberId', label: 'Phone number ID', type: 'text', required: true },
+      {
+        key: 'businessNumber',
+        label: 'WhatsApp business number (E.164)',
+        type: 'phone',
+        placeholder: '+919800000000',
+        hint: 'Shown to staff; messages go out from this number',
+      },
+      { key: 'templateName', label: 'Approved template name', type: 'text' },
+      { key: 'templateLanguage', label: 'Template language', type: 'text', placeholder: 'en' },
+      { key: 'apiVersion', label: 'Graph API version', type: 'text', placeholder: 'v20.0' },
+    ],
+    credentialsLabel: 'Permanent access token',
+    credentialsRequired: true,
+  },
+  log: {
+    label: 'Log only (development / demo — never sends)',
+    fields: [
+      { key: 'from', label: 'Sender shown in the log (email / number / sender ID)', type: 'text' },
+      FROM_NAME,
+    ],
+  },
+};
+
 const refineProviderType = (
   v: { channel?: MessageChannel | undefined; providerType?: ProviderType | undefined },
   ctx: z.RefinementCtx,
@@ -204,6 +347,104 @@ export const createCampaignSchema = z
 export type CreateCampaignInput = z.infer<typeof createCampaignSchema>;
 
 export const listCampaignsQuerySchema = paginationQuerySchema.strict();
+
+/** Send a test message through ONE provider (bypasses the fallback chain). */
+export const testCommunicationProviderSchema = z
+  .object({
+    /** Email address or phone number (E.164) to send the test to. */
+    to: z.string().trim().min(3).max(254),
+  })
+  .strict();
+export type TestCommunicationProviderInput = z.infer<typeof testCommunicationProviderSchema>;
+
+/* ------------------------------------------------------------ audiences ---- */
+
+/**
+ * Who an announcement goes to. `institution` = everyone in the institution; `department` /
+ * `program` / `class_section` = the listed units; `students` = listed students; `staff` = listed
+ * employees (or every active employee of the institution when `ids` is empty).
+ */
+export const AUDIENCE_TYPES = [
+  'institution',
+  'department',
+  'program',
+  'class_section',
+  'students',
+  'staff',
+] as const;
+export type AudienceType = (typeof AUDIENCE_TYPES)[number];
+
+/** Which people of the audience receive it. `staff` = employees of the institution / department. */
+export const AUDIENCE_RECIPIENTS = ['students', 'guardians', 'both', 'staff'] as const;
+export type AudienceRecipients = (typeof AUDIENCE_RECIPIENTS)[number];
+
+export const audienceSchema = z
+  .object({
+    institutionId: idSchema,
+    type: z.enum(AUDIENCE_TYPES),
+    ids: z.array(idSchema).max(500).default([]),
+    recipients: z.enum(AUDIENCE_RECIPIENTS).default('guardians'),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    const needsIds = ['department', 'program', 'class_section', 'students', 'staff'].includes(
+      v.type,
+    );
+    if (needsIds && v.ids.length === 0) {
+      ctx.addIssue({ code: 'custom', path: ['ids'], message: `Pick at least one ${v.type}` });
+    }
+    if (v.type === 'institution' && v.ids.length > 0) {
+      ctx.addIssue({ code: 'custom', path: ['ids'], message: 'Not used for the institution' });
+    }
+    if (v.type === 'staff' && v.recipients !== 'staff') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['recipients'],
+        message: 'Staff audiences go to staff',
+      });
+    }
+    if (['program', 'class_section', 'students'].includes(v.type) && v.recipients === 'staff') {
+      ctx.addIssue({
+        code: 'custom',
+        path: ['recipients'],
+        message: 'Pick students, guardians or both',
+      });
+    }
+  });
+export type AudienceInput = z.infer<typeof audienceSchema>;
+
+const broadcastContent = {
+  channel: messageChannelSchema,
+  audience: audienceSchema,
+  templateKey: templateKeySchema.optional(),
+  subject: z.string().trim().max(500).optional(),
+  body: z.string().min(1).max(20_000).optional(),
+  variables: templateVariablesSchema.default({}),
+};
+
+/** Count / list the recipients of an audience (and optionally render the first message). */
+export const previewAudienceSchema = z
+  .object({
+    channel: messageChannelSchema,
+    audience: audienceSchema,
+    templateKey: templateKeySchema.optional(),
+    subject: z.string().trim().max(500).optional(),
+    body: z.string().max(20_000).optional(),
+    variables: templateVariablesSchema.default({}),
+  })
+  .strict();
+export type PreviewAudienceInput = z.infer<typeof previewAudienceSchema>;
+
+/** Announcement to an audience: resolved server-side and sent as a campaign. */
+export const createBroadcastSchema = z
+  .object({
+    name: nameSchema,
+    ...broadcastContent,
+    scheduledAt: z.coerce.date().optional(),
+  })
+  .strict()
+  .superRefine(refineContent);
+export type CreateBroadcastInput = z.infer<typeof createBroadcastSchema>;
 
 export const listMessageLogsQuerySchema = paginationQuerySchema
   .extend({

@@ -1,5 +1,11 @@
 import type { SettingScopeType } from '../licensing/features';
-import type { MessageChannel, MessageStatus, ProviderType } from '../schemas/communication';
+import type {
+  AudienceRecipients,
+  AudienceType,
+  MessageChannel,
+  MessageStatus,
+  ProviderType,
+} from '../schemas/communication';
 import type { NotificationChannel } from '../schemas/notifications';
 import type {
   WorkflowActionType,
@@ -213,6 +219,11 @@ export interface MessageLogDto {
   eventKey: string | null;
   campaignId: string | null;
   providerType: string | null;
+  /** Provider that delivered (null = platform fallback / not yet sent). */
+  providerId: string | null;
+  providerName: string | null;
+  /** Level of the provider: institution's own, group or organization default. */
+  providerScope: SettingScopeType | null;
   providerMessageId: string | null;
   cost: number | null;
   attempts: number;
@@ -235,10 +246,61 @@ export interface CampaignDto {
   totalRecipients: number;
   sentCount: number;
   failedCount: number;
+  /** Audience members left out before queueing (no address / opted out). */
+  skippedCount: number;
+  /** Audience the campaign was built from (announcements), null for explicit recipient lists. */
+  audience: CampaignAudienceDto | null;
+  subject: string | null;
+  createdById: string | null;
   scheduledAt: string | null;
   startedAt: string | null;
   completedAt: string | null;
   createdAt: string;
+}
+
+export interface CampaignAudienceDto {
+  institutionId: string;
+  type: AudienceType;
+  ids: string[];
+  recipients: AudienceRecipients;
+  /** Human-readable summary, e.g. "Guardians of Class 6 - A". */
+  label: string;
+}
+
+export type AudienceSkipReason = 'NO_ADDRESS' | 'INVALID_ADDRESS' | 'OPTED_OUT';
+
+export interface AudienceMemberDto {
+  kind: 'student' | 'guardian' | 'staff';
+  name: string;
+  address: string | null;
+  userId: string | null;
+  /** Student the guardian / student row belongs to. */
+  studentName: string | null;
+}
+
+export interface AudienceSkippedDto extends AudienceMemberDto {
+  reason: AudienceSkipReason;
+}
+
+export interface AudiencePreviewDto {
+  channel: MessageChannel;
+  label: string;
+  /** Distinct deliverable addresses. */
+  total: number;
+  byKind: { student: number; guardian: number; staff: number };
+  /** Up to 50 deliverable recipients. */
+  sample: AudienceMemberDto[];
+  skipped: AudienceSkippedDto[];
+  skippedCount: number;
+  /** First recipient's rendered message when content was given. */
+  rendered: RenderedMessageDto | null;
+}
+
+export interface ProviderTestResultDto {
+  messageId: string;
+  status: MessageStatus;
+  to: string;
+  error: string | null;
 }
 
 /* -------------------------------- Integrations ------------------------------------------- */

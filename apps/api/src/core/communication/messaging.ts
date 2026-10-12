@@ -57,7 +57,8 @@ export interface SentMessageRef {
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const PHONE = /^\+?[1-9]\d{6,14}$/;
 
-function normalizeAddress(channel: MessageChannel, raw: string): string | null {
+/** Validated, canonical address for a channel (lower-case e-mail / E.164 phone) or null. */
+export function normalizeAddress(channel: MessageChannel, raw: string): string | null {
   const v = raw.trim();
   if (channel === 'email') return EMAIL.test(v) && v.length <= 254 ? v.toLowerCase() : null;
   const phone = v.replace(/[\s()-]/g, '');
@@ -339,9 +340,12 @@ async function deliver(
   log: MessageLog,
   content: { subject: string | null; text: string; html: string | null },
   info: JobRunInfo,
+  /** Deliver only through these providers (provider "Send test"), no fallback. */
+  pinned?: Candidate[],
 ): Promise<void> {
   const db = tenantDb();
-  const candidates = await selectProviders(log.channel as MessageChannel, log.institutionId);
+  const candidates =
+    pinned ?? (await selectProviders(log.channel as MessageChannel, log.institutionId));
   const errors: string[] = [];
   let retryable = false;
   if (candidates.length === 0) errors.push('NO_PROVIDER: no active provider for the channel');
@@ -409,6 +413,69 @@ async function deliver(
     return;
   }
   throw new Error(`Delivery failed (attempt ${info.attempt}): ${errors.join('; ')}`);
+}
+
+/**
+ * Send one test message synchronously through exactly this provider (no fallback) and log it
+ * (metadata.test = true). Never throws on delivery failure — the log status / error is returned.
+ */
+export async function sendProviderTest(
+  provider: CommunicationProvider,
+  to: string,
+): Promise<{ id: string; status: MessageStatus; to: string; error: string | null }> {
+  const channel = provider.channel as MessageChannel;
+  const institutionId = provider.scopeType === 'INSTITUTION' ? provider.targetId : null;
+  await assertChannelEnabled(channel, institutionId);
+  const address = normalizeAddress(channel, to);
+  if (!address) {
+    throw new ValidationError(
+      channel === 'email' ? 'Enter a valid e-mail address' : 'Enter a phone number in E.164 form',
+      { field: 'to' },
+    );
+  }
+  const adapter = providerAdapter(provider.providerType);
+  if (!adapter) {
+    throw new ValidationError(`Unknown provider type "${provider.providerType}"`, {
+      field: 'providerType',
+    });
+  }
+  const subject = 'Test message';
+  const text = `Test message from "${provider.name}" (${provider.providerType}, ${provider.scopeType.toLowerCase()} sender). If you received this, the ${channel} sender is configured correctly.`;
+  const log = await tenantDb().messageLog.create({
+    data: withTenant({
+      institutionId,
+      channel,
+      status: 'QUEUED',
+      recipientAddress: address,
+      recipientUserId: null,
+      subject: channel === 'email' ? subject : null,
+      body: text,
+      htmlBody: null,
+      eventKey: 'communication.provider_test',
+      metadata: { test: true, providerId: provider.id } as Prisma.InputJsonValue,
+      createdById: tryGetPrincipal()?.userId ?? null,
+    }),
+  });
+  try {
+    await deliver(
+      log,
+      { subject: channel === 'email' ? subject : null, text, html: null },
+      { attempt: 1, maxAttempts: 1, jobId: 'provider-test' },
+      [{ provider, adapter }],
+    );
+  } catch (err) {
+    logger.warn({ logId: log.id, err: (err as Error).message }, 'Provider test failed');
+  }
+  const after = await tenantDb().messageLog.findFirst({
+    where: { id: log.id },
+    select: { status: true, lastError: true },
+  });
+  return {
+    id: log.id,
+    status: after?.status ?? 'FAILED',
+    to: address,
+    error: after?.status === 'FAILED' ? (after.lastError ?? 'Delivery failed') : null,
+  };
 }
 
 defineJob<{ organizationId: string; logId: string }>({

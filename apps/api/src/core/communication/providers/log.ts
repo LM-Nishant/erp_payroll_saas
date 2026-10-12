@@ -27,6 +27,14 @@ export function clearOutbox(): void {
 
 const MAX_OUTBOX = 5000;
 
+function configFrom(config: Record<string, unknown> | null | undefined): string | null {
+  for (const key of ['from', 'senderId', 'businessNumber'] as const) {
+    const v = config?.[key];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  return null;
+}
+
 export const logProvider: ProviderAdapter = {
   type: 'log',
   channels: ['email', 'sms', 'whatsapp'],
@@ -39,7 +47,8 @@ export const logProvider: ProviderAdapter = {
       providerId: ctx.providerId,
       providerMessageId,
       to: message.to,
-      from: message.from ?? null,
+      // Shows which sender (institution / group / organization) the message would go out as.
+      from: message.from ?? configFrom(ctx.config) ?? null,
       subject: message.subject ?? null,
       text: message.text,
       html: message.html ?? null,
