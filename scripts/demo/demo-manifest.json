@@ -690,7 +690,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 168,
+      "permissionsCount": 174,
       "workspaces": [
         {
           "layout": "group",
@@ -817,6 +817,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -991,6 +995,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",
@@ -1223,6 +1231,10 @@
             "to": "/portal/wards"
           },
           {
+            "title": "Certificates",
+            "to": "/portal/certificates"
+          },
+          {
             "title": "Timetable",
             "to": "/portal/timetable"
           },
@@ -1336,7 +1348,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 131,
+      "permissionsCount": 136,
       "workspaces": [
         {
           "layout": "group",
@@ -1450,6 +1462,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -1624,6 +1640,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",
@@ -2573,7 +2593,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 123,
+      "permissionsCount": 129,
       "workspaces": [
         {
           "layout": "group",
@@ -2687,6 +2707,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -2845,6 +2869,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",
@@ -3380,7 +3408,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 61,
+      "permissionsCount": 68,
       "workspaces": [
         {
           "layout": "group",
@@ -3469,6 +3497,14 @@
           {
             "title": "Documents",
             "to": "/group/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/group/communication"
           },
           {
             "title": "AI tools",
@@ -3607,6 +3643,14 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/institution/communication"
           },
           {
             "title": "Fee heads",
@@ -3831,7 +3875,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 122,
+      "permissionsCount": 128,
       "workspaces": [
         {
           "layout": "group",
@@ -3945,6 +3989,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -4103,6 +4151,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",
@@ -4421,7 +4473,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 56,
+      "permissionsCount": 60,
       "workspaces": [
         {
           "layout": "group",
@@ -4512,6 +4564,10 @@
             "to": "/group/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "AI tools",
             "to": "/group/ai"
           }
@@ -4588,6 +4644,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           }
         ],
         "hr": [
@@ -4732,7 +4792,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 56,
+      "permissionsCount": 60,
       "workspaces": [
         {
           "layout": "group",
@@ -4823,6 +4883,10 @@
             "to": "/group/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "AI tools",
             "to": "/group/ai"
           }
@@ -4899,6 +4963,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           }
         ],
         "hr": [
@@ -5043,7 +5111,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 57,
+      "permissionsCount": 61,
       "workspaces": [
         {
           "layout": "group",
@@ -5134,6 +5202,10 @@
             "to": "/group/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "AI tools",
             "to": "/group/ai"
           }
@@ -5210,6 +5282,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           }
         ],
         "hr": [
@@ -5354,7 +5430,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 56,
+      "permissionsCount": 60,
       "workspaces": [
         {
           "layout": "group",
@@ -5445,6 +5521,10 @@
             "to": "/group/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "AI tools",
             "to": "/group/ai"
           }
@@ -5521,6 +5601,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           }
         ],
         "hr": [
@@ -5665,7 +5749,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 56,
+      "permissionsCount": 60,
       "workspaces": [
         {
           "layout": "group",
@@ -5756,6 +5840,10 @@
             "to": "/group/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "AI tools",
             "to": "/group/ai"
           }
@@ -5832,6 +5920,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           }
         ],
         "hr": [
@@ -6966,7 +7058,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 35,
+      "permissionsCount": 36,
       "workspaces": [
         {
           "layout": "group",
@@ -9212,7 +9304,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 12,
+      "permissionsCount": 13,
       "workspaces": [
         {
           "layout": "employee",
@@ -9252,6 +9344,10 @@
           {
             "title": "My profile",
             "to": "/portal/profile"
+          },
+          {
+            "title": "Certificates",
+            "to": "/portal/certificates"
           },
           {
             "title": "Timetable",
@@ -9325,7 +9421,7 @@
         "whatsapp",
         "ai"
       ],
-      "permissionsCount": 12,
+      "permissionsCount": 13,
       "workspaces": [
         {
           "layout": "employee",
@@ -9365,6 +9461,10 @@
           {
             "title": "My children",
             "to": "/portal/wards"
+          },
+          {
+            "title": "Certificates",
+            "to": "/portal/certificates"
           },
           {
             "title": "Timetable",
@@ -9423,7 +9523,7 @@
       "persona": "School owner on the Starter plan",
       "loginOk": true,
       "features": ["education", "documents", "communication", "email"],
-      "permissionsCount": 123,
+      "permissionsCount": 129,
       "workspaces": [
         {
           "layout": "group",
@@ -9517,6 +9617,10 @@
             "to": "/group/branding"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "Communication",
             "to": "/group/communication"
           }
@@ -9595,6 +9699,10 @@
             "to": "/institution/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/institution/announcements"
+          },
+          {
             "title": "Communication",
             "to": "/institution/communication"
           },
@@ -9647,7 +9755,7 @@
       "persona": "Principal — academics only (no HR/payroll on Starter)",
       "loginOk": true,
       "features": ["education", "documents", "communication", "email"],
-      "permissionsCount": 54,
+      "permissionsCount": 61,
       "workspaces": [
         {
           "layout": "group",
@@ -9731,6 +9839,14 @@
           {
             "title": "Documents",
             "to": "/group/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/group/communication"
           }
         ],
         "institution": [
@@ -9805,6 +9921,14 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/institution/communication"
           }
         ],
         "employee": [
@@ -10121,7 +10245,7 @@
       "persona": "Student portal",
       "loginOk": true,
       "features": ["education", "documents", "communication", "email"],
-      "permissionsCount": 12,
+      "permissionsCount": 13,
       "workspaces": [
         {
           "layout": "employee",
@@ -10153,6 +10277,10 @@
           {
             "title": "My profile",
             "to": "/portal/profile"
+          },
+          {
+            "title": "Certificates",
+            "to": "/portal/certificates"
           },
           {
             "title": "Timetable",
@@ -10191,7 +10319,7 @@
       "persona": "Parent portal",
       "loginOk": true,
       "features": ["education", "documents", "communication", "email"],
-      "permissionsCount": 12,
+      "permissionsCount": 13,
       "workspaces": [
         {
           "layout": "employee",
@@ -10223,6 +10351,10 @@
           {
             "title": "My children",
             "to": "/portal/wards"
+          },
+          {
+            "title": "Certificates",
+            "to": "/portal/certificates"
           },
           {
             "title": "Timetable",
@@ -10261,7 +10393,7 @@
       "persona": "Company owner — HRMS + Payroll",
       "loginOk": true,
       "features": ["hr", "payroll", "documents"],
-      "permissionsCount": 123,
+      "permissionsCount": 129,
       "workspaces": [
         {
           "layout": "group",
@@ -10466,7 +10598,7 @@
       "persona": "Engineering manager (head of department) — approves team leave",
       "loginOk": true,
       "features": ["hr", "payroll", "documents"],
-      "permissionsCount": 56,
+      "permissionsCount": 60,
       "workspaces": [
         {
           "layout": "group",
@@ -10836,7 +10968,7 @@
       "persona": "Payroll manager — salary structures and payroll runs",
       "loginOk": true,
       "features": ["hr", "payroll", "documents"],
-      "permissionsCount": 35,
+      "permissionsCount": 36,
       "workspaces": [
         {
           "layout": "group",
@@ -11298,7 +11430,7 @@
         "sms",
         "whatsapp"
       ],
-      "permissionsCount": 168,
+      "permissionsCount": 174,
       "workspaces": [
         {
           "layout": "group",
@@ -11425,6 +11557,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -11587,6 +11723,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",
@@ -11815,6 +11955,10 @@
             "to": "/portal/wards"
           },
           {
+            "title": "Certificates",
+            "to": "/portal/certificates"
+          },
+          {
             "title": "Timetable",
             "to": "/portal/timetable"
           },
@@ -11927,7 +12071,7 @@
         "sms",
         "whatsapp"
       ],
-      "permissionsCount": 131,
+      "permissionsCount": 136,
       "workspaces": [
         {
           "layout": "group",
@@ -12041,6 +12185,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -12203,6 +12351,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",
@@ -12499,7 +12651,7 @@
         "sms",
         "whatsapp"
       ],
-      "permissionsCount": 54,
+      "permissionsCount": 61,
       "workspaces": [
         {
           "layout": "group",
@@ -12588,6 +12740,14 @@
           {
             "title": "Documents",
             "to": "/group/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/group/communication"
           },
           {
             "title": "Fee heads",
@@ -12722,6 +12882,14 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/institution/communication"
           },
           {
             "title": "Fee heads",
@@ -12896,7 +13064,7 @@
         "sms",
         "whatsapp"
       ],
-      "permissionsCount": 54,
+      "permissionsCount": 61,
       "workspaces": [
         {
           "layout": "group",
@@ -12985,6 +13153,14 @@
           {
             "title": "Documents",
             "to": "/group/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/group/communication"
           },
           {
             "title": "Fee heads",
@@ -13119,6 +13295,14 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
+          },
+          {
+            "title": "Communication",
+            "to": "/institution/communication"
           },
           {
             "title": "Fee heads",
@@ -13959,7 +14143,7 @@
         "sms",
         "whatsapp"
       ],
-      "permissionsCount": 12,
+      "permissionsCount": 13,
       "workspaces": [
         {
           "layout": "employee",
@@ -13999,6 +14183,10 @@
           {
             "title": "My profile",
             "to": "/portal/profile"
+          },
+          {
+            "title": "Certificates",
+            "to": "/portal/certificates"
           },
           {
             "title": "Timetable",
@@ -14071,7 +14259,7 @@
         "sms",
         "whatsapp"
       ],
-      "permissionsCount": 12,
+      "permissionsCount": 13,
       "workspaces": [
         {
           "layout": "employee",
@@ -14111,6 +14299,10 @@
           {
             "title": "My children",
             "to": "/portal/wards"
+          },
+          {
+            "title": "Certificates",
+            "to": "/portal/certificates"
           },
           {
             "title": "Timetable",
@@ -14169,7 +14361,7 @@
       "persona": "PAST_DUE: modules stay licensed (grace) and an OPEN platform invoice is shown under Billing.",
       "loginOk": true,
       "features": ["education", "documents", "communication", "email"],
-      "permissionsCount": 123,
+      "permissionsCount": 129,
       "workspaces": [
         {
           "layout": "group",
@@ -14263,6 +14455,10 @@
             "to": "/group/branding"
           },
           {
+            "title": "Announcements",
+            "to": "/group/announcements"
+          },
+          {
             "title": "Communication",
             "to": "/group/communication"
           }
@@ -14341,6 +14537,10 @@
             "to": "/institution/documents"
           },
           {
+            "title": "Announcements",
+            "to": "/institution/announcements"
+          },
+          {
             "title": "Communication",
             "to": "/institution/communication"
           },
@@ -14393,7 +14593,7 @@
       "persona": "CANCELLED: nothing is licensed — every module menu is hidden and module APIs return 403.",
       "loginOk": true,
       "features": [],
-      "permissionsCount": 123,
+      "permissionsCount": 129,
       "workspaces": [
         {
           "layout": "group",
@@ -14508,7 +14708,7 @@
         "sms",
         "ai"
       ],
-      "permissionsCount": 123,
+      "permissionsCount": 129,
       "workspaces": [
         {
           "layout": "group",
@@ -14622,6 +14822,10 @@
           {
             "title": "Branding",
             "to": "/group/branding"
+          },
+          {
+            "title": "Announcements",
+            "to": "/group/announcements"
           },
           {
             "title": "Communication",
@@ -14780,6 +14984,10 @@
           {
             "title": "Documents",
             "to": "/institution/documents"
+          },
+          {
+            "title": "Announcements",
+            "to": "/institution/announcements"
           },
           {
             "title": "Communication",

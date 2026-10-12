@@ -45,6 +45,8 @@ Platform roles (outside any organization): **Platform Super Admin** (`superadmin
 - **Form 16:** payroll manager uploads (or generates) and publishes → employee downloads under My payslips → Form 16.
 - **Admissions → fees:** registrar/principal admits → accountant collects fees → student/parent sees dues and receipts.
 - **Transfer / character certificate:** registrar (or principal, vice principal, HOD, academic coordinator) issues from the student's **Certificates** tab. A TC is refused while fee dues are pending: the accountant collects them, or the principal / institution admin waives them with a reason (`certificate.waive_dues`). The student / parent downloads the PDF under **Certificates** (`certificate.view_own`).
+- **Announcements (e-mail / SMS / WhatsApp):** holders of `message.broadcast` — group owner/admin, institution owner/admin, principal, vice principal, dean, registrar, HOD and academic coordinator — compose under **Announcements** to an institution, department, program, class section, specific students (their guardians and/or themselves) or specific staff. The server only resolves audiences inside the sender's role scope (an HOD only their department, an institution role only its institution); anything outside is refused with `SCOPE_DENIED`. Teachers, librarian, transport and hostel staff keep `message.send` only; students and parents cannot send. Recipients without an address on the channel, or who opted out, are skipped and listed before sending.
+- **Institution sender (own mailbox / SMS number / WhatsApp number):** `communication.manage` holders (group owner/admin, IT admin, institution owner/admin, principal) add a provider under **Settings → Communication** scoped to their institution; sending then uses institution → group → organization providers in that order.
 
 ## Detailed permissions by role
 
@@ -52,7 +54,7 @@ Platform roles (outside any organization): **Platform Super Admin** (`superadmin
 
 Owner of the education group / tenant; full tenant access
 
-<details><summary>173 permissions</summary>
+<details><summary>174 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -198,6 +200,7 @@ Owner of the education group / tenant; full tenant access
   - `library.view` — View library catalogue, copies, circulation and reports
   - `library.view_own` — Self-service library: own loans, fines, OPAC search and reservations
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **notification**
@@ -282,7 +285,7 @@ Owner of the education group / tenant; full tenant access
 
 Administers all institutions in assigned groups
 
-<details><summary>135 permissions</summary>
+<details><summary>136 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -406,6 +409,7 @@ Administers all institutions in assigned groups
   - `library.view` — View library catalogue, copies, circulation and reports
   - `library.view_own` — Self-service library: own loans, fines, OPAC search and reservations
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **notification**
@@ -627,7 +631,7 @@ Finance across assigned groups
 
 Owner of assigned institutions
 
-<details><summary>127 permissions</summary>
+<details><summary>129 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -668,6 +672,7 @@ Owner of assigned institutions
   - `class_section.update` — Update classes / sections
   - `class_section.view` — View classes / sections
 - **communication**
+  - `communication.manage` — Configure communication providers and message templates
   - `communication.view` — View communication providers, templates, campaigns and message logs
 - **department**
   - `department.create` — Create departments
@@ -743,6 +748,7 @@ Owner of assigned institutions
   - `library.view` — View library catalogue, copies, circulation and reports
   - `library.view_own` — Self-service library: own loans, fines, OPAC search and reservations
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -803,7 +809,7 @@ Owner of assigned institutions
 
 Administers assigned institutions only
 
-<details><summary>123 permissions</summary>
+<details><summary>125 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -843,6 +849,7 @@ Administers assigned institutions only
   - `class_section.update` — Update classes / sections
   - `class_section.view` — View classes / sections
 - **communication**
+  - `communication.manage` — Configure communication providers and message templates
   - `communication.view` — View communication providers, templates, campaigns and message logs
 - **department**
   - `department.create` — Create departments
@@ -917,6 +924,7 @@ Administers assigned institutions only
   - `library.view` — View library catalogue, copies, circulation and reports
   - `library.view_own` — Self-service library: own loans, fines, OPAC search and reservations
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -975,7 +983,7 @@ Administers assigned institutions only
 
 Academic head of an institution
 
-<details><summary>58 permissions</summary>
+<details><summary>61 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1001,6 +1009,9 @@ Academic head of an institution
   - `class_section.delete` — Delete classes / sections
   - `class_section.update` — Update classes / sections
   - `class_section.view` — View classes / sections
+- **communication**
+  - `communication.manage` — Configure communication providers and message templates
+  - `communication.view` — View communication providers, templates, campaigns and message logs
 - **department**
   - `department.view` — View departments
 - **document**
@@ -1032,6 +1043,7 @@ Academic head of an institution
 - **library**
   - `library.view` — View library catalogue, copies, circulation and reports
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -1068,7 +1080,7 @@ Academic head of an institution
 
 Deputy academic head
 
-<details><summary>52 permissions</summary>
+<details><summary>53 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1115,6 +1127,7 @@ Deputy academic head
   - `leave.view` — View leave requests and balances
   - `leave.view_own` — View own leave balances and requests (self-service)
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -1151,7 +1164,7 @@ Deputy academic head
 
 Academic head of a faculty / set of departments
 
-<details><summary>52 permissions</summary>
+<details><summary>53 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1198,6 +1211,7 @@ Academic head of a faculty / set of departments
   - `leave.view` — View leave requests and balances
   - `leave.view_own` — View own leave balances and requests (self-service)
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -1234,7 +1248,7 @@ Academic head of a faculty / set of departments
 
 Student records and academic administration
 
-<details><summary>53 permissions</summary>
+<details><summary>54 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1282,6 +1296,7 @@ Student records and academic administration
   - `leave.view` — View leave requests and balances
   - `leave.view_own` — View own leave balances and requests (self-service)
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -1318,7 +1333,7 @@ Student records and academic administration
 
 Head of department; limited to assigned departments
 
-<details><summary>52 permissions</summary>
+<details><summary>53 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1365,6 +1380,7 @@ Head of department; limited to assigned departments
   - `leave.view` — View leave requests and balances
   - `leave.view_own` — View own leave balances and requests (self-service)
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**
@@ -1401,7 +1417,7 @@ Head of department; limited to assigned departments
 
 Subjects, timetable, attendance and examinations of an institution
 
-<details><summary>52 permissions</summary>
+<details><summary>53 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1448,6 +1464,7 @@ Subjects, timetable, attendance and examinations of an institution
   - `leave.view` — View leave requests and balances
   - `leave.view_own` — View own leave balances and requests (self-service)
 - **message**
+  - `message.broadcast` — Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope
   - `message.schedule` — Schedule messages
   - `message.send` — Send messages
 - **organization**

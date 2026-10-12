@@ -446,9 +446,32 @@ name**, **Class section**, **Roll no**, **Academic year**, **Email**, **Phone**.
 - **Previous schools** – earlier schools (board, last class, year, marks, old TC no.) with the
   uploaded old TC (click the file name to download it).
 - **Certificates** – transfer certificates (TC) and character certificates (see below).
+- **Fees** – billed / paid / due / overdue totals, the student's invoices and payments with
+  **Download receipt**. **Collect fee** and **All invoices** open the Fees pages to act.
+- **Hostel** – the current room (hostel, room, bed, floor, rent, mess plan) and the allocation
+  history. **Manage allocations** opens Hostel → Allocations.
+- **Transport** – the current route, stop, vehicle, trip type, pickup / drop times and fare, plus
+  the history. **Manage allocations** opens Transport → Allocations.
 - **Login access** – shows the linked student login. Create the login first under **Users** with
   the **Student** role (parents: **Parent** role); linking the login to the student record is
   currently done by your administrator/support.
+
+The **Fees**, **Hostel** and **Transport** tabs show only when you hold the matching permission
+(`fee.view`, `hostel.view`, `transport.view`) and the module is licensed. **Message** (top right)
+opens **Announcements** with the student's guardians pre-selected (needs `message.broadcast`).
+
+**Linking a student to fees, hostel and transport:** there is nothing to link by hand – each
+module records the student, and the tabs above read from it.
+
+1. **Fees:** set up fee heads and a fee structure for the class (section 7.5), then **Generate
+   invoices** – every student of the class gets an invoice. Collect against it from **Fees →
+   Collect fee** (or **Collect fee** on the student's Fees tab).
+2. **Hostel:** **Hostel → Allocations → Allocate room** – pick the **Student**, **Room** and an
+   optional **Mess plan**. Monthly hostel charges are billed into the student's fees.
+3. **Transport:** **Transport → Allocations → Allocate transport** – pick the **Student**,
+   **Route**, **Stop** and trip type. The fare (by stop distance or override) is billed into the
+   student's fees each month (**Reports → Transport charges**).
+4. Vacating a room or ending a transport allocation keeps it in the history on the student's tab.
 
 **Transfer certificate (TC) and character certificate:** open the student → **Certificates**.
 
@@ -762,21 +785,72 @@ Parent workspace):
 
 ### 7.11 Communication
 
-**Who:** Group Admin and IT Admin manage; Institution Admin views. Requires the **Communication**
-module; Email, SMS and WhatsApp are separate licensed channels.
+**Who:** Principal, Institution Owner / Admin, Group Admin and Group Owner configure senders; the
+academic leads (principal, vice principal, dean, registrar, HOD, academic coordinator) and
+institution / group admins send announcements. Requires the **Communication** module; Email, SMS
+and WhatsApp are separate licensed channels.
 
-**Group → Communication**:
+**Communication** (Group or Institution workspace) has three tabs:
 
-- **Providers** – **Add provider** for a **Channel** (email/SMS/WhatsApp) with **Config (JSON)**,
-  **Credentials** (write-only) and **Priority (lower first)**.
+- **Providers** – the senders used for email, SMS and WhatsApp (see below).
 - **Templates** – **New template**: **Key** (e.g. `auth.invite`), **Name**, **Channel**,
   **Subject**, **HTML body** (wrapped in your branded layout), **Sample variables (JSON)**. Use
   **Preview current version** and **Draft with AI** (if AI is licensed).
-- **Message log** – every email/SMS/WhatsApp sent and its status.
+- **Message log** – every email/SMS/WhatsApp sent, its status and the **Provider** that sent it
+  (with its scope chip). Use **Channel filter** to narrow the list.
 
-Messages are sent from the module screens, e.g. **Notify guardians of absentees** (student
-attendance), **Send reminders** (fee defaulters), **Notify parents** (transport), invites and
-password emails. There is no separate bulk-announcement composer screen yet.
+**Setting up your institution's own email, SMS and WhatsApp number**
+
+1. **Communication → Providers → Add provider**.
+2. **Used by:** **Institution (own sender)** and pick the **Institution** – or **Group** /
+   **Organization (default for all)** for a shared sender.
+3. **Channel** and **Provider**, then fill the form for that provider:
+   - **Email – SMTP server (own mailbox):** **SMTP host**, **Port**, **Use TLS from the start
+     (port 465)**, **Username** and the sender address / name; the mailbox password goes in
+     **Credentials**. Also **Amazon SES (SMTP interface)** and **SendGrid**
+     (SMTP password / API key in **Credentials**).
+   - **SMS – MSG91 (India, DLT):** **Sender ID (6 letters)**, **DLT template ID**; **Twilio SMS:**
+     **Account SID**, **Sender number (E.164)** (e.g. `+918041234567`) or **Messaging service
+     SID**;
+     the auth token / API key goes in **Credentials**. **HTTP gateway** for other SMS vendors.
+   - **WhatsApp Cloud API (Meta):** **Phone number ID**, **WhatsApp business number (E.164)** and
+     optionally an **Approved template name**; the access token goes in **Credentials**.
+   - **Log only (development / demo — never sends)** – records the message in the log without
+     delivering it. Demo and development environments use this.
+4. **Priority (lower first)** chooses between several providers of the same scope and channel.
+5. **Save**, then **Send test** on the row and enter your own email or phone – the result (e.g.
+   `SENT to …`) appears in the dialog and in the Message log.
+
+Credentials are write-only: they are never shown again. **Edit** (pencil) changes the settings;
+leave **Credentials** blank to keep the stored secret. **Used by**, **Channel** and **Provider**
+cannot change after creation – add a new provider instead.
+
+**Which sender is used:** for a message about an institution the most specific enabled provider
+wins – **institution → group → organization** – then the lowest priority number. If the
+institution has no SMS provider, its group's is used, otherwise the organization default.
+
+**Announcements (email / SMS / WhatsApp to an audience)** – **Announcements** in the Group or
+Institution menu:
+
+1. Pick the **Institution** and the **Channel** (only licensed channels are offered).
+2. **Send to:** **Whole institution**, **Department(s)**, **Class / program(s)**, **Class
+   section(s)**, **Specific students** or **Specific staff**, and choose them.
+3. **Recipients:** **Parents / guardians**, **Students**, **Students + guardians** or **Staff**.
+4. Write **Free text** (email also has a **Subject**; insert `{{name}}`, `{{studentName}}`,
+   `{{kind}}`) or pick a **Template** of that channel.
+5. **Preview recipients** shows the count, the rendered message for the first recipient and the
+   **skipped** list – people without an email / valid phone, or who opted out of announcements.
+6. **Send now**, or tick **Schedule for later** and set **Send at**.
+
+**Sent & scheduled** lists each announcement with its audience, status, progress (sent / failed /
+total) and skipped count; **Cancel** stops a scheduled or queued one. Shortcuts: **Message** on a
+student's record (that student's guardians) and the **Message guardians** menu on **Classes &
+sections** (a class or one section).
+
+You can only target audiences inside your own scope: an HOD can message their department's
+classes and students, not the whole institution. Teachers, librarians, transport and hostel staff
+send only from their module screens (**Notify guardians of absentees**, **Send reminders**,
+**Notify parents** …). Up to 5,000 recipients per announcement.
 
 ### 7.12 AI assistant and AI tools
 
