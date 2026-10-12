@@ -45,7 +45,14 @@ const VIEW = 'transport.view';
 const ALLOCATE = 'transport.allocate';
 
 const allocationInclude = {
-  route: { select: { id: true, code: true, name: true } },
+  route: {
+    select: {
+      id: true,
+      code: true,
+      name: true,
+      vehicle: { select: { id: true, regNo: true } },
+    },
+  },
   stop: { select: { id: true, name: true, pickupTime: true, dropTime: true } },
 } as const;
 type AllocationRow = Prisma.TransportAllocationGetPayload<{ include: typeof allocationInclude }>;
@@ -72,7 +79,8 @@ function toAllocationDto(a: AllocationRow, person?: PersonRef): TransportAllocat
     employeeId: a.employeeId,
     passengerName: person?.name ?? '—',
     passengerCode: person?.code ?? null,
-    route: a.route,
+    route: { id: a.route.id, code: a.route.code, name: a.route.name },
+    vehicle: a.route.vehicle,
     stop: a.stop,
     tripType: a.tripType,
     effectiveFrom: dateStr(a.effectiveFrom),

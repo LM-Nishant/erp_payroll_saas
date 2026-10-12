@@ -4,7 +4,8 @@ import { dialog, expectClean, fill, pick, RUN_ID, rows, saveDialog } from '../..
 
 /**
  * Communication (Greenwood, owner@ — organization-wide communication.manage): create an e-mail template,
- * preview it with sample variables, publish a second version and open the message log.
+ * preview it with sample variables, publish a second version, open the message log and send it as an
+ * announcement to a class section's guardians (see messaging-audience.spec.ts for the full matrix).
  * Templates are organization-level settings (the page sends no scope), so the organization owner
  * is the actor; group-scoped admins get 403 SCOPE_DENIED (known UI gap: the button still shows).
  */
@@ -29,6 +30,7 @@ test.describe('Communication · owner@greenwood.demo', () => {
     await fill(d, 'Subject', 'Notice for {{name}}');
     await fill(d, 'Text body ({{variable}})', 'Dear {{name}}, school reopens on Monday.');
     await saveDialog(s, 'Create');
+    await s.page.getByRole('textbox', { name: 'Search templates' }).fill(key);
     await expect(row()).toHaveCount(1);
     await expect(row()).toContainText('email');
     await expectClean(s, mark, 'template create');
@@ -72,9 +74,27 @@ test.describe('Communication · owner@greenwood.demo', () => {
     await expectClean(s, mark, 'message log');
   });
 
-  test.fixme('composes and sends an announcement to a class', async () => {
-    // Product gap: the API has /communication/campaigns, but the app has no announcement /
-    // broadcast composer (Communication only manages providers, templates and the delivery log;
-    // only Transport sends ad-hoc notices from its own page).
+  test('composes and sends an announcement to a class with the template', async () => {
+    const s = session();
+    await s.go('/group/announcements');
+    const mark = s.mark();
+    const c = s.page.getByTestId('compose');
+    await pick(c, 'Institution', 'Greenwood International School');
+    await c.getByTestId('channel').getByRole('button', { name: 'Email', exact: true }).click();
+    await fill(c, 'Campaign name', name);
+    await pick(c, 'Send to', 'Class section(s)');
+    await pick(c, 'Class section(s)', /^Grade 1 - A$/);
+    await pick(c, 'Recipients', 'Parents / guardians');
+    await c.getByRole('radio', { name: 'Template' }).check();
+    await pick(c, 'Message template', key);
+    await c.getByTestId('preview-audience').click();
+    await s.settle();
+    await expect(s.page.getByTestId('preview-total')).not.toHaveText('0');
+    await expect(s.page.getByTestId('rendered-text')).toContainText('school reopens on Tuesday');
+    await c.getByTestId('send-broadcast').click();
+    await s.settle();
+    const campaign = s.page.getByTestId('campaigns').locator('tbody tr').filter({ hasText: name });
+    await expect(campaign).toContainText('COMPLETED', { timeout: 60_000 });
+    await expectClean(s, mark, 'announcement');
   });
 });

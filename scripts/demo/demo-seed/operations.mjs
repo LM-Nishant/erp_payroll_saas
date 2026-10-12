@@ -315,6 +315,36 @@ export async function seedDocuments(ctx, docs) {
   }
 }
 
+/**
+ * Institution-scoped senders (log type — nothing is really sent): the institution's own email
+ * address, SMS sender ID and WhatsApp business number. They win over the organization-wide
+ * providers for messages of that institution (institution → group → organization).
+ */
+export async function seedInstitutionSenders(ctx, inst, { name, email, smsSender, whatsapp }) {
+  const existing = await ctx.api('GET', '/communication/providers?pageSize=100');
+  const senders = [
+    ['email', { from: email, fromName: name }],
+    ['sms', { from: smsSender }],
+    ['whatsapp', { from: whatsapp }],
+  ];
+  for (const [channel, config] of senders) {
+    const label = `${name} ${channel} (log only)`;
+    if (existing.data.some((p) => p.name === label)) continue;
+    await step(`${ctx.slug} ${inst.code} ${channel} sender`, () =>
+      ctx.api('POST', '/communication/providers', {
+        scopeType: 'INSTITUTION',
+        targetId: inst.id,
+        channel,
+        providerType: 'log',
+        name: label,
+        priority: 5,
+        config,
+      }),
+    );
+    bump('institution_senders');
+  }
+}
+
 /** Log email provider (+ sms/whatsapp when licensed), templates and a sent circular. */
 export async function seedCommunication(ctx, { channels = ['email'], recipients, circular }) {
   for (const [i, channel] of channels.entries()) {

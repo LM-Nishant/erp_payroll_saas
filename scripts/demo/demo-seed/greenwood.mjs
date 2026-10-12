@@ -29,6 +29,7 @@ import { TODAY, addDays, step } from './lib.mjs';
 import {
   seedAssets,
   seedCommunication,
+  seedInstitutionSenders,
   seedDocuments,
   seedHostel,
   seedLibrary,
@@ -599,6 +600,14 @@ export async function seedGreenwood(ctx) {
         subject: 'Annual Sports Day on 14 November',
         body: 'Dear parents and staff, the Annual Sports Day will be held on 14 November at the main ground. Students should report by 8:00 AM in house colours.',
       },
+    }),
+  );
+  await step('greenwood institution senders', () =>
+    seedInstitutionSenders(ctx, main, {
+      name: 'Greenwood',
+      email: 'office@greenwood.demo',
+      smsSender: 'GRNWD',
+      whatsapp: '+918041234567',
     }),
   );
   return { group, main, branch, owner, brOwner };

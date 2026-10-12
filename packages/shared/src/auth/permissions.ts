@@ -156,6 +156,8 @@ export const PERMISSIONS = {
   'pdf.generate': 'Generate PDFs from templates (stored as documents)',
   'message.send': 'Send messages',
   'message.schedule': 'Schedule messages',
+  'message.broadcast':
+    'Send announcements to an audience (institution, department, program, class section, students or staff) inside own scope',
   'ai.use': 'Use AI assistants',
   'ai.configure': 'Configure AI providers',
   'ai.action.send_message': 'Allow AI to send messages',

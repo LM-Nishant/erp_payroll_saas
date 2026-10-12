@@ -1,4 +1,5 @@
 import {
+  createBroadcastSchema,
   createCampaignSchema,
   createCommunicationProviderSchema,
   createMessageTemplateSchema,
@@ -8,17 +9,20 @@ import {
   listProvidersQuerySchema,
   listTemplatesQuerySchema,
   messageChannelSchema,
+  previewAudienceSchema,
   previewMessageTemplateSchema,
   reviseMessageTemplateSchema,
   sendMessageSchema,
   templateKeySchema,
+  testCommunicationProviderSchema,
   templateVariablesSchema,
   updateCommunicationProviderSchema,
 } from '@erp/shared';
-import { Router, type Request } from 'express';
+import { Router, type Request, type RequestHandler } from 'express';
 import { z } from 'zod';
-import { requirePermission } from '../../core/authz';
+import { currentPrincipal, hasPermission, requirePermission } from '../../core/authz';
 import {
+  broadcastsService,
   campaignsService,
   handleDeliveryCallback,
   messagesService,
@@ -26,6 +30,7 @@ import {
   templatesService,
 } from '../../core/communication';
 import { env } from '../../core/config/env';
+import { ForbiddenError } from '../../core/http/errors';
 import { parseInput } from '../../core/http/validation';
 
 /**
@@ -49,6 +54,15 @@ const previewByKeySchema = z
 
 const view = requirePermission('communication.view');
 const manage = requirePermission('communication.manage');
+const broadcast = requirePermission('message.broadcast');
+/** Campaign list / detail: the message log admins and announcement senders (own campaigns). */
+const viewCampaigns: RequestHandler = (_req, _res, next) => {
+  const principal = currentPrincipal();
+  if (!['communication.view', 'message.broadcast'].some((p) => hasPermission(principal, p))) {
+    throw new ForbiddenError('One of communication.view, message.broadcast is required');
+  }
+  next();
+};
 
 communicationRouter.get('/providers', view, async (req, res) => {
   res.json(await providersService.list(parseInput(listProvidersQuerySchema, req.query)));
@@ -63,6 +77,10 @@ communicationRouter.post('/providers', manage, async (req, res) => {
 communicationRouter.patch('/providers/:id', manage, async (req, res) => {
   const input = parseInput(updateCommunicationProviderSchema, req.body);
   res.json({ data: await providersService.update(idOf(req), input) });
+});
+communicationRouter.post('/providers/:id/test', manage, async (req, res) => {
+  const { to } = parseInput(testCommunicationProviderSchema, req.body);
+  res.json({ data: await providersService.test(idOf(req), to) });
 });
 communicationRouter.post('/providers/:id/rotate-webhook-secret', manage, async (req, res) => {
   res.json({ data: await providersService.rotateWebhookSecret(idOf(req)) });
@@ -125,14 +143,24 @@ communicationRouter.get('/messages/:id', view, async (req, res) => {
   res.json({ data: await messagesService.get(idOf(req)) });
 });
 
-communicationRouter.get('/campaigns', view, async (req, res) => {
+// Announcements: audience resolved server-side inside the caller's scope (see audience.ts).
+communicationRouter.post('/audience/preview', broadcast, async (req, res) => {
+  const input = parseInput(previewAudienceSchema, req.body);
+  res.json({ data: await broadcastsService.preview(input) });
+});
+communicationRouter.post('/broadcasts', broadcast, async (req, res) => {
+  const input = parseInput(createBroadcastSchema, req.body);
+  res.status(201).json({ data: await broadcastsService.create(input) });
+});
+
+communicationRouter.get('/campaigns', viewCampaigns, async (req, res) => {
   res.json(await campaignsService.list(parseInput(listCampaignsQuerySchema, req.query)));
 });
 communicationRouter.post('/campaigns', async (req, res) => {
   const input = parseInput(createCampaignSchema, req.body);
   res.status(201).json({ data: await campaignsService.create(input) });
 });
-communicationRouter.get('/campaigns/:id', view, async (req, res) => {
+communicationRouter.get('/campaigns/:id', viewCampaigns, async (req, res) => {
   res.json({ data: await campaignsService.get(idOf(req)) });
 });
 communicationRouter.post('/campaigns/:id/cancel', async (req, res) => {

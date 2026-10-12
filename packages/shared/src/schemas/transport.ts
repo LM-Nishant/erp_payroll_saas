@@ -432,6 +432,8 @@ export interface TransportAllocationDto {
   passengerName: string;
   passengerCode: string | null;
   route: { id: string; code: string; name: string };
+  /** Vehicle currently on the route (null when none is assigned). */
+  vehicle: { id: string; regNo: string } | null;
   stop: { id: string; name: string; pickupTime: string | null; dropTime: string | null };
   tripType: string;
   effectiveFrom: string;

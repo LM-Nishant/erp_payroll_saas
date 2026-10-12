@@ -2190,6 +2190,10 @@ model Campaign {
   totalRecipients Int       @default(0) @map("total_recipients")
   sentCount       Int       @default(0) @map("sent_count")
   failedCount     Int       @default(0) @map("failed_count")
+  /// Audience members left out before queueing (no address / opted out).
+  skippedCount    Int       @default(0) @map("skipped_count")
+  /// Audience the announcement was resolved from ({institutionId,type,ids,recipients,label}).
+  audience        Json?
   scheduledAt     DateTime? @map("scheduled_at") @db.DateTime(3)
   startedAt       DateTime? @map("started_at") @db.DateTime(3)
   completedAt     DateTime? @map("completed_at") @db.DateTime(3)

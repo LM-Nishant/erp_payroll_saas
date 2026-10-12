@@ -1,16 +1,37 @@
 <script setup lang="ts">
 import type { StudentDetailDto } from '@erp/shared';
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import PreviousSchoolsPanel from '@/components/students/PreviousSchoolsPanel.vue';
 import StudentCertificatesPanel from '@/components/students/StudentCertificatesPanel.vue';
+import StudentFeesPanel from '@/components/students/StudentFeesPanel.vue';
+import StudentHostelPanel from '@/components/students/StudentHostelPanel.vue';
+import StudentTransportPanel from '@/components/students/StudentTransportPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 const route = useRoute();
 const auth = useAuthStore();
 const student = ref<StudentDetailDto | null>(null);
 const error = ref<string | null>(null);
-const tab = ref('profile');
+const tab = ref((route.query.tab as string) || 'profile');
+const base = computed(() => (route.path.startsWith('/group') ? '/group' : '/institution'));
+const showFees = computed(() => auth.can('fee.view') && auth.hasFeature('finance'));
+const showHostel = computed(() => auth.can('hostel.view') && auth.hasFeature('hostel'));
+const showTransport = computed(() => auth.can('transport.view') && auth.hasFeature('transport'));
+const canMessage = computed(
+  () => auth.can('message.broadcast') && auth.hasFeature('communication'),
+);
+const messageLink = computed(() => {
+  const s = student.value;
+  if (!s) return '';
+  const q = new URLSearchParams({
+    institutionId: s.institutionId,
+    type: 'students',
+    ids: s.id,
+    recipients: 'guardians',
+  });
+  return `${base.value}/announcements?${q}`;
+});
 const guardianOpen = ref(false);
 const guardian = reactive({
   name: '',
@@ -77,8 +98,16 @@ onMounted(load);
           {{ student.rollNo || '—' }}
         </div>
       </div>
-      <v-spacer /><v-btn v-if="auth.can('student.lifecycle')" variant="tonal" @click="withdraw"
-        >Withdraw</v-btn
+      <v-spacer /><v-btn
+        v-if="canMessage"
+        variant="tonal"
+        color="primary"
+        class="mr-2"
+        prepend-icon="mdi-message-text-outline"
+        :to="messageLink"
+        data-testid="message-student"
+        >Message</v-btn
+      ><v-btn v-if="auth.can('student.lifecycle')" variant="tonal" @click="withdraw">Withdraw</v-btn
       ><v-btn v-if="auth.can('student.lifecycle')" color="primary" @click="graduate"
         >Graduate</v-btn
       >
@@ -88,6 +117,9 @@ onMounted(load);
       ><v-tab value="enrollments">Enrollment history</v-tab
       ><v-tab value="previous-schools">Previous schools</v-tab
       ><v-tab v-if="auth.can('certificate.view')" value="certificates">Certificates</v-tab
+      ><v-tab v-if="showFees" value="fees">Fees</v-tab
+      ><v-tab v-if="showHostel" value="hostel">Hostel</v-tab
+      ><v-tab v-if="showTransport" value="transport">Transport</v-tab
       ><v-tab value="login">Login access</v-tab></v-tabs
     ><v-window v-model="tab" class="mt-4"
       ><v-window-item value="profile"
@@ -165,6 +197,12 @@ onMounted(load);
           @changed="load" /></v-window-item
       ><v-window-item v-if="auth.can('certificate.view')" value="certificates"
         ><StudentCertificatesPanel :student-id="student.id" @changed="load" /></v-window-item
+      ><v-window-item v-if="showFees" value="fees"
+        ><StudentFeesPanel :student-id="student.id" :base="base" /></v-window-item
+      ><v-window-item v-if="showHostel" value="hostel"
+        ><StudentHostelPanel :student-id="student.id" :base="base" /></v-window-item
+      ><v-window-item v-if="showTransport" value="transport"
+        ><StudentTransportPanel :student-id="student.id" :base="base" /></v-window-item
       ><v-window-item value="login"
         ><v-card
           ><v-card-text

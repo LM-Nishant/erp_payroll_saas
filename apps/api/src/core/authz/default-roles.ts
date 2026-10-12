@@ -187,6 +187,8 @@ const ACADEMIC_LEAD = [
   'document.upload',
   'message.send',
   'message.schedule',
+  // Announcements to institutions / departments / classes / students inside the role's scope.
+  'message.broadcast',
   'ai.use',
   ...ACADEMICS_MANAGE,
 ] as PermissionCode[];
@@ -309,6 +311,8 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         'payroll.approve',
         'payroll.lock',
         'attendance.unlock',
+        // The institution's own email / SMS / WhatsApp sender and templates.
+        'communication.manage',
       ],
     },
     {
@@ -316,7 +320,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       name: 'Institution Admin',
       description: 'Administers assigned institutions only',
       typicalScope: 'INSTITUTION',
-      permissions: INSTITUTION_ADMIN,
+      permissions: [...INSTITUTION_ADMIN, 'communication.manage'],
     },
     {
       key: 'principal',
@@ -327,6 +331,9 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
         ...ACADEMIC_LEAD,
         'certificate.waive_dues',
         'employee.update',
+        // Configures the institution's own sender (email / SMS / WhatsApp) and sees the log.
+        'communication.view',
+        'communication.manage',
         'audit.view',
         'library.view',
         ...FEES_FINANCE_VIEW,
