@@ -852,8 +852,17 @@ transfer files and never persist clear values.
   409 `PROFILE_PHOTO_REQUIRED`, mismatch → 422 `FACE_MISMATCH`. The selfie image is **never uploaded or
   stored**; only `AttendancePunch.faceDistance` is kept (`selfieDocumentId` is legacy, now always
   null; a multipart image sent by old clients is discarded). Descriptors are computed in the browser with
-  `@vladmandic/face-api` (models in `apps/web/public/models`). There is **no liveness detection**,
-  so a printed photo can pass; treat this as a deterrent, not strong biometric proof.
+  `@vladmandic/face-api` (models in `apps/web/public/models`).
+  **Liveness:** the punch must also carry `liveness: {challenge, frames[]}`
+  (400 `LIVENESS_REQUIRED`). `POST /attendance/me/liveness-challenge` returns a blink and a
+  head turn (`BLINK`, `TURN_LEFT|TURN_RIGHT`) in random order, HMAC-signed for the caller's
+  employee with a 2-minute expiry (`attendance.liveness.ts`). The browser confirms each step from
+  68-point landmarks (eye aspect ratio for blinks, nose position between the jaw edges for yaw;
+  `apps/web/src/lib/liveness.ts`) and sends one descriptor per step. The server rejects a bad
+  signature, wrong employee, expiry or missing/out-of-order steps with 422 `LIVENESS_FAILED`
+  (audited `attendance.liveness_failed`), and any step whose face doesn't match with
+  `FACE_MISMATCH`. This defeats printed photos and replayed clips. Descriptors are still computed
+  client-side, so treat it as a strong deterrent, not cryptographic biometric proof.
   Browsers expose the camera only on HTTPS or localhost; for phones on the LAN run the web dev
   server with `DEV_HTTPS=1` (self-signed certificate, binds all interfaces).
 - **Dashboard highlights.** `GET /employees/highlights` (`EmployeeHighlightsDto`) feeds the

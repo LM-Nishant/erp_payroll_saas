@@ -221,6 +221,22 @@ const geoFields = {
   deviceId: text(100).nullish(),
 };
 
+/** Liveness steps the camera challenge can ask for (random order, chosen by the server). */
+export const livenessStepSchema = z.enum(['BLINK', 'TURN_LEFT', 'TURN_RIGHT']);
+export type LivenessStep = z.infer<typeof livenessStepSchema>;
+
+/** Result of a liveness challenge: the signed challenge plus one face descriptor per step. */
+export const livenessProofSchema = z
+  .object({
+    challenge: z.string().min(16).max(2000),
+    frames: z
+      .array(z.object({ step: livenessStepSchema, descriptor: faceDescriptorSchema }).strict())
+      .min(1)
+      .max(4),
+  })
+  .strict();
+export type LivenessProof = z.infer<typeof livenessProofSchema>;
+
 /** Self-service punch (time = server clock). */
 export const selfPunchSchema = z
   .object({
@@ -229,6 +245,8 @@ export const selfPunchSchema = z
     ...geoFields,
     /** Descriptor of the selfie (sent with the selfie image when face match is required). */
     faceDescriptor: faceDescriptorSchema.optional(),
+    /** Required with face match: proof that a live person completed the camera challenge. */
+    liveness: livenessProofSchema.optional(),
   })
   .strict();
 export type SelfPunchInput = z.infer<typeof selfPunchSchema>;

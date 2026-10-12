@@ -38,6 +38,20 @@ export async function describeFace(
   return result ? Array.from(result.descriptor) : null;
 }
 
+/** Landmarks of the most prominent face (fast detector for live tracking), or null. */
+export async function faceLandmarks(
+  input: HTMLVideoElement | HTMLCanvasElement,
+): Promise<{ x: number; y: number }[] | null> {
+  const faceapi = await loadApi();
+  const result = await faceapi
+    .detectSingleFace(
+      input,
+      new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 }),
+    )
+    .withFaceLandmarks();
+  return result ? result.landmarks.positions.map((p) => ({ x: p.x, y: p.y })) : null;
+}
+
 export async function describeFile(file: Blob): Promise<number[] | null> {
   const url = URL.createObjectURL(file);
   try {

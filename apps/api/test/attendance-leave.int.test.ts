@@ -514,16 +514,31 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
       const face = Array.from({ length: 128 }, (_, i) => Math.sin(i) / 10);
       const near = face.map((v) => v + 0.01);
       const far = face.map((v, i) => v + (i % 2 ? 0.2 : -0.2));
-      const selfiePunch = (descriptor: number[]) =>
-        self.post('/api/v1/attendance/me/punch', { source: 'WEB', faceDescriptor: descriptor });
+      type Challenge = { challenge: string; steps: string[]; expiresAt: string };
+      const newChallenge = async (): Promise<Challenge> =>
+        (await self.post('/api/v1/attendance/me/liveness-challenge', {}).expect(201)).body.data;
+      const proof = (c: Challenge, descriptor: number[]) => ({
+        challenge: c.challenge,
+        frames: c.steps.map((step) => ({ step, descriptor })),
+      });
+      // Wrapped: awaiting a supertest request directly would send it.
+      const selfiePunch = async (descriptor: number[], liveDescriptor = descriptor) => ({
+        req: self.post('/api/v1/attendance/me/punch', {
+          source: 'WEB',
+          faceDescriptor: descriptor,
+          liveness: proof(await newChallenge(), liveDescriptor),
+        }),
+      });
       // Older clients sent the image as multipart; it must be discarded, never stored.
-      const legacySelfiePunch = (descriptor: number[]) =>
-        supertest(app)
+      const legacySelfiePunch = async (descriptor: number[]) => ({
+        req: supertest(app)
           .post('/api/v1/attendance/me/punch')
           .set('Authorization', `Bearer ${accessToken}`)
           .field('source', 'WEB')
           .field('faceDescriptor', JSON.stringify(descriptor))
-          .attach('file', PNG, { filename: 'selfie.png', contentType: 'image/png' });
+          .field('liveness', JSON.stringify(proof(await newChallenge(), descriptor)))
+          .attach('file', PNG, { filename: 'selfie.png', contentType: 'image/png' }),
+      });
 
       const before = (await engHr.get(`/api/v1/attendance/policies/${eng}`).expect(200)).body.data;
       const policyBody = (requireFaceMatch: boolean) => ({
@@ -542,7 +557,7 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
             .faceMatchRequired,
         ).toBe(true);
         // No registered face yet.
-        await selfiePunch(face).expect(409, /PROFILE_PHOTO_REQUIRED/);
+        await (await selfiePunch(face)).req.expect(409, /PROFILE_PHOTO_REQUIRED/);
 
         await supertest(app)
           .post('/api/v1/employees/me/photo')
@@ -560,11 +575,55 @@ describe.skipIf(!hasTestDatabase)('Attendance, leave, holidays and shifts', () =
         await self
           .post('/api/v1/attendance/me/punch', { source: 'WEB' })
           .expect(400, /SELFIE_REQUIRED/);
-        await selfiePunch(far).expect(422, /FACE_MISMATCH/);
-        const ok = (await selfiePunch(near).expect(201)).body.data.punch;
+        await (await selfiePunch(far)).req.expect(422, /FACE_MISMATCH/);
+
+        // Liveness: required, signed for this employee, steps in the issued order, unexpired,
+        // and every step must show the enrolled face.
+        await self
+          .post('/api/v1/attendance/me/punch', { source: 'WEB', faceDescriptor: near })
+          .expect(400, /LIVENESS_REQUIRED/);
+        const c = await newChallenge();
+        expect(c.steps).toHaveLength(2);
+        expect(c.steps).toContain('BLINK');
+        expect(c.steps.some((x) => x === 'TURN_LEFT' || x === 'TURN_RIGHT')).toBe(true);
+        expect(Date.parse(c.expiresAt) - Date.now()).toBeLessThanOrEqual(2 * 60 * 1000);
+        const punchWith = (liveness: unknown) =>
+          self.post('/api/v1/attendance/me/punch', {
+            source: 'WEB',
+            faceDescriptor: near,
+            liveness,
+          });
+        const [body, mac] = c.challenge.split('.');
+        const forged = JSON.parse(Buffer.from(body!, 'base64url').toString());
+        forged.x = Date.now() + 3_600_000;
+        await punchWith({
+          ...proof(c, near),
+          challenge: `${Buffer.from(JSON.stringify(forged)).toString('base64url')}.${mac}`,
+        }).expect(422, /LIVENESS_FAILED/);
+        await punchWith({
+          challenge: c.challenge,
+          frames: [...c.steps].reverse().map((step) => ({ step, descriptor: near })),
+        }).expect(422, /LIVENESS_FAILED/);
+        await punchWith({
+          challenge: c.challenge,
+          frames: [{ step: c.steps[0], descriptor: near }],
+        }).expect(422, /LIVENESS_FAILED/);
+        await (await selfiePunch(near, far)).req.expect(422, /FACE_MISMATCH/);
+        const managerChallenge = (
+          await supertest(app)
+            .post('/api/v1/attendance/me/liveness-challenge')
+            .set(
+              'Authorization',
+              `Bearer ${(await login(app, MANAGER, DEMO_PASSWORD)).accessToken}`,
+            )
+            .expect(201)
+        ).body.data;
+        await punchWith(proof(managerChallenge, near)).expect(422, /someone else/);
+
+        const ok = (await (await selfiePunch(near)).req.expect(201)).body.data.punch;
         expect(ok.selfieDocumentId).toBeNull();
         expect(Number(ok.faceDistance)).toBeLessThan(0.5);
-        const legacy = (await legacySelfiePunch(near).expect(201)).body.data.punch;
+        const legacy = (await (await legacySelfiePunch(near)).req.expect(201)).body.data.punch;
         expect(legacy.selfieDocumentId).toBeNull();
       } finally {
         await owner.put(`/api/v1/attendance/policies/${eng}`, policyBody(false)).expect(200);

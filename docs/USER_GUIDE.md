@@ -816,17 +816,17 @@ published, etc.). Click one to open it, **Mark all read**, or **View all** for t
 
 ### Employees (Employee workspace)
 
-| Menu                                   | What you can do                                                                                                                                                                               |
-| -------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **Home**                               | Today's status (**Checked in / Checked out**), **Check in / Check out** button, **Regularize / history**, leave balances, **Apply leave**.                                                    |
-| **My profile**                         | View your details, upload a profile photo, **Request changes** to personal data (HR approves).                                                                                                |
-| **My attendance**                      | **Punch in** / **Punch out** (if selfie punch is required, allow the camera and click **Capture & punch**). View the month; **Regularize** a missed punch with a **Reason \***; **Withdraw**. |
-| **My leave**                           | **Apply leave** – **Leave type \***, **From \***, **To \***, half-day options, **Reason \***. You're warned if the request breaks the policy. Cancel pending requests.                        |
-| **My salary**                          | Current salary structure and **Salary revisions**; **Annual statement** for a **Financial year**; **Print / save PDF**.                                                                       |
-| **My payslips**                        | **Payslips** – download each month's **PDF**. **Form 16** – download published Form 16s.                                                                                                      |
-| **My assets**                          | Assets issued to you: **Acknowledge**, **Handover form**, **Report issue**.                                                                                                                   |
-| **Documents**                          | Documents that belong to you (payslips, letters…).                                                                                                                                            |
-| **My library** / **Library catalogue** | Your loans and reservations; search the catalogue and **Reserve**.                                                                                                                            |
+| Menu                                   | What you can do                                                                                                                                                                                                                                                                 |
+| -------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Home**                               | Today's status (**Checked in / Checked out**), **Check in / Check out** button, **Regularize / history**, leave balances, **Apply leave**.                                                                                                                                      |
+| **My profile**                         | View your details, upload a profile photo, **Request changes** to personal data (HR approves).                                                                                                                                                                                  |
+| **My attendance**                      | **Punch in** / **Punch out** (if selfie punch is required, allow the camera, follow the on-screen check — **blink** and **turn your head** the way it asks — then click **Capture & punch**). View the month; **Regularize** a missed punch with a **Reason \***; **Withdraw**. |
+| **My leave**                           | **Apply leave** – **Leave type \***, **From \***, **To \***, half-day options, **Reason \***. You're warned if the request breaks the policy. Cancel pending requests.                                                                                                          |
+| **My salary**                          | Current salary structure and **Salary revisions**; **Annual statement** for a **Financial year**; **Print / save PDF**.                                                                                                                                                         |
+| **My payslips**                        | **Payslips** – download each month's **PDF**. **Form 16** – download published Form 16s.                                                                                                                                                                                        |
+| **My assets**                          | Assets issued to you: **Acknowledge**, **Handover form**, **Report issue**.                                                                                                                                                                                                     |
+| **Documents**                          | Documents that belong to you (payslips, letters…).                                                                                                                                                                                                                              |
+| **My library** / **Library catalogue** | Your loans and reservations; search the catalogue and **Reserve**.                                                                                                                                                                                                              |
 
 ### Students (Student / Parent workspace)
 
@@ -913,7 +913,9 @@ password that follows the rules.
 ### My punch is rejected
 
 Your institution may require a selfie matched to your profile photo. Upload a clear front-facing
-profile photo under **My profile**, allow camera access in the browser, and try again. If web punch
+profile photo under **My profile**, allow camera access in the browser, and try again. The camera
+asks you to blink and turn your head (in a random order) to prove you are present; finish both steps
+within two minutes, then look straight at the camera and click **Capture & punch**. If web punch
 is not allowed by policy, ask HR to record or regularize your attendance.
 
 ### Payroll won't compute
