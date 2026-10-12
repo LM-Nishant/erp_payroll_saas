@@ -50,6 +50,10 @@ jobs:
 
       - name: Typecheck
         run: pnpm typecheck
+        env:
+          # The API project needs ~2.3 GB of heap to typecheck (Prisma + zod types); the default
+          # ~2 GB limit makes it crash intermittently with "heap out of memory".
+          NODE_OPTIONS: --max-old-space-size=4096
 
       - name: Test (unit + integration against MySQL)
         run: pnpm test
