@@ -636,7 +636,9 @@ export const circulationService = {
         skip,
         take,
         include: loanInclude,
-        orderBy: query.overdue ? [{ dueDate: 'asc' }] : [{ issuedAt: 'desc' }],
+        orderBy: query.overdue
+          ? [{ dueDate: 'asc' }, { id: 'asc' }]
+          : [{ issuedAt: 'desc' }, { id: 'desc' }],
       }),
       db().libraryLoan.count({ where }),
     ]);
@@ -661,7 +663,7 @@ export const circulationService = {
         skip,
         take,
         include: reservationInclude,
-        orderBy: [{ createdAt: 'asc' }],
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
       }),
       db().libraryReservation.count({ where }),
     ]);
@@ -705,7 +707,7 @@ export const circulationService = {
         skip,
         take,
         include: fineInclude,
-        orderBy: [{ createdAt: 'desc' }],
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
       }),
       db().libraryFine.count({ where }),
       db().libraryFine.aggregate({
@@ -778,7 +780,7 @@ export const circulationService = {
           where,
           skip,
           take,
-          orderBy: [{ displayName: 'asc' }],
+          orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
           include: { classSection: { select: { name: true } } },
         }),
         db().student.count({ where }),
@@ -806,7 +808,12 @@ export const circulationService = {
         scope as Prisma.EmployeeWhereInput | undefined,
       );
       const [rows, count] = await Promise.all([
-        db().employee.findMany({ where, skip, take, orderBy: [{ displayName: 'asc' }] }),
+        db().employee.findMany({
+          where,
+          skip,
+          take,
+          orderBy: [{ displayName: 'asc' }, { id: 'asc' }],
+        }),
         db().employee.count({ where }),
       ]);
       total = count;
