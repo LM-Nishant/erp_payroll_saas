@@ -120,7 +120,13 @@ const availableDesignations = computed(() =>
 watch(
   () => form.institutionId,
   async (id, prev) => {
-    if (prev !== undefined && id !== prev && open.value) {
+    // Loading the edited record also changes institutionId: keep its campus / department then.
+    if (
+      prev !== undefined &&
+      id !== prev &&
+      open.value &&
+      !(props.employee && id === props.employee.institutionId)
+    ) {
       form.departmentId = null;
       form.campusId = null;
     }
@@ -266,13 +272,13 @@ const statuses = ['DRAFT', 'ONBOARDING', 'ACTIVE'].map((value) => ({ value, titl
               :error-messages="fieldErrors.institutionId"
             />
           </v-col>
-          <v-col v-if="!terms.isCompany" cols="12" md="6">
+          <v-col cols="12" md="6">
             <v-autocomplete
               v-model="form.campusId"
               :items="campuses"
               item-title="name"
               item-value="id"
-              label="Campus"
+              :label="terms.isCompany ? 'Branch' : 'Campus'"
               clearable
               :disabled="!assignmentEditable"
             />

@@ -138,3 +138,7 @@ Functional flows (`tests/modules/`, Greenwood):
 | users-branding     | owner, admin, new user                    | add user with role, new user signs in, change role, deactivate; branding update + restore                    |
 | platform           | superadmin, support                       | create org, add-on, invoice + PDF + mark paid, plan, invoices/billing, archive; support read-only            |
 | self-service       | employee, student, parent                 | profile, salary PDF, payslip PDF, selfie punch prompt; portal profile/timetable/results/fees                 |
+| hr-attendance      | employee, HR, owner                       | regularization request → approve / reject → register override; mark absent + restore; policy; lock/unlock    |
+| leave-balances     | HR, employee                              | balances & ledger lookup, +1 / −1 adjustment; employee blocked from the HR leave register                    |
+| home-widgets       | employee, HR (Greenwood + Acme), student  | home / HR dashboard highlights (holidays, leave, birthdays, anniversaries, joiners) match the API            |
+| company-acme       | Acme owner, HR, employee                  | company terminology, no education, branch, department, employee type, designation, employee in branch, photo |

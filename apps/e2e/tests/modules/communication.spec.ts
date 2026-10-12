@@ -1,6 +1,6 @@
 import { expect, test } from '@playwright/test';
 import { signedIn } from '../../src/session';
-import { dialog, expectClean, fill, pick, RUN_ID, rows, saveDialog } from '../../src/ui';
+import { dialog, expectClean, expectRow, fill, pick, RUN_ID, rows, saveDialog } from '../../src/ui';
 
 /**
  * Communication (Greenwood, owner@ — organization-wide communication.manage): create an e-mail template,
@@ -29,6 +29,7 @@ test.describe('Communication · owner@greenwood.demo', () => {
     await fill(d, 'Subject', 'Notice for {{name}}');
     await fill(d, 'Text body ({{variable}})', 'Dear {{name}}, school reopens on Monday.');
     await saveDialog(s, 'Create');
+    await expectRow(s.page, key);
     await expect(row()).toHaveCount(1);
     await expect(row()).toContainText('email');
     await expectClean(s, mark, 'template create');

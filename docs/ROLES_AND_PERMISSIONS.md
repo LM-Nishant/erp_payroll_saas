@@ -44,6 +44,7 @@ Platform roles (outside any organization): **Platform Super Admin** (`superadmin
 - **Salary:** HR manager assigns structure + CTC and raises revisions → payroll manager runs payroll → finance manager / institution owner approves and finalizes → payslips published to employees.
 - **Form 16:** payroll manager uploads (or generates) and publishes → employee downloads under My payslips → Form 16.
 - **Admissions → fees:** registrar/principal admits → accountant collects fees → student/parent sees dues and receipts.
+- **Transfer / character certificate:** registrar (or principal, vice principal, HOD, academic coordinator) issues from the student's **Certificates** tab. A TC is refused while fee dues are pending: the accountant collects them, or the principal / institution admin waives them with a reason (`certificate.waive_dues`). The student / parent downloads the PDF under **Certificates** (`certificate.view_own`).
 
 ## Detailed permissions by role
 
@@ -51,7 +52,7 @@ Platform roles (outside any organization): **Platform Super Admin** (`superadmin
 
 Owner of the education group / tenant; full tenant access
 
-<details><summary>168 permissions</summary>
+<details><summary>173 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -93,6 +94,12 @@ Owner of the education group / tenant; full tenant access
   - `campus.delete` — Delete campuses
   - `campus.update` — Update campuses
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
+  - `certificate.view_own` — Download own / linked-ward certificates (self-service)
+  - `certificate.waive_dues` — Issue a transfer certificate despite pending fee dues
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -275,7 +282,7 @@ Owner of the education group / tenant; full tenant access
 
 Administers all institutions in assigned groups
 
-<details><summary>131 permissions</summary>
+<details><summary>135 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -307,6 +314,11 @@ Administers all institutions in assigned groups
   - `campus.delete` — Delete campuses
   - `campus.update` — Update campuses
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
+  - `certificate.waive_dues` — Issue a transfer certificate despite pending fee dues
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -615,7 +627,7 @@ Finance across assigned groups
 
 Owner of assigned institutions
 
-<details><summary>123 permissions</summary>
+<details><summary>127 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -645,6 +657,11 @@ Owner of assigned institutions
   - `campus.delete` — Delete campuses
   - `campus.update` — Update campuses
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
+  - `certificate.waive_dues` — Issue a transfer certificate despite pending fee dues
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -786,7 +803,7 @@ Owner of assigned institutions
 
 Administers assigned institutions only
 
-<details><summary>119 permissions</summary>
+<details><summary>123 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -815,6 +832,11 @@ Administers assigned institutions only
   - `campus.delete` — Delete campuses
   - `campus.update` — Update campuses
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
+  - `certificate.waive_dues` — Issue a transfer certificate despite pending fee dues
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -953,7 +975,7 @@ Administers assigned institutions only
 
 Academic head of an institution
 
-<details><summary>54 permissions</summary>
+<details><summary>58 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -969,6 +991,11 @@ Academic head of an institution
   - `audit.view` — View audit logs
 - **campus**
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
+  - `certificate.waive_dues` — Issue a transfer certificate despite pending fee dues
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -1041,7 +1068,7 @@ Academic head of an institution
 
 Deputy academic head
 
-<details><summary>49 permissions</summary>
+<details><summary>52 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1055,6 +1082,10 @@ Deputy academic head
   - `attendance.view_own` — View own attendance (self-service)
 - **campus**
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -1120,7 +1151,7 @@ Deputy academic head
 
 Academic head of a faculty / set of departments
 
-<details><summary>49 permissions</summary>
+<details><summary>52 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1134,6 +1165,10 @@ Academic head of a faculty / set of departments
   - `attendance.view_own` — View own attendance (self-service)
 - **campus**
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -1199,7 +1234,7 @@ Academic head of a faculty / set of departments
 
 Student records and academic administration
 
-<details><summary>50 permissions</summary>
+<details><summary>53 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1213,6 +1248,10 @@ Student records and academic administration
   - `attendance.view_own` — View own attendance (self-service)
 - **campus**
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -1279,7 +1318,7 @@ Student records and academic administration
 
 Head of department; limited to assigned departments
 
-<details><summary>49 permissions</summary>
+<details><summary>52 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1293,6 +1332,10 @@ Head of department; limited to assigned departments
   - `attendance.view_own` — View own attendance (self-service)
 - **campus**
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -1358,7 +1401,7 @@ Head of department; limited to assigned departments
 
 Subjects, timetable, attendance and examinations of an institution
 
-<details><summary>49 permissions</summary>
+<details><summary>52 permissions</summary>
 
 - **admission**
   - `admission.manage` — Create, decide and enroll admission applications
@@ -1372,6 +1415,10 @@ Subjects, timetable, attendance and examinations of an institution
   - `attendance.view_own` — View own attendance (self-service)
 - **campus**
   - `campus.view` — View campuses
+- **certificate**
+  - `certificate.cancel` — Cancel issued transfer / character certificates
+  - `certificate.issue` — Issue and reissue transfer / character certificates
+  - `certificate.view` — View transfer / character certificates and download their PDFs
 - **class_section**
   - `class_section.create` — Create classes / sections
   - `class_section.delete` — Delete classes / sections
@@ -1625,7 +1672,7 @@ Institution HR
 
 Prepares and processes payroll
 
-<details><summary>23 permissions</summary>
+<details><summary>24 permissions</summary>
 
 - **ai**
   - `ai.use` — Use AI assistants
@@ -1640,6 +1687,7 @@ Prepares and processes payroll
 - **document**
   - `document.download` — Download documents (issues audited short-lived signed URLs)
   - `document.view` — View documents
+  - `document.view_confidential` — View CONFIDENTIAL documents in scope (RESTRICTED needs org scope)
 - **employee**
   - `employee.view` — View employees
 - **form16**
@@ -2021,10 +2069,12 @@ Runs a hostel day to day: allocations, out-pass approval, visitors, roll call
 
 Student self-service
 
-<details><summary>12 permissions</summary>
+<details><summary>13 permissions</summary>
 
 - **ai**
   - `ai.use` — Use AI assistants
+- **certificate**
+  - `certificate.view_own` — Download own / linked-ward certificates (self-service)
 - **document**
   - `document.view_own` — View documents owned by oneself (owner self-access, e.g. own payslips)
 - **exam**
@@ -2053,10 +2103,12 @@ Student self-service
 
 Parent / guardian self-service
 
-<details><summary>12 permissions</summary>
+<details><summary>13 permissions</summary>
 
 - **ai**
   - `ai.use` — Use AI assistants
+- **certificate**
+  - `certificate.view_own` — Download own / linked-ward certificates (self-service)
 - **document**
   - `document.view_own` — View documents owned by oneself (owner self-access, e.g. own payslips)
 - **exam**

@@ -7,18 +7,28 @@ import {
 } from '@erp/shared';
 import type { ApiListResponse, AssetMaintenanceDto } from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import { ASSET_STATUS_COLORS, clean, label, money, useAssetOptions, opts } from './assetUi';
 
 const auth = useAuthStore();
+const route = useRoute();
 const { institutions, loadBase } = useAssetOptions();
 const items = ref<AssetMaintenanceDto[]>([]);
 const total = ref(0);
 const page = ref(1);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const filters = reactive({ institutionId: '', type: '', status: '', open: 'true' });
+// Notification links deep-link a ticket via `?search=<ticketNo>`.
+const initialSearch = typeof route.query.search === 'string' ? route.query.search : '';
+const filters = reactive({
+  institutionId: '',
+  type: '',
+  status: '',
+  open: initialSearch ? '' : 'true',
+  search: initialSearch,
+});
 const headers = [
   { title: 'Ticket', key: 'ticketNo' },
   { title: 'Asset', key: 'asset' },
@@ -136,7 +146,17 @@ watch([page, () => ({ ...filters })], load, { deep: true });
     error
   }}</v-alert>
   <v-row dense class="mb-2">
-    <v-col cols="12" md="4"
+    <v-col cols="12" md="3"
+      ><v-text-field
+        v-model.trim="filters.search"
+        label="Search ticket / asset"
+        prepend-inner-icon="mdi-magnify"
+        density="compact"
+        clearable
+        hide-details
+        @click:clear="filters.search = ''"
+    /></v-col>
+    <v-col cols="12" md="3"
       ><v-autocomplete
         v-model="filters.institutionId"
         :items="institutions"
@@ -147,7 +167,7 @@ watch([page, () => ({ ...filters })], load, { deep: true });
         clearable
         hide-details
     /></v-col>
-    <v-col cols="6" md="3"
+    <v-col cols="6" md="2"
       ><v-select
         v-model="filters.type"
         :items="opts(ASSET_MAINTENANCE_TYPES)"
@@ -156,7 +176,7 @@ watch([page, () => ({ ...filters })], load, { deep: true });
         clearable
         hide-details
     /></v-col>
-    <v-col cols="6" md="3"
+    <v-col cols="6" md="2"
       ><v-select
         v-model="filters.status"
         :items="opts(ASSET_MAINTENANCE_STATUSES)"

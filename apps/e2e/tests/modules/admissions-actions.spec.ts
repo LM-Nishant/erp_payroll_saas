@@ -24,7 +24,8 @@ test.describe('Admission actions · principal@greenwood.demo', () => {
     await expect(r).toBeVisible();
     const names = (await r.getByRole('button').allInnerTexts())
       .map((t) => t.trim().toUpperCase())
-      .filter(Boolean);
+      // "Previous school" (record keeping) is offered in every status; only status actions count.
+      .filter((t) => t && t !== 'PREVIOUS SCHOOL');
     expect(names).toEqual(expected.map((n) => n.toUpperCase()));
   }
 

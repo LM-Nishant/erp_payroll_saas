@@ -9,7 +9,9 @@ import {
   type AttendanceSummaryDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import { ATTENDANCE_COLORS, REQUEST_COLORS, currentMonth, hhmm, monthRange } from './timeOffice';
 import { label, useHrOptions } from './useHrOptions';
@@ -20,7 +22,8 @@ import { label, useHrOptions } from './useHrOptions';
  */
 const auth = useAuthStore();
 const { institutions, loadBase } = useHrOptions();
-const tab = ref('register');
+const route = useRoute();
+const tab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'register');
 const institutionId = ref<string | null>(null);
 const month = ref(currentMonth());
 const range = computed(() => monthRange(month.value));
@@ -42,11 +45,14 @@ const instQuery = () => (institutionId.value ? `&institutionId=${institutionId.v
 const records = ref<AttendanceRecordDto[]>([]);
 const total = ref(0);
 const page = ref(1);
+const itemsPerPage = ref(25);
+const employeeId = ref<string | null>(null);
 async function loadRecords() {
   loading.value = true;
+  const employee = employeeId.value ? `&employeeId=${employeeId.value}` : '';
   await run(async () => {
     const res = await apiFetch<ApiListResponse<AttendanceRecordDto>>(
-      `/api/v1/attendance/records?from=${range.value.from}&to=${range.value.to}&page=${page.value}&pageSize=100${instQuery()}`,
+      `/api/v1/attendance/records?from=${range.value.from}&to=${range.value.to}&page=${page.value}&pageSize=${itemsPerPage.value}${instQuery()}${employee}`,
     );
     records.value = res.data;
     total.value = res.meta.total;
@@ -222,6 +228,7 @@ async function loadSummary() {
 }
 
 async function refresh() {
+  page.value = 1;
   if (tab.value === 'register') await loadRecords();
   else if (tab.value === 'regularizations') await loadRegularizations();
   else if (tab.value === 'locks') await loadLocks();
@@ -235,17 +242,18 @@ onMounted(async () => {
   await refresh();
 });
 
+// Server-paged (date, employee order): column sorting would only reorder the visible page.
 const recordHeaders = [
   { title: 'Date', key: 'date' },
-  { title: 'Employee', key: 'employee', sortable: false },
+  { title: 'Employee', key: 'employee' },
   { title: 'Status', key: 'status' },
-  { title: 'In', key: 'firstIn', sortable: false },
-  { title: 'Out', key: 'lastOut', sortable: false },
+  { title: 'In', key: 'firstIn' },
+  { title: 'Out', key: 'lastOut' },
   { title: 'Worked', key: 'workedMinutes' },
   { title: 'Late', key: 'lateMinutes' },
   { title: 'OT', key: 'overtimeMinutes' },
-  { title: '', key: 'actions', sortable: false, align: 'end' as const },
-];
+  { title: '', key: 'actions', align: 'end' as const },
+].map((h) => ({ ...h, sortable: false }));
 const summaryHeaders = [
   { title: 'Employee', key: 'employeeCode' },
   { title: 'Payable', key: 'payableDays' },
@@ -310,7 +318,15 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
   </v-tabs>
 
   <template v-if="tab === 'register'">
-    <div class="d-flex mb-2">
+    <div class="d-flex mb-2 ga-2 align-center">
+      <EmployeePicker
+        v-model="employeeId"
+        :institution-id="institutionId"
+        density="compact"
+        hide-details
+        style="max-width: 320px"
+        @update:model-value="refresh"
+      />
       <v-spacer />
       <v-btn
         v-if="auth.can('attendance.manage')"
@@ -321,7 +337,18 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
         Recompute month
       </v-btn>
     </div>
-    <v-data-table :items="records" :headers="recordHeaders" :loading="loading" density="compact">
+    <v-data-table-server
+      v-model:page="page"
+      v-model:items-per-page="itemsPerPage"
+      :items="records"
+      :items-length="total"
+      :items-per-page-options="[10, 25, 50, 100]"
+      :headers="recordHeaders"
+      :loading="loading"
+      density="compact"
+      @update:page="loadRecords"
+      @update:items-per-page="loadRecords"
+    >
       <template #[`item.employee`]="{ item }">
         {{ item.employeeCode }} {{ item.employeeName }}
       </template>
@@ -345,7 +372,7 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
           @click="openOverride(item)"
         />
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </template>
 
   <v-table v-else-if="tab === 'regularizations'" density="compact">

@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import type { StudentDetailDto } from '@erp/shared';
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import PreviousSchoolsPanel from '@/components/students/PreviousSchoolsPanel.vue';
+import StudentCertificatesPanel from '@/components/students/StudentCertificatesPanel.vue';
 import { useAuthStore } from '@/stores/auth';
 const route = useRoute();
 const auth = useAuthStore();
@@ -27,41 +29,55 @@ async function load() {
     error.value = (e as Error).message;
   }
 }
+/** Runs a profile action, surfacing API errors (e.g. a validation or 409) in the page alert. */
+async function run(fn: () => Promise<unknown>) {
+  error.value = null;
+  try {
+    await fn();
+    return true;
+  } catch (e) {
+    error.value = (e as Error).message;
+    return false;
+  }
+}
 async function saveGuardian() {
   if (!student.value) return;
-  await apiFetch(`/api/v1/students/${student.value.id}/guardians`, {
-    method: 'POST',
-    body: JSON.stringify({
-      ...guardian,
-      phone: guardian.phone || null,
-      email: guardian.email || null,
+  const id = student.value.id;
+  const ok = await run(() =>
+    apiFetch(`/api/v1/students/${id}/guardians`, {
+      method: 'POST',
+      body: JSON.stringify({
+        ...guardian,
+        phone: guardian.phone || null,
+        email: guardian.email || null,
+      }),
     }),
-  });
+  );
+  if (!ok) return;
   guardianOpen.value = false;
   await load();
 }
-async function withdraw() {
+async function changeLifecycle(action: 'withdraw' | 'graduate') {
   if (!student.value) return;
-  await apiFetch(`/api/v1/students/${student.value.id}/withdraw`, {
-    method: 'POST',
-    body: JSON.stringify({
-      date: new Date().toISOString().slice(0, 10),
-      reason: 'Updated from student profile',
+  const id = student.value.id;
+  const ok = await run(() =>
+    apiFetch(`/api/v1/students/${id}/${action}`, {
+      method: 'POST',
+      body: JSON.stringify({
+        date: new Date().toISOString().slice(0, 10),
+        reason: 'Updated from student profile',
+      }),
     }),
-  });
-  await load();
+  );
+  if (ok) await load();
 }
-async function graduate() {
-  if (!student.value) return;
-  await apiFetch(`/api/v1/students/${student.value.id}/graduate`, {
-    method: 'POST',
-    body: JSON.stringify({
-      date: new Date().toISOString().slice(0, 10),
-      reason: 'Updated from student profile',
-    }),
-  });
-  await load();
-}
+/** Withdraw / graduate apply only to students still on the rolls. */
+const canChangeLifecycle = computed(
+  () =>
+    auth.can('student.lifecycle') &&
+    !!student.value &&
+    ['ACTIVE', 'INACTIVE'].includes(student.value.status),
+);
 onMounted(load);
 </script>
 <template>
@@ -75,15 +91,20 @@ onMounted(load);
           {{ student.rollNo || '—' }}
         </div>
       </div>
-      <v-spacer /><v-btn v-if="auth.can('student.lifecycle')" variant="tonal" @click="withdraw"
+      <v-spacer /><v-btn
+        v-if="canChangeLifecycle"
+        variant="tonal"
+        @click="changeLifecycle('withdraw')"
         >Withdraw</v-btn
-      ><v-btn v-if="auth.can('student.lifecycle')" color="primary" @click="graduate"
+      ><v-btn v-if="canChangeLifecycle" color="primary" @click="changeLifecycle('graduate')"
         >Graduate</v-btn
       >
     </div>
     <v-tabs v-model="tab"
       ><v-tab value="profile">Profile</v-tab><v-tab value="guardians">Guardians</v-tab
       ><v-tab value="enrollments">Enrollment history</v-tab
+      ><v-tab value="previous-schools">Previous schools</v-tab
+      ><v-tab v-if="auth.can('certificate.view')" value="certificates">Certificates</v-tab
       ><v-tab value="login">Login access</v-tab></v-tabs
     ><v-window v-model="tab" class="mt-4"
       ><v-window-item value="profile"
@@ -145,7 +166,7 @@ onMounted(load);
           <tbody>
             <tr v-for="e in student.enrollments" :key="e.id">
               <td>{{ e.academicYear }}</td>
-              <td>{{ e.classSectionId }}</td>
+              <td>{{ e.classSectionName ?? '—' }}</td>
               <td>{{ e.rollNo }}</td>
               <td>{{ e.fromDate }}</td>
               <td>{{ e.toDate || '—' }}</td>
@@ -153,6 +174,14 @@ onMounted(load);
             </tr>
           </tbody></v-table
         ></v-window-item
+      ><v-window-item value="previous-schools"
+        ><PreviousSchoolsPanel
+          owner="students"
+          :owner-id="student.id"
+          :can-edit="auth.can('student.update')"
+          @changed="load" /></v-window-item
+      ><v-window-item v-if="auth.can('certificate.view')" value="certificates"
+        ><StudentCertificatesPanel :student-id="student.id" @changed="load" /></v-window-item
       ><v-window-item value="login"
         ><v-card
           ><v-card-text

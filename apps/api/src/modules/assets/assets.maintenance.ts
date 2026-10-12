@@ -315,7 +315,7 @@ export const maintenanceService = {
         await notifyUsers('asset.maintenance_closed', [before.reportedByUserId], {
           title: `Ticket ${before.ticketNo} ${input.status.toLowerCase()}`,
           body: input.resolution ?? undefined,
-          link: '/my/assets',
+          link: '/employee/assets',
           institutionId: asset.institutionId,
         });
       }
@@ -813,7 +813,7 @@ export const auditService = {
         {
           title: `Asset audit "${row.name}": ${discrepancies} discrepanc${discrepancies === 1 ? 'y' : 'ies'}`,
           body: `${dto.counts.MISSING} missing, ${dto.counts.LOCATION_MISMATCH} location and ${dto.counts.CONDITION_MISMATCH} condition mismatches.`,
-          link: `/assets/audits/${id}`,
+          link: `/assets/audit?audit=${id}`,
           institutionId: row.institutionId,
         },
       );

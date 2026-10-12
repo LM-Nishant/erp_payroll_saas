@@ -9,6 +9,7 @@ import {
   type WorkflowInboxItemDto,
 } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -17,7 +18,8 @@ import { label, todayIso } from './useHrOptions';
 
 /** Leave requests register, balances / ledger lookup, adjustments and apply-on-behalf (HR). */
 const auth = useAuthStore();
-const tab = ref('requests');
+const route = useRoute();
+const tab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'requests');
 const types = ref<LeaveTypeDto[]>([]);
 const error = ref<string | null>(null);
 const run = async (fn: () => Promise<void>) => {

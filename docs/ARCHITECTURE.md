@@ -1156,6 +1156,18 @@ Data model: `Student` (unique `admissionNo` per organization, optional linked st
 
 Permissions: `student.view|create|update|delete|import|view_own|lifecycle`, `admission.view|manage`, `guardian.manage`, and `ward.view`. Academic administrators and registrars manage students/admissions in scope; teachers view students; student and parent roles get only self-service / ward access. Web pages live in `apps/web/src/pages/students` and the `/portal` layout.
 
+Previous schools and certificates (migration `20261009130457_student_previous_schools_certificates`):
+
+- `StudentPreviousSchool` rows belong to an admission application and/or a student (`previous-schools.service.ts`). Enrolling an application re-links its rows to the new student. The latest row keeps the legacy `previousSchool` text in sync. An uploaded old TC is stored through the document engine (owner type `student` / `admission_application`; replacing it adds a document version).
+- `StudentCertificate` (type TRANSFER / CHARACTER, status ISSUED / CANCELLED, `replacesId` chain) is numbered from `StudentCertificateSeries`, one per institution × type × year, atomic increment. Numbers look like `<INSTCODE>/TC|CC/<year>/0001`.
+- Issuing renders the branded PDF templates `transfer_certificate` / `character_certificate` (`certificates.templates.ts`) and stores the result as a student document. If the document is missing it is regenerated on download.
+- A TC withdraws the student and closes open enrollments.
+- Fee dues come through a decoupled hook (`students.hooks.ts`). The fees module registers a provider in `fees.registrations.ts` that sums unpaid invoices due on or before the leaving date. It returns null when finance is not enabled, so no check applies.
+- Pending dues raise `FeeDuesPendingError` (409 `FEE_DUES_PENDING`) unless `waiveFeeDues` and a reason are sent by a holder of `certificate.waive_dues`.
+- Reissue cancels the old row conditionally (`status = ISSUED`) inside the same transaction.
+- Audit actions: `student.previous_school_*`, `student.certificate_issued|cancelled|downloaded`.
+- Permissions: `certificate.view|issue|cancel|waive_dues|view_own`. Students and parents read only ISSUED certificates through `/students/me/certificates` and `/students/my-wards/certificates`. The web portal page is `/portal/certificates`.
+
 ## 16. AI gateway and assistant
 
 The core engine `apps/api/src/core/ai` is provider-agnostic. Modules call `runAi` / `runAiPrompt` and never talk to a vendor SDK directly.

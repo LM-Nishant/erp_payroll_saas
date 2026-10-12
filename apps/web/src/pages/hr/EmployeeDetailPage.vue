@@ -13,6 +13,7 @@ import {
   type SignedUrlDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import EmployeeLoginCard from '@/components/EmployeeLoginCard.vue';
 import DraftWithAiButton from '@/components/ai/DraftWithAiButton.vue';
@@ -27,7 +28,8 @@ const props = defineProps<{ id: string }>();
 const auth = useAuthStore();
 
 const employee = ref<EmployeeDetailDto | null>(null);
-const tab = ref('profile');
+const route = useRoute();
+const tab = ref(typeof route.query.tab === 'string' ? route.query.tab : 'profile');
 const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
 const history = ref<EmployeeHistoryDto | null>(null);

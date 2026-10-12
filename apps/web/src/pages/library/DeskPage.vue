@@ -188,6 +188,16 @@ onMounted(focus);
             hint="Scan with a barcode reader or type and press Enter"
             @keyup.enter="lookup"
           />
+          <!-- Scanning in return mode returns at once: set the condition before scanning. -->
+          <template v-if="mode === 'return'">
+            <v-select v-model="condition" :items="['GOOD', 'DAMAGED', 'LOST']" label="Condition" />
+            <v-text-field
+              v-if="condition !== 'GOOD'"
+              v-model="damageCharge"
+              label="Damage / replacement charge"
+              type="number"
+            />
+          </template>
           <template v-if="copy">
             <div class="text-subtitle-1">{{ copy.book?.title }}</div>
             <div class="text-body-2 mb-2">
@@ -204,21 +214,14 @@ onMounted(focus);
                 {{ money(copy.activeLoan.fineAmount) }}</span
               >
             </v-alert>
-            <template v-if="mode === 'return' && copy.activeLoan">
-              <v-select
-                v-model="condition"
-                :items="['GOOD', 'DAMAGED', 'LOST']"
-                label="Condition"
-                class="mt-3"
-              />
-              <v-text-field
-                v-if="condition !== 'GOOD'"
-                v-model="damageCharge"
-                label="Damage / replacement charge"
-                type="number"
-              />
-              <v-btn color="primary" :loading="busy" @click="doReturn">Return</v-btn>
-            </template>
+            <v-btn
+              v-if="mode === 'return' && copy.activeLoan"
+              color="primary"
+              class="mt-3"
+              :loading="busy"
+              @click="doReturn"
+              >Return</v-btn
+            >
           </template>
           <v-alert v-if="lastReturn" type="success" variant="tonal" class="mt-3">
             <div v-if="lastReturn.loan.overdueDays">

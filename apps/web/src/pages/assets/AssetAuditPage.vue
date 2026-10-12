@@ -2,9 +2,11 @@
 import { ASSET_AUDIT_RESULTS, ASSET_CONDITIONS } from '@erp/shared';
 import type { ApiListResponse, AssetAuditDto, AssetAuditItemDto } from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import { ASSET_STATUS_COLORS, clean, label, useAssetOptions, opts } from './assetUi';
 
+const route = useRoute();
 const { institutions, categories, loadBase } = useAssetOptions();
 const audits = ref<AssetAuditDto[]>([]);
 const error = ref<string | null>(null);
@@ -85,6 +87,15 @@ async function action(kind: 'complete' | 'cancel') {
 }
 onMounted(async () => {
   await Promise.all([loadAudits(), loadBase()]);
+  // Deep link (e.g. from the discrepancy notification): /assets/audit?audit=<id>
+  const id = route.query.audit;
+  if (typeof id === 'string' && id) {
+    try {
+      await openAudit({ id } as AssetAuditDto);
+    } catch (e) {
+      error.value = (e as Error).message;
+    }
+  }
 });
 watch([itemsPage, resultFilter], loadItems);
 </script>

@@ -3,6 +3,7 @@ import type { SignedUrlDto } from '@erp/shared';
 import { computed, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import ChangePasswordDialog from '@/components/ChangePasswordDialog.vue';
 import NotificationBell from '@/components/NotificationBell.vue';
 import SubscriptionBanner from '@/components/SubscriptionBanner.vue';
 import AiAssistantPanel from '@/components/ai/AiAssistantPanel.vue';
@@ -14,6 +15,7 @@ const props = defineProps<{ layout: LayoutKey; title: string; color?: string }>(
 const auth = useAuthStore();
 const router = useRouter();
 const drawer = ref(true);
+const changingPassword = ref(false);
 const items = computed(() =>
   visibleMenu(MENUS[props.layout], auth.can, auth.hasFeature, auth.me?.organization?.kind),
 );
@@ -78,7 +80,30 @@ async function signOut() {
     <v-chip v-if="auth.me?.platformAccess" class="mr-2" color="warning" size="small">
       platform access
     </v-chip>
-    <v-chip class="mr-2" variant="outlined" size="small">{{ auth.me?.user.name }}</v-chip>
+    <v-menu>
+      <template #activator="{ props: menu }">
+        <v-chip
+          v-bind="menu"
+          class="mr-2"
+          variant="outlined"
+          size="small"
+          append-icon="mdi-menu-down"
+          aria-label="Account menu"
+        >
+          {{ auth.me?.user.name }}
+        </v-chip>
+      </template>
+      <v-list density="compact">
+        <v-list-item :subtitle="auth.me?.user.email" :title="auth.me?.user.name" />
+        <v-divider />
+        <v-list-item
+          prepend-icon="mdi-lock-reset"
+          title="Change password"
+          @click="changingPassword = true"
+        />
+        <v-list-item prepend-icon="mdi-logout" title="Sign out" @click="signOut" />
+      </v-list>
+    </v-menu>
     <NotificationBell
       v-if="auth.me?.organization"
       :base="`/${layout === 'platform' ? 'platform' : layout}`"
@@ -93,4 +118,5 @@ async function signOut() {
     </v-container>
   </v-main>
   <AiAssistantPanel v-if="showAi" />
+  <ChangePasswordDialog v-model="changingPassword" />
 </template>

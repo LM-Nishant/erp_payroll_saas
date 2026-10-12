@@ -407,7 +407,7 @@ export const timetableService = {
       await notifyUsers('timetable.substitution_assigned', [input.substituteUserId], {
         title: `Substitution assigned on ${input.date}`,
         body: input.reason ?? undefined,
-        link: '/academics/my-classes',
+        link: '/institution/my-classes',
         institutionId: entry.institutionId,
         data: { substitutionId: row.id },
       });

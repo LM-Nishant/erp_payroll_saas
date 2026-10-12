@@ -26,13 +26,13 @@ import { addDays, dateToStr } from './time';
 registerWorkflowEntity({
   entityType: REGULARIZATION_WORKFLOW,
   label: 'Attendance regularization',
-  linkFor: () => '/hr/attendance/regularizations',
+  linkFor: () => '/hr/attendance?tab=regularizations',
   ...regularizationWorkflowCallbacks,
 });
 registerWorkflowEntity({
   entityType: LEAVE_WORKFLOW,
   label: 'Leave request',
-  linkFor: () => '/hr/leave/requests',
+  linkFor: () => '/hr/leave',
   ...leaveWorkflowCallbacks,
 });
 

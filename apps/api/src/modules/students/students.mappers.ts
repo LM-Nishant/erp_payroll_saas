@@ -88,13 +88,17 @@ export function toStudentGuardianDto(l: LinkWithGuardian): StudentGuardianDto {
   };
 }
 
-export function toEnrollmentDto(e: StudentEnrollment): StudentEnrollmentDto {
+export function toEnrollmentDto(
+  e: StudentEnrollment,
+  sectionNames: ReadonlyMap<string, string> = new Map(),
+): StudentEnrollmentDto {
   return {
     id: e.id,
     studentId: e.studentId,
     academicYear: e.academicYear,
     programId: e.programId,
     classSectionId: e.classSectionId,
+    classSectionName: sectionNames.get(e.classSectionId) ?? null,
     rollNo: e.rollNo,
     fromDate: dateStr(e.fromDate)!,
     toDate: dateStr(e.toDate),
@@ -106,11 +110,12 @@ export function toStudentDetailDto(
   s: StudentWithRefs,
   guardians: LinkWithGuardian[],
   enrollments: StudentEnrollment[],
+  sectionNames: ReadonlyMap<string, string> = new Map(),
 ): StudentDetailDto {
   return {
     ...toStudentDto(s),
     guardians: guardians.map(toStudentGuardianDto),
-    enrollments: enrollments.map(toEnrollmentDto),
+    enrollments: enrollments.map((e) => toEnrollmentDto(e, sectionNames)),
   };
 }
 

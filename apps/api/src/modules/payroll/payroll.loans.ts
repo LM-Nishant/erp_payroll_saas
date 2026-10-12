@@ -274,14 +274,13 @@ async function decideClaim(
     await notify(PAYROLL_NOTIFICATIONS.reimbursementDecided, [claim.requestedByUserId], {
       title: `Reimbursement claim ${status === 'APPROVED' ? 'approved' : 'rejected'}`,
       body: `${claim.category}: ${num(claim.amount).toFixed(2)}${status === 'APPROVED' ? ' will be paid with the next payroll.' : ''}`,
-      link: '/me/reimbursements',
+      link: '/employee/payslips',
       institutionId: claim.institutionId,
     });
   }
 }
 
 export const reimbursementWorkflowCallbacks = {
-  linkFor: (ref: { entityId: string }) => `/payroll/reimbursements/${ref.entityId}`,
   onApproved: (ref: WorkflowInstanceRef) => decideClaim(ref, 'APPROVED'),
   onRejected: (ref: WorkflowInstanceRef) => decideClaim(ref, 'REJECTED'),
   onCancelled: (ref: WorkflowInstanceRef) => decideClaim(ref, 'CANCELLED'),

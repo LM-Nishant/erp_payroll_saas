@@ -225,6 +225,8 @@ const statusColor: Record<string, string> = {
 onMounted(async () => {
   await loadOptions();
   institutionId.value = institutions.value[0]?.id ?? '';
+  // Department-scoped staff (teachers) list no institutions: the watcher never fires for them.
+  if (!institutionId.value) await loadTerms();
 });
 watch(institutionId, loadTerms);
 watch([termId, sectionId], loadSchedules);

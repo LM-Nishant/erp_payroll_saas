@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import type { ApiListResponse, StudentDto } from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 interface Option {
@@ -12,6 +12,12 @@ interface Option {
 }
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
+// Same page serves /group/students and /institution/students: stay in the current workspace.
+const detailRoute = (id: string) => ({
+  name: route.path.startsWith('/group/') ? 'group-student-detail' : 'student-detail',
+  params: { id },
+});
 const items = ref<StudentDto[]>([]);
 const total = ref(0);
 const page = ref(1);
@@ -74,13 +80,13 @@ async function createStudent() {
       }),
     });
     formOpen.value = false;
-    await router.push({ name: 'student-detail', params: { id: r.data.id } });
+    await router.push(detailRoute(r.data.id));
   } catch (e) {
     error.value = (e as Error).message;
   }
 }
 function openRow(_e: unknown, row: { item: StudentDto }) {
-  void router.push({ name: 'student-detail', params: { id: row.item.id } });
+  void router.push(detailRoute(row.item.id));
 }
 onMounted(async () => {
   await Promise.all([load(), loadOptions()]);

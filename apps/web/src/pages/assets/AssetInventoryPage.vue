@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import type { ApiListResponse, InventoryItemDto, InventoryTransactionDto } from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -13,7 +14,13 @@ const total = ref(0);
 const page = ref(1);
 const loading = ref(false);
 const error = ref<string | null>(null);
-const filters = reactive({ institutionId: '', lowStock: '', search: '' });
+const route = useRoute();
+// `?lowStock=true` is the deep link of the low-stock notification.
+const filters = reactive({
+  institutionId: '',
+  lowStock: route.query.lowStock === 'true' ? 'true' : '',
+  search: '',
+});
 const headers = [
   { title: 'SKU', key: 'sku' },
   { title: 'Item', key: 'name' },
@@ -37,6 +44,8 @@ const newForm = reactive({
 });
 const current = ref<InventoryItemDto | null>(null);
 const txns = ref<InventoryTransactionDto[]>([]);
+// Stock posting errors (e.g. issuing more than on hand) are shown inside the stock dialog.
+const txnError = ref<string | null>(null);
 const txn = reactive({
   type: 'OUT',
   quantity: 1,
@@ -78,6 +87,7 @@ async function create() {
 }
 async function openItem(item: InventoryItemDto) {
   current.value = item;
+  txnError.value = null;
   txns.value = (
     await apiFetch<ApiListResponse<InventoryTransactionDto>>(
       `/api/v1/assets/inventory/${item.id}/transactions?pageSize=50`,
@@ -86,6 +96,7 @@ async function openItem(item: InventoryItemDto) {
 }
 async function transact() {
   if (!current.value) return;
+  txnError.value = null;
   try {
     const r = await apiFetch<{ data: { item: InventoryItemDto } }>(
       `/api/v1/assets/inventory/${current.value.id}/transactions`,
@@ -97,7 +108,7 @@ async function transact() {
     await openItem(r.data.item);
     await load();
   } catch (e) {
-    error.value = (e as Error).message;
+    txnError.value = (e as Error).message;
   }
 }
 onMounted(async () => {
@@ -176,6 +187,15 @@ watch(
   <v-dialog :model-value="!!current" max-width="760" @update:model-value="current = null">
     <v-card v-if="current" :title="`${current.sku} · ${current.name}`">
       <v-card-text>
+        <v-alert
+          v-if="txnError"
+          type="error"
+          density="compact"
+          class="mb-3"
+          closable
+          @click:close="txnError = null"
+          >{{ txnError }}</v-alert
+        >
         <p class="mb-3">
           On hand <b>{{ current.quantity }} {{ current.unit }}</b> · reorder at
           {{ current.reorderLevel }} · unit cost {{ money(current.unitCost) }}

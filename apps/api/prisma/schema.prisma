@@ -94,6 +94,9 @@ model Organization {
   guardians                 Guardian[]
   studentGuardians          StudentGuardian[]
   admissionApplications     AdmissionApplication[]
+  studentPreviousSchools    StudentPreviousSchool[]
+  studentCertificates       StudentCertificate[]
+  studentCertificateSeries  StudentCertificateSeries[]
   memberships               OrganizationMembership[]
   roles                     Role[]
   rolePermissions           RolePermission[]
@@ -318,8 +321,8 @@ model Institution {
   gradingScales GradingScale[]
   examTerms     ExamTerm[]
 
-  organization         Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  group                Group?                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  organization         Organization               @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group                Group?                     @relation(fields: [groupId], references: [id], onDelete: Restrict)
   campuses             Campus[]
   departments          Department[]
   programs             Program[]
@@ -335,6 +338,9 @@ model Institution {
   guardians            Guardian[]
   studentGuardians     StudentGuardian[]
   admissions           AdmissionApplication[]
+  previousSchools      StudentPreviousSchool[]
+  studentCertificates  StudentCertificate[]
+  certificateSeries    StudentCertificateSeries[]
 
   employees          Employee[]
   holidayCalendars   HolidayCalendar[]
@@ -600,17 +606,19 @@ model Student {
   examMarks   ExamMark[]
   examResults ExamResult[]
 
-  organization Organization           @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  user         User?                  @relation(fields: [userId], references: [id], onDelete: Restrict)
-  group        Group?                 @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  institution  Institution            @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  campus       Campus?                @relation(fields: [campusId], references: [id], onDelete: Restrict)
-  department   Department             @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  program      Program                @relation(fields: [programId], references: [id], onDelete: Restrict)
-  classSection ClassSection           @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
-  enrollments  StudentEnrollment[]
-  guardians    StudentGuardian[]
-  admissions   AdmissionApplication[]
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  user            User?                   @relation(fields: [userId], references: [id], onDelete: Restrict)
+  group           Group?                  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution     Institution             @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus          Campus?                 @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department      Department              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program         Program                 @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classSection    ClassSection            @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  enrollments     StudentEnrollment[]
+  guardians       StudentGuardian[]
+  admissions      AdmissionApplication[]
+  previousSchools StudentPreviousSchool[]
+  certificates    StudentCertificate[]
 
   @@unique([organizationId, admissionNo])
   @@unique([organizationId, userId])
@@ -746,13 +754,14 @@ model AdmissionApplication {
   updatedAt            DateTime         @updatedAt @map("updated_at") @db.DateTime(3)
   deletedAt            DateTime?        @map("deleted_at") @db.DateTime(3)
 
-  organization Organization  @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  group        Group?        @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  institution  Institution   @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  department   Department    @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  program      Program       @relation(fields: [programId], references: [id], onDelete: Restrict)
-  classSection ClassSection? @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
-  student      Student?      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  organization    Organization            @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group           Group?                  @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution     Institution             @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  department      Department              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  program         Program                 @relation(fields: [programId], references: [id], onDelete: Restrict)
+  classSection    ClassSection?           @relation(fields: [classSectionId], references: [id], onDelete: Restrict)
+  student         Student?                @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  previousSchools StudentPreviousSchool[]
 
   @@unique([organizationId, applicationNo])
   @@index([organizationId, institutionId, status])
@@ -760,6 +769,124 @@ model AdmissionApplication {
   @@index([organizationId, classSectionId])
   @@index([organizationId, deletedAt])
   @@map("admission_applications")
+}
+
+/// A school the student attended before joining (captured on the admission application and/or the
+/// student). `studentId` is set once the applicant is enrolled.
+model StudentPreviousSchool {
+  id                     String    @id @default(uuid()) @db.Char(36)
+  organizationId         String    @map("organization_id") @db.Char(36)
+  groupId                String?   @map("group_id") @db.Char(36)
+  institutionId          String    @map("institution_id") @db.Char(36)
+  studentId              String?   @map("student_id") @db.Char(36)
+  admissionApplicationId String?   @map("admission_application_id") @db.Char(36)
+  schoolName             String    @map("school_name") @db.VarChar(200)
+  board                  String?   @db.VarChar(80)
+  location               String?   @db.VarChar(200)
+  lastClass              String?   @map("last_class") @db.VarChar(60)
+  lastAcademicYear       String?   @map("last_academic_year") @db.VarChar(9)
+  marksPercent           Decimal?  @map("marks_percent") @db.Decimal(5, 2)
+  grade                  String?   @db.VarChar(20)
+  tcNumber               String?   @map("tc_number") @db.VarChar(60)
+  tcDate                 DateTime? @map("tc_date") @db.Date
+  tcDocumentId           String?   @map("tc_document_id") @db.Char(36)
+  remarks                String?   @db.VarChar(500)
+  createdById            String?   @map("created_by_id") @db.Char(36)
+  createdAt              DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt              DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization         Organization          @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution          Institution           @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  student              Student?              @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  admissionApplication AdmissionApplication? @relation(fields: [admissionApplicationId], references: [id], onDelete: Restrict)
+  tcDocument           Document?             @relation(fields: [tcDocumentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, studentId])
+  @@index([organizationId, admissionApplicationId])
+  @@index([organizationId, institutionId])
+  @@index([organizationId, deletedAt])
+  @@map("student_previous_schools")
+}
+
+enum StudentCertificateType {
+  TRANSFER
+  CHARACTER
+}
+
+enum StudentCertificateStatus {
+  ISSUED
+  CANCELLED
+}
+
+/// Per-institution, per-type, per-year certificate number series (e.g. GWIS-MAIN/TC/2026/0001).
+model StudentCertificateSeries {
+  id             String                 @id @default(uuid()) @db.Char(36)
+  organizationId String                 @map("organization_id") @db.Char(36)
+  institutionId  String                 @map("institution_id") @db.Char(36)
+  type           StudentCertificateType
+  year           Int
+  prefix         String                 @db.VarChar(60)
+  padding        Int                    @default(4)
+  nextNumber     Int                    @default(1) @map("next_number")
+  createdAt      DateTime               @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId, type, year])
+  @@index([organizationId, institutionId])
+  @@map("student_certificate_series")
+}
+
+/// An issued Transfer / Character Certificate. The branded PDF is a stored document; cancelled
+/// certificates stay on record and a reissue points back via `replacesId`.
+model StudentCertificate {
+  id                  String                   @id @default(uuid()) @db.Char(36)
+  organizationId      String                   @map("organization_id") @db.Char(36)
+  certificateNo       String                   @map("certificate_no") @db.VarChar(80)
+  type                StudentCertificateType
+  status              StudentCertificateStatus @default(ISSUED)
+  studentId           String                   @map("student_id") @db.Char(36)
+  groupId             String?                  @map("group_id") @db.Char(36)
+  institutionId       String                   @map("institution_id") @db.Char(36)
+  campusId            String?                  @map("campus_id") @db.Char(36)
+  departmentId        String                   @map("department_id") @db.Char(36)
+  issueDate           DateTime                 @map("issue_date") @db.Date
+  leavingDate         DateTime?                @map("leaving_date") @db.Date
+  reason              String?                  @db.VarChar(300)
+  conduct             String                   @db.VarChar(60)
+  lastClass           String?                  @map("last_class") @db.VarChar(120)
+  academicYear        String                   @map("academic_year") @db.VarChar(9)
+  promotionStatus     String?                  @map("promotion_status") @db.VarChar(120)
+  remarks             String?                  @db.VarChar(1000)
+  feeDuesAmount       Decimal                  @default(0) @map("fee_dues_amount") @db.Decimal(14, 2)
+  feeDuesWaived       Boolean                  @default(false) @map("fee_dues_waived")
+  feeDuesWaiverReason String?                  @map("fee_dues_waiver_reason") @db.VarChar(500)
+  documentId          String?                  @map("document_id") @db.Char(36)
+  issuedById          String?                  @map("issued_by_id") @db.Char(36)
+  cancelledAt         DateTime?                @map("cancelled_at") @db.DateTime(3)
+  cancelledById       String?                  @map("cancelled_by_id") @db.Char(36)
+  cancelReason        String?                  @map("cancel_reason") @db.VarChar(500)
+  replacesId          String?                  @map("replaces_id") @db.Char(36)
+  createdAt           DateTime                 @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt           DateTime                 @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt           DateTime?                @map("deleted_at") @db.DateTime(3)
+
+  organization Organization         @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  student      Student              @relation(fields: [studentId], references: [id], onDelete: Restrict)
+  institution  Institution          @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  document     Document?            @relation(fields: [documentId], references: [id], onDelete: Restrict)
+  replaces     StudentCertificate?  @relation("CertificateReissue", fields: [replacesId], references: [id], onDelete: Restrict)
+  replacedBy   StudentCertificate[] @relation("CertificateReissue")
+
+  @@unique([organizationId, certificateNo])
+  @@index([organizationId, studentId, type, status])
+  @@index([organizationId, institutionId, type])
+  @@index([organizationId, replacesId])
+  @@index([organizationId, deletedAt])
+  @@map("student_certificates")
 }
 
 // ---------------------------------------------------------------------------
@@ -1461,17 +1588,19 @@ model Document {
   purgeAfter       DateTime?               @map("purge_after") @db.DateTime(3)
   purgedAt         DateTime?               @map("purged_at") @db.DateTime(3)
 
-  organization     Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
-  group            Group?                   @relation(fields: [groupId], references: [id], onDelete: Restrict)
-  institution      Institution?             @relation(fields: [institutionId], references: [id], onDelete: Restrict)
-  campus           Campus?                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
-  department       Department?              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
-  currentVersion   DocumentVersion?         @relation("DocumentCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
-  versions         DocumentVersion[]        @relation("DocumentVersions")
-  permissions      DocumentPermission[]
-  reminders        DocumentExpiryReminder[]
-  signatures       DocumentSignature[]
-  brandingProfiles BrandingProfile[]
+  organization        Organization             @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  group               Group?                   @relation(fields: [groupId], references: [id], onDelete: Restrict)
+  institution         Institution?             @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  campus              Campus?                  @relation(fields: [campusId], references: [id], onDelete: Restrict)
+  department          Department?              @relation(fields: [departmentId], references: [id], onDelete: Restrict)
+  currentVersion      DocumentVersion?         @relation("DocumentCurrentVersion", fields: [currentVersionId], references: [id], onDelete: Restrict)
+  versions            DocumentVersion[]        @relation("DocumentVersions")
+  permissions         DocumentPermission[]
+  reminders           DocumentExpiryReminder[]
+  signatures          DocumentSignature[]
+  brandingProfiles    BrandingProfile[]
+  studentCertificates StudentCertificate[]
+  previousSchoolTcs   StudentPreviousSchool[]
 
   @@index([organizationId, ownerType, ownerId])
   @@index([organizationId, institutionId, category])

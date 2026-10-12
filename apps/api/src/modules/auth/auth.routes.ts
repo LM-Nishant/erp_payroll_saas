@@ -1,6 +1,7 @@
 import {
   acceptInviteSchema,
   changePasswordSchema,
+  forgotPasswordSchema,
   idParamSchema,
   loginSchema,
   logoutSchema,
@@ -20,6 +21,8 @@ import {
   changePassword,
   clearRefreshCookie,
   disableMfa,
+  findPasswordResetTarget,
+  issueUserToken,
   listActiveSessions,
   listLoginEvents,
   login,
@@ -36,7 +39,12 @@ import {
   type IssuedTokens,
   type LoginOutcome,
 } from '../../core/auth';
+import { audit } from '../../core/audit';
+import { sendSystemEmail } from '../../core/communication';
+import { env } from '../../core/config/env';
 import { NotFoundError, UnauthenticatedError } from '../../core/http/errors';
+import { logger } from '../../core/logger';
+import { runWithTenant } from '../../core/tenancy';
 import { parseInput } from '../../core/http/validation';
 
 export interface AuthRouterOptions {
@@ -107,6 +115,47 @@ export function authRouter(options: AuthRouterOptions): Router {
   router.post('/accept-invite', options.limit('accept-invite'), async (req, res) => {
     const input = parseInput(acceptInviteSchema, req.body);
     await acceptInvite(input.token, input.password, input.name);
+    res.status(204).end();
+  });
+
+  // Always 204: whether the address exists is never revealed. Delivery failures are logged only.
+  router.post('/password/forgot', options.limit('password-forgot'), async (req, res) => {
+    const input = parseInput(forgotPasswordSchema, req.body);
+    const target = await findPasswordResetTarget(input.email, input.organization);
+    if (target) {
+      try {
+        await runWithTenant(
+          { organizationId: target.organizationId, source: 'system' },
+          async () => {
+            const reset = await issueUserToken({
+              userId: target.userId,
+              organizationId: target.organizationId,
+              type: 'PASSWORD_RESET',
+            });
+            const delivery = await sendSystemEmail({
+              to: target.email,
+              toName: target.name,
+              userId: target.userId,
+              templateKey: 'auth.password_reset',
+              variables: {
+                link: `${env.APP_PUBLIC_URL}/reset-password?token=${encodeURIComponent(reset.token)}`,
+                expiresAt: reset.expiresAt,
+              },
+            });
+            await audit.record({
+              organizationId: target.organizationId,
+              actorUserId: target.userId,
+              action: 'user.password_reset_requested',
+              entityType: 'user',
+              entityId: target.userId,
+              metadata: { messageLogId: delivery.id, deliveryStatus: delivery.status },
+            });
+          },
+        );
+      } catch (err) {
+        logger.warn({ err, userId: target.userId }, 'Self-service password reset e-mail failed');
+      }
+    }
     res.status(204).end();
   });
 

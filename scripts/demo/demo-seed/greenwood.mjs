@@ -1,6 +1,7 @@
 // Greenwood International School — EDUCATION, enterprise plan: every module, group + branch.
 import { academicOps } from './education.mjs';
 import { seedFinance } from './academic.mjs';
+import { seedStudentRecords } from './certificates.mjs';
 import {
   ensureCampus,
   ensureDepartments,
@@ -551,6 +552,7 @@ export async function seedGreenwood(ctx) {
 
   // ---- campus operations --------------------------------------------------------------------
   const st = mainAcad.students;
+  await step('greenwood previous schools & certificates', () => seedStudentRecords(ctx, st));
   await step('greenwood library', () => seedLibrary(ctx, main, st));
   await step('greenwood transport', () =>
     seedTransport(ctx, main, st.slice(0, 8), { plate: 'KA01-GW' }),

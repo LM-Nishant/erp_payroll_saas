@@ -53,6 +53,27 @@ export const routes: RouteRecordRaw[] = [
     meta: { public: true },
     component: () => import('@/pages/LoginPage.vue'),
   },
+  {
+    path: '/forgot-password',
+    name: 'forgot-password',
+    meta: { public: true },
+    props: { mode: 'forgot' },
+    component: () => import('@/pages/PasswordTokenPage.vue'),
+  },
+  {
+    path: '/reset-password',
+    name: 'reset-password',
+    meta: { public: true },
+    props: { mode: 'reset' },
+    component: () => import('@/pages/PasswordTokenPage.vue'),
+  },
+  {
+    path: '/accept-invite',
+    name: 'accept-invite',
+    meta: { public: true },
+    props: { mode: 'invite' },
+    component: () => import('@/pages/PasswordTokenPage.vue'),
+  },
   { path: '/', name: 'home', component: () => import('@/pages/HomePage.vue') },
   {
     path: '/forbidden',
@@ -659,6 +680,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/students/MyWardsPage.vue'),
       },
       {
+        path: 'certificates',
+        name: 'portal-certificates',
+        meta: { permission: 'certificate.view_own', feature: 'education' },
+        component: () => import('@/pages/students/MyCertificatesPage.vue'),
+      },
+      {
         path: 'timetable',
         name: 'portal-timetable',
         meta: { permission: 'timetable.view_own', feature: 'education' },
@@ -767,8 +794,64 @@ export const routes: RouteRecordRaw[] = [
       },
     ],
   },
+  {
+    // Self-service notification links (`/me/payslips`, `/me/attendance`, `/me/employee`, …).
+    path: '/me/:page',
+    redirect: (to) =>
+      `/employee/${to.params.page === 'employee' ? 'profile' : String(to.params.page)}`,
+  },
+  {
+    // Workflow notifications link to `/approvals/<instanceId>`: open it in the approvals inbox of
+    // the workspace the user is in (self-service by default).
+    path: '/approvals/:id',
+    name: 'approval-link',
+    component: () => import('@/pages/ApprovalsPage.vue'),
+    beforeEnter: (to, from) => ({
+      path: `/${approvalsWorkspace(from.path)}/approvals`,
+      query: { open: String(to.params.id) },
+      replace: true,
+    }),
+  },
+  // Legacy notification links (already stored in users' inboxes) → current pages.
+  { path: '/payroll/runs/:id', redirect: (to) => `/hr/payroll/runs/${String(to.params.id)}` },
+  { path: '/payroll/reimbursements/:id?', redirect: '/employee/payslips' },
+  { path: '/payroll/revisions/:id?', redirect: '/hr/payroll/salary' },
+  { path: '/hr/leave/requests', redirect: '/hr/leave' },
+  {
+    path: '/hr/attendance/regularizations',
+    redirect: { path: '/hr/attendance', query: { tab: 'regularizations' } },
+  },
+  { path: '/academics/my-classes', redirect: '/institution/my-classes' },
+  { path: '/my/assets', redirect: '/employee/assets' },
+  {
+    // `/documents?documentId=…` (expiry reminders): the documents page of the current workspace.
+    path: '/documents',
+    name: 'documents-link',
+    component: () => import('@/pages/DocumentsPage.vue'),
+    beforeEnter: (_to, from) => ({
+      path: `/${documentsWorkspace(from.path)}/documents`,
+      replace: true,
+    }),
+  },
+  {
+    // `/assets/<assetId>` → asset register detail. Static `/assets/*` children win over this.
+    path: '/assets/:id([0-9a-f-]{36})',
+    redirect: (to) => `/assets/register/${String(to.params.id)}`,
+  },
   { path: '/:pathMatch(.*)*', redirect: '/' },
 ];
+
+const DOCUMENT_WORKSPACES = ['group', 'institution', 'hr', 'employee', 'portal'];
+function documentsWorkspace(fromPath: string): string {
+  const segment = fromPath.split('/')[1] ?? '';
+  return DOCUMENT_WORKSPACES.includes(segment) ? segment : 'employee';
+}
+
+const APPROVAL_WORKSPACES = ['group', 'institution', 'hr', 'employee', 'assets'];
+function approvalsWorkspace(fromPath: string): string {
+  const segment = fromPath.split('/')[1] ?? '';
+  return APPROVAL_WORKSPACES.includes(segment) ? segment : 'employee';
+}
 
 export const router = createRouter({ history: createWebHistory(), routes });
 

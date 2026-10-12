@@ -295,6 +295,30 @@ describe.skipIf(!hasTestDatabase)('authentication', () => {
     await login(app, email, 'Reset-Passw0rd!');
   });
 
+  it('forgot-password e-mails a reset link without revealing whether the account exists', async () => {
+    const { email } = await makeUser('forgot');
+    const before = messageOutbox.length;
+    await http()
+      .post('/api/v1/auth/password/forgot')
+      .send({ email: `nobody-${Date.now()}@abbs.test` })
+      .expect(204);
+    expect(messageOutbox.length).toBe(before);
+    await http()
+      .post('/api/v1/auth/password/forgot')
+      .send({ email, organizationId: 'x' })
+      .expect(400);
+    await http()
+      .post('/api/v1/auth/password/forgot')
+      .send({ email: email.toUpperCase() })
+      .expect(204);
+    const token = tokenFromOutbox(email, 'reset-password');
+    await http()
+      .post('/api/v1/auth/password/reset')
+      .send({ token, newPassword: 'Forgot-Passw0rd!' })
+      .expect(204);
+    await login(app, email, 'Forgot-Passw0rd!');
+  });
+
   it('deactivated members cannot sign in and lose their sessions', async () => {
     const owner = asBearer(app, (await login(app, 'owner@abbs.test', DEMO_PASSWORD)).accessToken);
     const { email, id } = await makeUser('deactivate');

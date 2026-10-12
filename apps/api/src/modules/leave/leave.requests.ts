@@ -518,7 +518,7 @@ async function apply(employee: Employee, input: ApplyLeaveInput, onBehalf: boole
   await notify('leave.applied', [await managerUserId(employee.reportingManagerId)], {
     title: `${employee.displayName} applied for ${c.type.code} leave`,
     body: `${c.fromDate} to ${c.toDate} (${c.days} day(s))`,
-    link: '/hr/leave/requests',
+    link: '/hr/leave',
     institutionId: c.institutionId,
     data: { leaveRequestId: r.id },
   });

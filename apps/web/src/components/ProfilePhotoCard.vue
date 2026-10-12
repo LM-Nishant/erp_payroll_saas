@@ -61,41 +61,45 @@ async function onFile(event: Event) {
 </script>
 
 <template>
-  <div class="d-flex align-center ga-4">
-    <v-avatar :size="size ?? 96" color="grey-lighten-2">
-      <v-img v-if="url" :src="url" cover />
-      <v-icon v-else :size="(size ?? 96) / 2">mdi-account</v-icon>
-    </v-avatar>
-    <div v-if="editable">
-      <input
-        ref="input"
-        type="file"
-        accept="image/jpeg,image/png"
-        class="d-none"
-        @change="onFile"
-      />
-      <v-btn
-        size="small"
-        variant="tonal"
-        prepend-icon="mdi-camera"
-        :loading="busy"
-        @click="input?.click()"
-      >
-        {{ url ? 'Change photo' : 'Upload photo' }}
-      </v-btn>
-      <div class="text-caption text-medium-emphasis mt-1">
-        JPG/PNG, max 5 MB, face clearly visible
+  <!-- Single root: callers pass classes and place the card inside flex rows. -->
+  <div>
+    <div class="d-flex align-center ga-4">
+      <v-avatar :size="size ?? 96" color="grey-lighten-2">
+        <v-img v-if="url" :src="url" cover />
+        <v-icon v-else :size="(size ?? 96) / 2">mdi-account</v-icon>
+      </v-avatar>
+      <div v-if="editable">
+        <input
+          ref="input"
+          type="file"
+          accept="image/jpeg,image/png"
+          class="d-none"
+          @change="onFile"
+        />
+        <v-btn
+          size="small"
+          variant="tonal"
+          prepend-icon="mdi-camera"
+          :loading="busy"
+          @click="input?.click()"
+        >
+          {{ url ? 'Change photo' : 'Upload photo' }}
+        </v-btn>
+        <div class="text-caption text-medium-emphasis mt-1">
+          JPG/PNG, max 5 MB, face clearly visible
+        </div>
       </div>
     </div>
+    <v-alert
+      v-if="message"
+      :type="message.type"
+      density="compact"
+      class="mt-2"
+      style="max-width: 480px"
+      closable
+      @click:close="message = null"
+    >
+      {{ message.text }}
+    </v-alert>
   </div>
-  <v-alert
-    v-if="message"
-    :type="message.type"
-    density="compact"
-    class="mt-2"
-    closable
-    @click:close="message = null"
-  >
-    {{ message.text }}
-  </v-alert>
 </template>

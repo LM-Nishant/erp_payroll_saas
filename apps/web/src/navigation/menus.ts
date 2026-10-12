@@ -674,6 +674,13 @@ export const MENUS: Record<LayoutKey, MenuItem[]> = {
       feature: 'education',
     },
     {
+      title: 'Certificates',
+      icon: 'mdi-file-certificate-outline',
+      to: '/portal/certificates',
+      permission: 'certificate.view_own',
+      feature: 'education',
+    },
+    {
       title: 'Timetable',
       icon: 'mdi-timetable',
       to: '/portal/timetable',

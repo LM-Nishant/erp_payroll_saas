@@ -7,7 +7,10 @@ import type {
   WorkflowInstanceDto,
 } from '@erp/shared';
 import { onMounted, reactive, ref, watch } from 'vue';
+import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+
+const route = useRoute();
 
 /** Approvals inbox (steps waiting on me), my requests, and the full instance history. */
 const tab = ref<'inbox' | 'mine'>('inbox');
@@ -62,7 +65,22 @@ async function load() {
     loading.value = false;
   }
 }
-onMounted(load);
+onMounted(async () => {
+  await load();
+  await openFromQuery();
+});
+
+// `?open=<instanceId>` (from a notification link) opens that request straight away.
+async function openFromQuery() {
+  const id = route.query.open;
+  if (typeof id !== 'string' || !id) return;
+  try {
+    await open(id);
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
+watch(() => route.query.open, openFromQuery);
 
 function onRow(_e: unknown, row: { item: WorkflowInstanceDto }) {
   void open(row.item.id);

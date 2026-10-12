@@ -20,7 +20,7 @@ import {
 } from '../../core/authz';
 import { emit } from '../../core/events';
 import { releaseLimit, withLimit } from '../../core/features';
-import { InvalidReferenceError, NotFoundError } from '../../core/http/errors';
+import { ConflictError, InvalidReferenceError, NotFoundError } from '../../core/http/errors';
 import { toPageWindow } from '../../core/http/pagination';
 import { currentOrganizationId, tenantDb, withTenant } from '../../core/tenancy';
 import {
@@ -188,7 +188,18 @@ async function detailFor(student: StudentWithRefs) {
       orderBy: [{ fromDate: 'desc' }],
     }),
   ]);
-  return toStudentDetailDto(student, guardians, enrollments);
+  return toStudentDetailDto(student, guardians, enrollments, await sectionNamesOf(enrollments));
+}
+
+/** Class-section names for enrollment history rows (sections are not a Prisma relation). */
+async function sectionNamesOf(enrollments: { classSectionId: string }[]) {
+  const ids = [...new Set(enrollments.map((e) => e.classSectionId))];
+  if (ids.length === 0) return new Map<string, string>();
+  const sections = await tenantDb().classSection.findMany({
+    where: { id: { in: ids } },
+    select: { id: true, name: true },
+  });
+  return new Map(sections.map((cs) => [cs.id, cs.name]));
 }
 
 export const studentService = {
@@ -448,6 +459,9 @@ export const studentService = {
   async lifecycle(id: string, action: 'withdrawn' | 'graduated', input: LifecycleStudentInput) {
     const before = await loadVisible(id);
     await authorize(currentPrincipal(), 'student.lifecycle', hierarchyResource.student(before));
+    // Withdrawn / graduated / alumni records are final: re-running would rewrite the history.
+    if (!['ACTIVE', 'INACTIVE'].includes(before.status))
+      throw new ConflictError(`The student is already ${before.status.toLowerCase()}`);
     const status = action === 'withdrawn' ? 'WITHDRAWN' : 'GRADUATED';
     const enrollmentStatus = action === 'withdrawn' ? 'WITHDRAWN' : 'GRADUATED';
     const updated = await tenantDb().$transaction(async (tx) => {
@@ -505,12 +519,12 @@ export const studentService = {
 
   async enrollments(id: string) {
     await loadVisible(id);
-    return (
-      await tenantDb().studentEnrollment.findMany({
-        where: { studentId: id },
-        orderBy: { fromDate: 'desc' },
-      })
-    ).map(toEnrollmentDto);
+    const rows = await tenantDb().studentEnrollment.findMany({
+      where: { studentId: id },
+      orderBy: { fromDate: 'desc' },
+    });
+    const names = await sectionNamesOf(rows);
+    return rows.map((e) => toEnrollmentDto(e, names));
   },
 
   async stats() {

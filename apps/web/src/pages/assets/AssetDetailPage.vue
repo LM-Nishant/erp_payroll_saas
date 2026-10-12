@@ -16,7 +16,7 @@ import type {
   AssetTransferDto,
   SignedUrlDto,
 } from '@erp/shared';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiDownload, apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -245,6 +245,11 @@ const live = computed(() => asset.value && !['DISPOSED'].includes(asset.value.st
 onMounted(async () => {
   await Promise.all([load(), loadBase()]);
 });
+// The route reuses this component when moving between assets (links, notifications).
+watch(
+  () => props.id,
+  () => load(),
+);
 async function pickInstitution(id: string) {
   transfer.toInstitutionId = id;
   transfer.toCampusId = '';
