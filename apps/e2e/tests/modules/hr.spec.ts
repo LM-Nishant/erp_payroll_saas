@@ -94,7 +94,8 @@ test.describe('HR · hr@greenwood.demo', () => {
     await detail.getByRole('button', { name: /add/i }).click();
     await s.settle();
     await expect(detail.getByText('E2E Founders Day')).toBeVisible();
-    await expectClean(s, mark, 'holiday calendar');
+    // The year loop above skips calendars left by earlier runs (409 CONFLICT).
+    await expectClean(s, mark, 'holiday calendar', ['CONFLICT']);
   });
 
   test('creates an institution leave policy', async () => {

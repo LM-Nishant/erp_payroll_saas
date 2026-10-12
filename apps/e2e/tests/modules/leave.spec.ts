@@ -57,9 +57,13 @@ test.describe('Leave · employee applies', () => {
     const b = await applyLeave(s, rejectReason);
     await expect(s.page.getByText('Leave request submitted')).toBeVisible();
     for (const day of [a, b])
-      await expect(s.page.locator('tbody tr').filter({ hasText: day }).first()).toContainText(
-        /Pending/i,
-      );
+      await expect(
+        s.page
+          .locator('tbody tr')
+          .filter({ hasText: day })
+          .filter({ hasNotText: /Cancelled|Rejected/i })
+          .first(),
+      ).toContainText(/Pending/i);
     // applyLeave retries on another day when the random one overlaps an earlier run's request.
     await expectClean(s, mark, 'apply leave', ['CONFLICT']);
   });

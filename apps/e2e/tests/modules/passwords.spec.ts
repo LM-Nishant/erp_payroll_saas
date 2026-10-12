@@ -192,8 +192,9 @@ test.describe('Passwords · owner@greenwood.demo and the affected users', () => 
       await signInWith(u, { email: invitee.email, name: `${invitee.name} Jr` }, INVITED);
     });
     const s = session();
-    await s.page.reload();
-    await s.settle();
+    // Re-mount the list in-app; a reload would spend a rate-limited /auth/refresh.
+    await s.go('/group');
+    await s.go('/group/users');
     await fill(s.page, 'Search', invitee.email);
     await s.settle();
     await expect(row(invitee.email)).toContainText('ACTIVE');
