@@ -3,6 +3,7 @@ import type {
   AttendancePunchDto,
   AttendanceRecordDto,
   AttendanceRegularizationDto,
+  LivenessProof,
   MyAttendanceDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
@@ -97,7 +98,10 @@ async function startSelfie(direction: 'IN' | 'OUT') {
   });
 }
 
-async function punch(direction: 'IN' | 'OUT', capture?: { descriptor: number[] }) {
+async function punch(
+  direction: 'IN' | 'OUT',
+  capture?: { descriptor: number[]; liveness: LivenessProof },
+) {
   if (!capture && data.value?.faceMatchRequired) return startSelfie(direction);
   const pos = await position();
   const fields: Record<string, string | number> = {
@@ -106,7 +110,11 @@ async function punch(direction: 'IN' | 'OUT', capture?: { descriptor: number[] }
     ...(pos ? { latitude: pos.coords.latitude, longitude: pos.coords.longitude } : {}),
   };
   // Only the face descriptor leaves the browser; the selfie image is never uploaded.
-  const body = JSON.stringify(capture ? { ...fields, faceDescriptor: capture.descriptor } : fields);
+  const body = JSON.stringify(
+    capture
+      ? { ...fields, faceDescriptor: capture.descriptor, liveness: capture.liveness }
+      : fields,
+  );
   error.value = null;
   try {
     const res = await apiFetch<{ data: { punch: AttendancePunchDto } }>(
@@ -116,11 +124,13 @@ async function punch(direction: 'IN' | 'OUT', capture?: { descriptor: number[] }
     notice.value = `Punched ${direction.toLowerCase()} at ${new Date(res.data.punch.punchedAt).toLocaleTimeString()}`;
     await load();
   } catch (e) {
-    if (e instanceof ApiError && e.code === 'SELFIE_REQUIRED') return startSelfie(direction);
+    if (e instanceof ApiError && ['SELFIE_REQUIRED', 'LIVENESS_REQUIRED'].includes(e.code))
+      return startSelfie(direction);
     error.value = (e as Error).message;
   }
 }
-const onSelfie = (_file: Blob, descriptor: number[]) => punch(selfie.direction, { descriptor });
+const onSelfie = (_file: Blob, descriptor: number[], liveness: LivenessProof) =>
+  punch(selfie.direction, { descriptor, liveness });
 
 // Calendar grid (Sunday-first weeks)
 const byDate = computed(

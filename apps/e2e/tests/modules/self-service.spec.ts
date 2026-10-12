@@ -65,11 +65,46 @@ test.describe('Self-service · employee@greenwood.demo', () => {
     if (await selfieDialog.count()) await s.page.keyboard.press('Escape');
   });
 
-  test.fixme('punches in with a matching selfie', async () => {
-    // Not automatable without changing demo data: face match is ON in the demo attendance
-    // policies and the browser computes the face descriptor from a live camera frame (no selfie
-    // is uploaded), so headless Chromium has no enrolled face to match. Toggling the shared
-    // policy off would change the demo for everyone.
+  test('the selfie camera runs a blink + head-turn liveness check before it can punch', async () => {
+    const s = session();
+    // Pretend a profile photo is enrolled (only the client-side reference lookup is stubbed;
+    // the liveness challenge comes from the real API).
+    const reference = Array.from({ length: 128 }, (_, i) => Math.sin(i) / 10);
+    await s.page.route('**/api/v1/employees/me/face', (r) =>
+      r.fulfill({ json: { data: { hasPhoto: true, descriptor: reference } } }),
+    );
+    try {
+      await s.go('/employee/attendance');
+      const mark = s.mark();
+      await s.page.getByRole('button', { name: /^Punch (in|out)$/ }).click();
+      const d = s.page.locator('.v-overlay--active .v-card').filter({
+        hasText: /Selfie punch (in|out)/,
+      });
+      await expect(d).toBeVisible();
+      const check = d.getByLabel('Liveness check');
+      await expect(check).toBeVisible();
+      await expect(check.getByText('Blink your eyes').first()).toBeVisible();
+      await expect(check.getByText(/turn your head to your (left|right)/).first()).toBeVisible();
+      // The fake camera shows no face: the check can't pass, so capture stays disabled.
+      await expect(check.getByText(/No face detected/)).toBeVisible({ timeout: 30_000 });
+      await expect(d.getByRole('button', { name: 'Capture & punch' })).toBeDisabled();
+      const calls = s.calls.slice(mark).filter((c) => c.method === 'POST');
+      expect(calls.filter((c) => c.path.endsWith('/attendance/me/liveness-challenge'))).toEqual([
+        expect.objectContaining({ status: 201 }),
+      ]);
+      expect(calls.filter((c) => c.path.includes('/attendance/me/punch'))).toEqual([]);
+      await d.getByRole('button', { name: 'Cancel' }).click();
+      await expect(d).toBeHidden();
+    } finally {
+      await s.page.unroute('**/api/v1/employees/me/face');
+    }
+  });
+
+  test.fixme('punches in with a matching live selfie', async () => {
+    // Needs a real face on camera: the browser computes descriptors and liveness (blink, head
+    // turn) from live frames, and the fake Chromium camera only shows a test pattern. The API
+    // side (challenge signing, step order, expiry, per-step face match) is covered by
+    // attendance-leave.int.test.ts.
   });
 });
 

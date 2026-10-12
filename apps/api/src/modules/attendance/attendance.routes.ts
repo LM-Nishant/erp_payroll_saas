@@ -17,6 +17,7 @@ import {
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import { requirePermission } from '../../core/authz';
+import { ValidationError } from '../../core/http/errors';
 import { parseMultipartFile } from '../../core/http/multipart';
 import { toListResponse } from '../../core/http/pagination';
 import { parseInput } from '../../core/http/validation';
@@ -38,6 +39,19 @@ const SELFIE_MAX_BYTES = 3 * 1024 * 1024;
  * JSON (direction, source, geo, faceDescriptor). Legacy multipart bodies are still accepted, but
  * any attached selfie image is discarded — punch selfies are never stored.
  */
+function parseJsonField(v: string): unknown {
+  try {
+    return JSON.parse(v);
+  } catch {
+    throw new ValidationError('liveness must be JSON');
+  }
+}
+
+/** Issues the blink + head-turn steps the selfie camera must see before a face-match punch. */
+attendanceRouter.post('/me/liveness-challenge', async (_req, res) => {
+  res.status(201).json({ data: await attendanceService.livenessChallenge() });
+});
+
 attendanceRouter.post('/me/punch', async (req, res) => {
   if (req.is('multipart/form-data')) {
     const { fields } = await parseMultipartFile(req, {
@@ -51,7 +65,9 @@ attendanceRouter.post('/me/punch', async (req, res) => {
         ? Number(v)
         : k === 'faceDescriptor'
           ? parseDescriptorField(v)
-          : v;
+          : k === 'liveness'
+            ? parseJsonField(v)
+            : v;
     }
     const input = parseInput(selfPunchSchema, body);
     res.status(201).json({ data: await attendanceService.selfPunch(input) });

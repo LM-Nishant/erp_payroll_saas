@@ -40,6 +40,7 @@ import {
   loadEmployeeWith,
   ownEmployee,
 } from './attendance.access';
+import { issueLivenessChallenge, verifyLivenessProof } from './attendance.liveness';
 import {
   computeAttendance,
   COMPUTABLE_STATUSES,
@@ -95,12 +96,18 @@ export async function punchDay(
 export const FACE_MATCH_THRESHOLD = 0.5;
 
 /**
- * Selfie punch check: the browser captures a live selfie and sends only its face descriptor; the
- * server compares it with the one stored from the profile photo. The selfie image is never
- * uploaded or stored — only the match distance is kept on the punch. (Descriptors are computed
- * client-side, so this deters casual proxy punching; it is not liveness detection.)
+ * Selfie punch check: the browser runs a server-issued liveness challenge (blink + head turn in
+ * random order) and sends only face descriptors; the server checks the signed challenge and that
+ * every frame matches the descriptor stored from the profile photo. Selfie images are never
+ * uploaded or stored — only the match distance is kept on the punch. Descriptors are computed
+ * client-side, so this deters proxy punching with photos or recordings rather than proving
+ * identity cryptographically.
  */
-async function verifySelfie(employee: Employee, descriptor: number[] | undefined) {
+async function verifySelfie(
+  employee: Employee,
+  descriptor: number[] | undefined,
+  liveness: SelfPunchInput['liveness'],
+) {
   const stored = storedDescriptor(employee);
   if (!stored) {
     throw new AppError(
@@ -112,20 +119,45 @@ async function verifySelfie(employee: Employee, descriptor: number[] | undefined
   if (!descriptor) {
     throw new AppError(400, 'SELFIE_REQUIRED', 'A selfie is required to punch');
   }
+  if (!liveness) {
+    throw new AppError(
+      400,
+      'LIVENESS_REQUIRED',
+      'Complete the blink and head-turn check before punching',
+    );
+  }
   const distance = Math.round(faceDistance(stored, descriptor) * 10_000) / 10_000;
-  if (distance > FACE_MATCH_THRESHOLD) {
+  const mismatch = async (d: number) => {
     await audit.record({
       action: 'attendance.face_mismatch',
       entityType: 'employee',
       entityId: employee.id,
-      metadata: { distance },
+      metadata: { distance: d },
     });
     throw new AppError(422, 'FACE_MISMATCH', 'The selfie does not match your profile photo', {
-      distance,
+      distance: d,
       threshold: FACE_MATCH_THRESHOLD,
     });
+  };
+  if (distance > FACE_MATCH_THRESHOLD) await mismatch(distance);
+  let live;
+  try {
+    live = verifyLivenessProof(liveness, employee.id, stored, FACE_MATCH_THRESHOLD);
+  } catch (e) {
+    if (e instanceof AppError && e.code === 'FACE_MISMATCH') {
+      await mismatch((e.details as { distance: number }).distance);
+    }
+    if (e instanceof AppError) {
+      await audit.record({
+        action: 'attendance.liveness_failed',
+        entityType: 'employee',
+        entityId: employee.id,
+        metadata: { reason: e.message },
+      });
+    }
+    throw e;
   }
-  return { distance };
+  return { distance, livenessSteps: live.steps };
 }
 
 async function insertPunch(
@@ -294,6 +326,13 @@ async function assertNotFuture(ctx: AttendanceContext, institutionId: string, da
 export const attendanceService = {
   /* ---- punches ---- */
 
+  /** Starts a selfie liveness check for the caller (only meaningful when face match is on). */
+  async livenessChallenge() {
+    const employee = await ownEmployee('attendance.punch_own');
+    assertActionable(employee);
+    return issueLivenessChallenge(employee.id);
+  },
+
   async selfPunch(input: SelfPunchInput) {
     const employee = await ownEmployee('attendance.punch_own');
     assertActionable(employee);
@@ -310,7 +349,7 @@ export const attendanceService = {
     }
     await ctx.assertUnlocked(day.institutionId, day.date);
     const face = policy.requireFaceMatch
-      ? await verifySelfie(employee, input.faceDescriptor)
+      ? await verifySelfie(employee, input.faceDescriptor, input.liveness)
       : null;
     const punch = await insertPunch(employee, instant, day.date, {
       ...input,
@@ -326,7 +365,7 @@ export const attendanceService = {
         punchedAt: instant.toISOString(),
         date: day.date,
         source: input.source,
-        ...(face ? { faceDistance: face.distance } : {}),
+        ...(face ? { faceDistance: face.distance, liveness: face.livenessSteps } : {}),
       },
     });
     const record = await tenantDb().attendanceRecord.findFirst({
