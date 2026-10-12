@@ -67,6 +67,8 @@ export interface StudentEnrollmentDto {
   academicYear: string;
   programId: string;
   classSectionId: string;
+  /** Display name of the class section (null when it no longer exists). */
+  classSectionName: string | null;
   rollNo: string | null;
   fromDate: string;
   toDate: string | null;

@@ -813,7 +813,7 @@ export const auditService = {
         {
           title: `Asset audit "${row.name}": ${discrepancies} discrepanc${discrepancies === 1 ? 'y' : 'ies'}`,
           body: `${dto.counts.MISSING} missing, ${dto.counts.LOCATION_MISMATCH} location and ${dto.counts.CONDITION_MISMATCH} condition mismatches.`,
-          link: `/assets/audits/${id}`,
+          link: `/assets/audit?audit=${id}`,
           institutionId: row.institutionId,
         },
       );

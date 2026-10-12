@@ -16,11 +16,17 @@ registerDocumentOwnerType({
   },
   selfAccess: {
     actions: ['view', 'download'],
+    // The student themself and their linked guardians (parent portal) own the documents.
     ownedIds: async (principal) =>
       principal.userId
         ? (
             await tenantDb().student.findMany({
-              where: { userId: principal.userId },
+              where: {
+                OR: [
+                  { userId: principal.userId },
+                  { guardians: { some: { guardian: { userId: principal.userId } } } },
+                ],
+              },
               select: { id: true },
             })
           ).map((s) => s.id)
