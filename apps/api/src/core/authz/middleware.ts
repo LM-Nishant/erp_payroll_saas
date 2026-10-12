@@ -1,6 +1,6 @@
 import type { Request, RequestHandler } from 'express';
 import { ForbiddenError } from '../http/errors';
-import { authorize, assertPermission, type ResourceScope } from './engine';
+import { authorize, assertPermission, hasPermission, type ResourceScope } from './engine';
 import { currentPrincipal } from './principal';
 
 export type ScopeResolver = (req: Request) => ResourceScope | Promise<ResourceScope>;
@@ -18,6 +18,22 @@ export function requirePermission(
     const principal = currentPrincipal();
     if (scopeResolver) await authorize(principal, permission, await scopeResolver(req));
     else assertPermission(principal, permission);
+    next();
+  };
+}
+
+/**
+ * Route guard passing when ANY of the permissions is held (in any scope); the service then
+ * enforces the precise permission for the resource.
+ */
+export function requireAnyPermission(permissions: string[]): RequestHandler {
+  return async (_req, _res, next) => {
+    const principal = currentPrincipal();
+    if (!permissions.some((p) => hasPermission(principal, p)))
+      throw new ForbiddenError(
+        `Missing permission: ${permissions.join(' or ')}`,
+        'PERMISSION_DENIED',
+      );
     next();
   };
 }

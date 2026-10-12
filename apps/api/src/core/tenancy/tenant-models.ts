@@ -79,6 +79,9 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'Guardian',
   'StudentGuardian',
   'AdmissionApplication',
+  'StudentPreviousSchool',
+  'StudentCertificateSeries',
+  'StudentCertificate',
   // Assets
   'AssetCategory',
   'Asset',
@@ -231,6 +234,8 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'Guardian',
   'StudentGuardian',
   'AdmissionApplication',
+  'StudentPreviousSchool',
+  'StudentCertificate',
   // AI
   'AiConversation',
   'FeeHead',

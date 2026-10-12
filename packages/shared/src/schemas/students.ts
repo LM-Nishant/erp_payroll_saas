@@ -204,3 +204,91 @@ export const enrollAdmissionSchema = z
   })
   .strict();
 export type EnrollAdmissionInput = z.infer<typeof enrollAdmissionSchema>;
+
+// ---- Previous-school records ----------------------------------------------------------------
+
+export const previousSchoolInputSchema = z
+  .object({
+    schoolName: text(200).min(1),
+    board: optionalText(80),
+    location: optionalText(200),
+    lastClass: optionalText(60),
+    lastAcademicYear: optionalText(9),
+    marksPercent: z.number().min(0).max(100).nullish(),
+    grade: optionalText(20),
+    tcNumber: optionalText(60),
+    tcDate: isoDateSchema.nullish(),
+    remarks: optionalText(500),
+  })
+  .strict();
+export type PreviousSchoolInput = z.infer<typeof previousSchoolInputSchema>;
+
+export const updatePreviousSchoolSchema = previousSchoolInputSchema.partial().strict();
+export type UpdatePreviousSchoolInput = z.infer<typeof updatePreviousSchoolSchema>;
+
+// ---- Transfer / character certificates ------------------------------------------------------
+
+export const CERTIFICATE_TYPES = ['TRANSFER', 'CHARACTER'] as const;
+export const certificateTypeSchema = z.enum(CERTIFICATE_TYPES);
+export type CertificateType = z.infer<typeof certificateTypeSchema>;
+
+export const CERTIFICATE_STATUSES = ['ISSUED', 'CANCELLED'] as const;
+export type CertificateStatus = (typeof CERTIFICATE_STATUSES)[number];
+
+/** Suggested conduct values (free text up to 60 chars is accepted). */
+export const CERTIFICATE_CONDUCTS = ['Excellent', 'Very good', 'Good', 'Satisfactory'] as const;
+
+export const issueCertificateSchema = z
+  .object({
+    type: certificateTypeSchema,
+    issueDate: isoDateSchema.optional(),
+    /** Required for a transfer certificate. */
+    leavingDate: isoDateSchema.nullish(),
+    reason: optionalText(300),
+    conduct: text(60).min(1),
+    lastClass: optionalText(120),
+    promotionStatus: optionalText(120),
+    remarks: optionalText(1000),
+    /** Issue a TC despite pending fee dues (needs `certificate.waive_dues`). */
+    waiveFeeDues: z.boolean().optional(),
+    waiverReason: optionalText(500),
+  })
+  .strict()
+  .superRefine((v, ctx) => {
+    if (v.type === 'TRANSFER' && !v.leavingDate) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['leavingDate'],
+        message: 'Leaving date is required for a transfer certificate',
+      });
+    }
+    if (v.waiveFeeDues && !v.waiverReason) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ['waiverReason'],
+        message: 'A reason is required to waive pending fee dues',
+      });
+    }
+  });
+export type IssueCertificateInput = z.infer<typeof issueCertificateSchema>;
+
+export const cancelCertificateSchema = z.object({ reason: text(500).min(1) }).strict();
+export type CancelCertificateInput = z.infer<typeof cancelCertificateSchema>;
+
+/** Reissue = cancel the certificate and issue a new number; omitted fields keep the old values. */
+export const reissueCertificateSchema = z
+  .object({
+    reason: text(500).min(1),
+    issueDate: isoDateSchema.optional(),
+    leavingDate: isoDateSchema.nullish(),
+    leavingReason: optionalText(300),
+    conduct: text(60).min(1).optional(),
+    lastClass: optionalText(120),
+    promotionStatus: optionalText(120),
+    remarks: optionalText(1000),
+  })
+  .strict();
+export type ReissueCertificateInput = z.infer<typeof reissueCertificateSchema>;
+
+export const certificateEligibilityQuerySchema = z.object({ type: certificateTypeSchema }).strict();
+export type CertificateEligibilityQuery = z.infer<typeof certificateEligibilityQuerySchema>;

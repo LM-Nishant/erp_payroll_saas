@@ -10,8 +10,11 @@ import {
 import { registerNotificationEvent } from '../../core/notifications';
 import { registerPdfTemplate } from '../../core/pdf';
 import { registerLibraryFinePoster } from '../library/library.constants';
+import { registerStudentDuesProvider } from '../students/students.hooks';
 import { registerStudentChargePoster } from '../transport/charges-hook';
+import { fromPaise, toPaise } from '../finance/finance.logic';
 import { today } from '../finance/finance.mappers';
+import { tenantDb } from '../../core/tenancy';
 import { applyLateFees, sendDueReminders } from './fees.dues.service';
 import { cancelStudentCharge, createStudentCharge } from './fees.invoices.service';
 import { FEE_RECEIPT_TEMPLATE } from './fees.payments.service';
@@ -188,3 +191,22 @@ registerStudentChargePoster(
     });
   },
 );
+
+/**
+ * Fees → students: outstanding dues (open invoices due on or before the leaving date) checked
+ * before a transfer certificate is issued. Null when finance is off for the institution.
+ */
+registerStudentDuesProvider(async ({ studentId, institutionId, asOf }) => {
+  const enabled = await isFeatureEnabled(currentFeatureContext(), 'finance', { institutionId });
+  if (!enabled) return null;
+  const open = await tenantDb().feeInvoice.findMany({
+    where: {
+      studentId,
+      status: { in: ['UNPAID', 'PARTIAL'] },
+      dueDate: { lte: new Date(`${asOf}T00:00:00.000Z`) },
+    },
+    select: { netAmount: true, paidAmount: true },
+  });
+  const paise = open.reduce((sum, i) => sum + toPaise(i.netAmount) - toPaise(i.paidAmount), 0);
+  return { amount: fromPaise(Math.max(0, paise)), invoiceCount: open.length };
+});

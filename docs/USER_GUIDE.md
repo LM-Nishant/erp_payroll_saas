@@ -428,6 +428,12 @@ first.
 3. Move the application through **Review** → **Approve** (or **Reject**).
 4. Click **Enroll** to create the student record.
 
+**Previous school records:** on **Admissions**, click **Previous school** on an application →
+**Add previous school** – **School name**, **Board**, **City / location**, **Last class**, **Year**,
+**Marks %**, **Grade**, **Old TC no.**, **TC date**, optionally **Upload previous school TC (PDF /
+image)**, **Remarks**. **Save**. Records added on the application move to the student on
+**Enroll**. You can also add, edit or delete them later on the student's **Previous schools** tab.
+
 **Add a student directly:** **Institution → Students → New student** – **First name**, **Last
 name**, **Class section**, **Roll no**, **Academic year**, **Email**, **Phone**. **Create**.
 
@@ -437,9 +443,35 @@ name**, **Class section**, **Roll no**, **Academic year**, **Email**, **Phone**.
 - **Guardians** – **Add guardian** with **Name**, **Relation**, **Phone**, **Email**, **Primary
   guardian**, **Can pick up**.
 - **Enrollment history** – classes over the years.
+- **Previous schools** – earlier schools (board, last class, year, marks, old TC no.) with the
+  uploaded old TC (click the file name to download it).
+- **Certificates** – transfer certificates (TC) and character certificates (see below).
 - **Login access** – shows the linked student login. Create the login first under **Users** with
   the **Student** role (parents: **Parent** role); linking the login to the student record is
   currently done by your administrator/support.
+
+**Transfer certificate (TC) and character certificate:** open the student → **Certificates**.
+
+1. **Issue TC** – **Issue date**, **Date of leaving**, **Reason for leaving**, **Conduct**, **Class
+   last studied**, **Qualified for promotion**, **Remarks** → **Issue**. Issuing a TC withdraws the
+   student and closes the current enrolment. A student can have only one valid TC.
+2. **Fee dues check:** if fees due on or before the leaving date are unpaid, the dialog warns and
+   the TC is refused ("Fee dues of … are pending"). Collect the fees first, or – Principal /
+   Institution Admin only – tick **Waive pending fee dues for this TC** and enter a **Waiver
+   reason**. The waived amount is printed on the certificate and recorded in the audit log.
+3. **Issue character certificate** – **Conduct** and **Remarks** (no dues check; any number can be
+   issued).
+4. Every certificate gets a number from the institution's series (e.g. `GWIS-MAIN/TC/2026/0001`,
+   `GWIS-MAIN/CC/2026/0001`). **PDF** downloads the branded certificate (logo, institution name).
+5. **Cancel** (with a reason) marks a certificate CANCELLED – it stays on record but students and
+   parents can no longer download it. Cancelling a TC does not re-activate the student.
+6. **Reissue** (with a reason) cancels the certificate and issues a new number with corrected
+   details; the new row shows **Replaces …**.
+
+Permissions: `certificate.view`, `certificate.issue`, `certificate.cancel` (principal, vice
+principal, dean, registrar, HOD, academic coordinator, institution/group admins),
+`certificate.waive_dues` (principal and institution/group admins), `certificate.view_own`
+(students and parents).
 
 ### 7.2 Academics
 
@@ -800,14 +832,15 @@ published, etc.). Click one to open it, **Mark all read**, or **View all** for t
 
 **My profile** (admission no, class, roll no), **Timetable**, **Attendance**, **Results** (with
 **Report card** PDF once published), **Documents**, **My fees** (dues, receipts, **Pay … online**),
-**My library**, **Library catalogue**, **My transport** (route, stop, vehicle, driver contact), **My
+**My library**, **Library catalogue**, **Certificates** (download your issued TC / character
+certificate PDF), **My transport** (route, stop, vehicle, driver contact), **My
 hostel** (room, **Apply for out-pass**, **Raise a complaint**).
 
 ### Parents (Parent portal)
 
 **My children** lists your wards. On Timetable, Attendance, Results and Fees choose the **Child**
-at the top to switch between children. Parents can pay fees online and apply for hostel
-out-passes for their children.
+at the top to switch between children. Parents can pay fees online, apply for hostel
+out-passes and download their children's issued certificates under **Certificates**.
 
 ---
 

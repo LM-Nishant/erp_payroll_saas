@@ -659,6 +659,12 @@ export const routes: RouteRecordRaw[] = [
         component: () => import('@/pages/students/MyWardsPage.vue'),
       },
       {
+        path: 'certificates',
+        name: 'portal-certificates',
+        meta: { permission: 'certificate.view_own', feature: 'education' },
+        component: () => import('@/pages/students/MyCertificatesPage.vue'),
+      },
+      {
         path: 'timetable',
         name: 'portal-timetable',
         meta: { permission: 'timetable.view_own', feature: 'education' },

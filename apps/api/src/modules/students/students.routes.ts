@@ -1,26 +1,49 @@
-import { Router, type Request } from 'express';
+import { Router, type Request, type Response } from 'express';
 import {
   addGuardianSchema,
+  cancelCertificateSchema,
+  certificateEligibilityQuerySchema,
   createAdmissionSchema,
   createStudentSchema,
   enrollAdmissionSchema,
   idParamSchema,
+  issueCertificateSchema,
   lifecycleStudentSchema,
   linkUserSchema,
   listAdmissionsQuerySchema,
   listStudentsQuerySchema,
+  previousSchoolInputSchema,
   promoteStudentsSchema,
+  reissueCertificateSchema,
   transitionAdmissionSchema,
   updateAdmissionSchema,
+  updatePreviousSchoolSchema,
   updateStudentSchema,
 } from '@erp/shared';
-import { requirePermission } from '../../core/authz';
+import { requireAnyPermission, requirePermission } from '../../core/authz';
+import { env } from '../../core/config/env';
+import { parseMultipartFile } from '../../core/http/multipart';
 import { toListResponse } from '../../core/http/pagination';
 import { parseInput } from '../../core/http/validation';
 import { admissionsService } from './admissions.service';
+import { certificateService } from './certificates.service';
+import { previousSchoolService } from './previous-schools.service';
 import { studentService } from './students.service';
 
 const idOf = (req: Request) => parseInput(idParamSchema, req.params).id;
+
+const sendFile = (
+  res: Response,
+  file: { body: Buffer; fileName: string; mimeType?: string },
+  inline = false,
+) => {
+  res.setHeader('Content-Type', file.mimeType ?? 'application/pdf');
+  res.setHeader(
+    'Content-Disposition',
+    `${inline ? 'inline' : 'attachment'}; filename="${file.fileName.replace(/"/g, '')}"`,
+  );
+  res.send(file.body);
+};
 
 export const studentsRouter = Router();
 
@@ -30,9 +53,100 @@ studentsRouter.get('/me', requirePermission('student.view_own'), async (_req, re
 studentsRouter.get('/my-wards', requirePermission('ward.view'), async (_req, res) => {
   res.json({ data: await studentService.myWards() });
 });
+studentsRouter.get(
+  '/me/certificates',
+  requirePermission('certificate.view_own'),
+  async (_req, res) => {
+    res.json({ data: await certificateService.mine() });
+  },
+);
+studentsRouter.get(
+  '/my-wards/certificates',
+  requirePermission('certificate.view_own'),
+  async (_req, res) => {
+    res.json({ data: await certificateService.forMyWards() });
+  },
+);
 studentsRouter.get('/my-wards/:id', requirePermission('ward.view'), async (req, res) => {
   res.json({ data: await studentService.myWard(idOf(req)) });
 });
+studentsRouter.get(
+  '/my-wards/:id/certificates',
+  requirePermission('certificate.view_own'),
+  async (req, res) => {
+    res.json({ data: await certificateService.forMyWards(idOf(req)) });
+  },
+);
+
+/* ---- Previous-school records (by record id) ---- */
+studentsRouter.patch(
+  '/previous-schools/:id',
+  requireAnyPermission(['student.update', 'admission.manage']),
+  async (req, res) => {
+    res.json({
+      data: await previousSchoolService.update(
+        idOf(req),
+        parseInput(updatePreviousSchoolSchema, req.body),
+      ),
+    });
+  },
+);
+studentsRouter.delete(
+  '/previous-schools/:id',
+  requireAnyPermission(['student.update', 'admission.manage']),
+  async (req, res) => {
+    await previousSchoolService.remove(idOf(req));
+    res.status(204).end();
+  },
+);
+studentsRouter.post(
+  '/previous-schools/:id/tc-file',
+  requireAnyPermission(['student.update', 'admission.manage']),
+  async (req, res) => {
+    const { file } = await parseMultipartFile(req, { maxBytes: env.STORAGE_MAX_UPLOAD_BYTES });
+    res.json({ data: await previousSchoolService.uploadTc(idOf(req), file) });
+  },
+);
+studentsRouter.get(
+  '/previous-schools/:id/tc-file',
+  requireAnyPermission(['student.view', 'admission.view']),
+  async (req, res) => {
+    sendFile(res, await previousSchoolService.downloadTc(idOf(req)));
+  },
+);
+
+/* ---- Certificates (by certificate id) ---- */
+studentsRouter.post(
+  '/certificates/:id/cancel',
+  requirePermission('certificate.cancel'),
+  async (req, res) => {
+    res.json({
+      data: await certificateService.cancel(
+        idOf(req),
+        parseInput(cancelCertificateSchema, req.body),
+      ),
+    });
+  },
+);
+studentsRouter.post(
+  '/certificates/:id/reissue',
+  requirePermission('certificate.issue'),
+  async (req, res) => {
+    res.status(201).json({
+      data: await certificateService.reissue(
+        idOf(req),
+        parseInput(reissueCertificateSchema, req.body),
+      ),
+    });
+  },
+);
+studentsRouter.get(
+  '/certificates/:id/pdf',
+  requireAnyPermission(['certificate.view', 'certificate.view_own']),
+  async (req, res) => {
+    sendFile(res, await certificateService.pdf(idOf(req)));
+  },
+);
 studentsRouter.get('/stats', requirePermission('student.view'), async (_req, res) => {
   res.json({ data: await studentService.stats() });
 });
@@ -83,6 +197,41 @@ studentsRouter.patch(
 studentsRouter.get('/:id/enrollments', requirePermission('student.view'), async (req, res) => {
   res.json({ data: await studentService.enrollments(idOf(req)) });
 });
+studentsRouter.get('/:id/previous-schools', requirePermission('student.view'), async (req, res) => {
+  res.json({ data: await previousSchoolService.listForStudent(idOf(req)) });
+});
+studentsRouter.post(
+  '/:id/previous-schools',
+  requirePermission('student.update'),
+  async (req, res) => {
+    res.status(201).json({
+      data: await previousSchoolService.createForStudent(
+        idOf(req),
+        parseInput(previousSchoolInputSchema, req.body),
+      ),
+    });
+  },
+);
+studentsRouter.get('/:id/certificates', requirePermission('certificate.view'), async (req, res) => {
+  res.json({ data: await certificateService.listForStudent(idOf(req)) });
+});
+studentsRouter.get(
+  '/:id/certificates/eligibility',
+  requirePermission('certificate.view'),
+  async (req, res) => {
+    const { type } = parseInput(certificateEligibilityQuerySchema, req.query);
+    res.json({ data: await certificateService.eligibility(idOf(req), type) });
+  },
+);
+studentsRouter.post(
+  '/:id/certificates',
+  requirePermission('certificate.issue'),
+  async (req, res) => {
+    res.status(201).json({
+      data: await certificateService.issue(idOf(req), parseInput(issueCertificateSchema, req.body)),
+    });
+  },
+);
 studentsRouter.post('/:id/withdraw', requirePermission('student.lifecycle'), async (req, res) => {
   res.json({
     data: await studentService.lifecycle(
@@ -113,6 +262,25 @@ admissionsRouter.post('/', requirePermission('admission.manage'), async (req, re
     .status(201)
     .json({ data: await admissionsService.create(parseInput(createAdmissionSchema, req.body)) });
 });
+admissionsRouter.get(
+  '/:id/previous-schools',
+  requirePermission('admission.view'),
+  async (req, res) => {
+    res.json({ data: await previousSchoolService.listForAdmission(idOf(req)) });
+  },
+);
+admissionsRouter.post(
+  '/:id/previous-schools',
+  requirePermission('admission.manage'),
+  async (req, res) => {
+    res.status(201).json({
+      data: await previousSchoolService.createForAdmission(
+        idOf(req),
+        parseInput(previousSchoolInputSchema, req.body),
+      ),
+    });
+  },
+);
 admissionsRouter.get('/:id', requirePermission('admission.view'), async (req, res) => {
   res.json({ data: await admissionsService.get(idOf(req)) });
 });

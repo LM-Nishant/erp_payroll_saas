@@ -78,6 +78,7 @@ const INSTITUTION_ADMIN = [
     'student',
     'admission',
     'guardian',
+    'certificate',
     'employee',
     'document',
     'message',
@@ -85,7 +86,10 @@ const INSTITUTION_ADMIN = [
     'transport',
     'hostel',
   ).filter(
-    (c) => c !== 'employee.view_sensitive' && !(/^(transport|hostel)\./.test(c) && /_own$/.test(c)),
+    (c) =>
+      c !== 'employee.view_sensitive' &&
+      c !== 'certificate.view_own' &&
+      !(/^(transport|hostel)\./.test(c) && /_own$/.test(c)),
   ),
   // Assets: admins see and hand out assets; register management sits with asset_manager.
   ...ASSET_CUSTODY,
@@ -161,10 +165,18 @@ const FINANCE = [
   'student.view',
 ] as PermissionCode[];
 
+const CERTIFICATE_STAFF = [
+  'certificate.view',
+  'certificate.issue',
+  'certificate.cancel',
+] as PermissionCode[];
+
 const ACADEMIC_LEAD = [
   ...ACADEMIC_STRUCTURE_VIEW,
   ...pick('student', 'program', 'class_section'),
   ...pick('admission', 'guardian'),
+  // Transfer / character certificates; waiving fee dues is an explicit extra (principal).
+  ...CERTIFICATE_STAFF,
   'employee.view',
   'attendance.view',
   'leave.view',
@@ -211,6 +223,7 @@ const STUDENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'student.view_own',
   'fee.view_own',
+  'certificate.view_own',
   ...ACADEMICS_SELF_SERVICE,
   ...TRANSPORT_HOSTEL_SELF_SERVICE,
 ] as PermissionCode[];
@@ -218,6 +231,7 @@ const PARENT_SELF_SERVICE = [
   ...SELF_SERVICE,
   'ward.view',
   'fee.view_own',
+  'certificate.view_own',
   ...ACADEMICS_SELF_SERVICE,
   ...TRANSPORT_HOSTEL_SELF_SERVICE,
 ] as PermissionCode[];
@@ -311,6 +325,7 @@ export const DEFAULT_TENANT_ROLES: readonly DefaultRoleDefinition[] = (
       typicalScope: 'INSTITUTION',
       permissions: [
         ...ACADEMIC_LEAD,
+        'certificate.waive_dues',
         'employee.update',
         'audit.view',
         'library.view',
