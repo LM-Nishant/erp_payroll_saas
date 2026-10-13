@@ -315,6 +315,16 @@ async function importRows(rows: ImportRow[], source: 'BIOMETRIC' | 'API', fileNa
 }
 
 /** Ensure `date` is not in the future for the employee's as-of institution. */
+/** Record DTO with its lock state and whether it is today's still-incomplete day. */
+async function recordDto(r: Parameters<typeof toRecordDto>[0], ctx: AttendanceContext) {
+  const date = dateToStr(r.date);
+  return toRecordDto(
+    r,
+    !!(await ctx.lockFor(r.institutionId, date)),
+    localToday(await ctx.timezone(r.institutionId)),
+  );
+}
+
 async function assertNotFuture(ctx: AttendanceContext, institutionId: string, date: string) {
   if (date > localToday(await ctx.timezone(institutionId))) {
     throw new ValidationError('Date must not be in the future', {
@@ -371,7 +381,10 @@ export const attendanceService = {
     const record = await tenantDb().attendanceRecord.findFirst({
       where: { employeeId: employee.id, date: strToDate(day.date) },
     });
-    return { punch: toPunchDto(punch), record: record ? toRecordDto(record) : null };
+    return {
+      punch: toPunchDto(punch),
+      record: record ? await recordDto(record, new AttendanceContext()) : null,
+    };
   },
 
   async importJson(input: ImportPunchesInput) {
@@ -449,7 +462,7 @@ export const attendanceService = {
     const ctx = new AttendanceContext();
     const items = [];
     for (const r of rows) {
-      items.push(toRecordDto(r, !!(await ctx.lockFor(r.institutionId, dateToStr(r.date)))));
+      items.push(await recordDto(r, ctx));
     }
     return { items, total };
   },
@@ -705,7 +718,7 @@ export const attendanceService = {
     ]);
     const items = [];
     for (const r of records) {
-      items.push(toRecordDto(r, !!(await ctx.lockFor(r.institutionId, dateToStr(r.date)))));
+      items.push(await recordDto(r, ctx));
     }
     const today = await punchDay(ctx, employee, new Date());
     return {

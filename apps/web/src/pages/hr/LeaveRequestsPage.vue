@@ -66,7 +66,7 @@ async function decide(instanceId: string, action: 'approve' | 'reject', comment?
   });
   decision.busy = false;
 }
-const cancel = reactive({ open: false, id: '', reason: '' });
+const cancel = reactive({ open: false, id: '', reason: '', approved: false });
 async function saveCancel() {
   await run(async () => {
     await apiFetch(`/api/v1/leave/requests/${cancel.id}/cancel`, {
@@ -239,16 +239,25 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
             Reject
           </v-btn>
         </template>
+        <!-- HR cancellation (API: leave.manage). An approver declines a pending request with
+             Reject, so Cancel is not offered next to Approve / Reject. -->
         <v-btn
-          v-if="
-            auth.can('leave.apply') &&
+          v-else-if="
+            auth.can('leave.manage') &&
             (item.status === 'APPROVED' || item.status === 'PENDING_APPROVAL')
           "
           size="small"
           variant="text"
-          @click="Object.assign(cancel, { open: true, id: item.id, reason: '' })"
+          @click="
+            Object.assign(cancel, {
+              open: true,
+              id: item.id,
+              reason: '',
+              approved: item.status === 'APPROVED',
+            })
+          "
         >
-          Cancel
+          {{ item.status === 'APPROVED' ? 'Cancel leave' : 'Cancel request' }}
         </v-btn>
       </template>
     </v-data-table>
@@ -338,16 +347,22 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
     </v-card>
   </v-dialog>
   <v-dialog v-model="cancel.open" max-width="480">
-    <v-card title="Cancel leave">
+    <v-card :title="cancel.approved ? 'Cancel approved leave' : 'Cancel pending request'">
       <v-card-text>
-        <p class="text-body-2 mb-2">Consumed days are credited back to the balance.</p>
+        <p class="text-body-2 mb-2">
+          {{
+            cancel.approved
+              ? 'Consumed days are credited back to the balance.'
+              : 'The request is withdrawn from the approval queue on behalf of the employee.'
+          }}
+        </p>
         <v-textarea v-model="cancel.reason" label="Reason *" rows="2" />
       </v-card-text>
       <v-card-actions>
         <v-spacer />
         <v-btn variant="text" @click="cancel.open = false">Close</v-btn>
         <v-btn color="error" :disabled="cancel.reason.trim().length < 3" @click="saveCancel">
-          Cancel leave
+          Confirm cancellation
         </v-btn>
       </v-card-actions>
     </v-card>

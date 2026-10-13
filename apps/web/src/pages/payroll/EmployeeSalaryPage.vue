@@ -27,7 +27,20 @@ const structures = ref<SalaryStructureDto[]>([]);
 const components = ref<SalaryComponentDto[]>([]);
 const preview = ref<PayrollComputationDto | null>(null);
 const error = ref<string | null>(null);
-const canUpdate = computed(() => auth.can('salary.update'));
+const canUpdate = computed(() => auth.can('salary.update') && employee.value?.status !== 'EXITED');
+// Assign is only for the first salary; afterwards changes go through a revision (one pending at a time).
+const pendingRevision = computed(() =>
+  revisions.value.some((r) => r.status === 'PENDING_APPROVAL'),
+);
+async function withdrawRevision(r: SalaryRevisionDto) {
+  if (!confirm(`Withdraw the pending revision effective ${r.effectiveFrom}?`)) return;
+  try {
+    await apiFetch(`/api/v1/payroll/revisions/${r.id}/cancel`, { method: 'POST' });
+    await loadEmployee();
+  } catch (e) {
+    error.value = (e as Error).message;
+  }
+}
 async function downloadPdf() {
   if (!employee.value) return;
   try {
@@ -319,10 +332,19 @@ async function runPreview() {
         >
           Download PDF
         </v-btn>
-        <v-btn v-if="canUpdate" variant="tonal" class="mr-2" @click="openForm('assign')">
+        <v-btn
+          v-if="canUpdate && !history.length"
+          variant="tonal"
+          class="mr-2"
+          @click="openForm('assign')"
+        >
           Assign
         </v-btn>
-        <v-btn v-if="canUpdate && history.length" color="primary" @click="openForm('revise')">
+        <v-btn
+          v-if="canUpdate && history.length && !pendingRevision"
+          color="primary"
+          @click="openForm('revise')"
+        >
           Request revision
         </v-btn>
       </template>
@@ -364,6 +386,7 @@ async function runPreview() {
             <th>Reason</th>
             <th>Status</th>
             <th>Arrears</th>
+            <th />
           </tr>
         </thead>
         <tbody>
@@ -375,6 +398,16 @@ async function runPreview() {
               <v-chip size="small">{{ label(r.status) }}</v-chip>
             </td>
             <td>{{ money(r.arrearsAmount) }}</td>
+            <td class="text-end">
+              <v-btn
+                v-if="r.status === 'PENDING_APPROVAL' && auth.can('salary.update')"
+                size="small"
+                variant="text"
+                @click="withdrawRevision(r)"
+              >
+                Withdraw
+              </v-btn>
+            </td>
           </tr>
         </tbody>
       </v-table>

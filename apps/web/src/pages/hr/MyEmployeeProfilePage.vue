@@ -14,6 +14,10 @@ type Address = NonNullable<EmployeePersonalInput['addresses']>[number];
 type Contact = NonNullable<EmployeePersonalInput['emergencyContacts']>[number];
 
 const me = ref<MyEmployeeDto | null>(null);
+// The list carries recent requests of every status; only PENDING_APPROVAL ones block a new request.
+const hasPendingRequest = computed(
+  () => me.value?.pendingChangeRequests.some((r) => r.status === 'PENDING_APPROVAL') ?? false,
+);
 const loading = ref(true);
 const notLinked = ref(false);
 const error = ref<string | null>(null);
@@ -126,7 +130,20 @@ async function submit() {
           {{ label(me.status) }}
         </v-chip>
         <v-spacer />
-        <v-btn color="primary" variant="tonal" prepend-icon="mdi-pencil" @click="openForm">
+        <!-- The API allows one pending request at a time and none after exit. -->
+        <span
+          v-if="me.status !== 'EXITED' && hasPendingRequest"
+          class="text-caption text-medium-emphasis"
+        >
+          A change request is awaiting approval
+        </span>
+        <v-btn
+          v-else-if="me.status !== 'EXITED'"
+          color="primary"
+          variant="tonal"
+          prepend-icon="mdi-pencil"
+          @click="openForm"
+        >
           Request changes
         </v-btn>
       </v-card-title>
@@ -178,14 +195,20 @@ async function submit() {
       </v-card-text>
     </v-card>
 
-    <v-card v-if="me.pendingChangeRequests.length" title="Pending change requests">
+    <v-card v-if="me.pendingChangeRequests.length" title="My change requests">
       <v-list density="compact">
         <v-list-item
           v-for="r in me.pendingChangeRequests"
           :key="r.id"
           :title="Object.keys(r.changes).map(label).join(', ')"
           :subtitle="`${label(r.status)} · ${r.createdAt.slice(0, 10)}`"
-        />
+        >
+          <template v-if="r.workflowInstanceId && r.status === 'PENDING_APPROVAL'" #append>
+            <v-btn size="small" variant="text" :to="`/approvals/${r.workflowInstanceId}`">
+              View / withdraw
+            </v-btn>
+          </template>
+        </v-list-item>
       </v-list>
     </v-card>
   </template>

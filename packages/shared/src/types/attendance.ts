@@ -143,6 +143,11 @@ export interface AttendanceRecordDto {
   leaveRequestId: string | null;
   holidayName: string | null;
   locked: boolean;
+  /**
+   * Today's record before the day is complete: a computed ABSENT / HALF_DAY only means "not enough
+   * hours yet". UIs show it as in progress instead of absent. Always false for overrides.
+   */
+  inProgress: boolean;
   computedAt: string;
 }
 

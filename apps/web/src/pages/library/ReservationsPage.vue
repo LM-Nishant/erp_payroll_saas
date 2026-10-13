@@ -184,7 +184,7 @@ watch([memberSearch, () => form.memberType], () => {
         variant="text"
         color="error"
         @click="cancel(item)"
-        >Cancel</v-btn
+        >Cancel reservation</v-btn
       >
     </template>
   </v-data-table-server>

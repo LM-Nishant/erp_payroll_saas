@@ -13,7 +13,7 @@ import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
-import { ATTENDANCE_COLORS, REQUEST_COLORS, currentMonth, hhmm, monthRange } from './timeOffice';
+import { REQUEST_COLORS, currentMonth, hhmm, monthRange, recordStatus } from './timeOffice';
 import { label, useHrOptions } from './useHrOptions';
 
 /**
@@ -353,8 +353,8 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
         {{ item.employeeCode }} {{ item.employeeName }}
       </template>
       <template #[`item.status`]="{ item }">
-        <v-chip :color="ATTENDANCE_COLORS[item.status]" size="small">{{
-          label(item.status)
+        <v-chip :color="recordStatus(item).color" size="small">{{
+          recordStatus(item).text
         }}</v-chip>
         <v-icon v-if="item.overrideStatus" size="small" class="ml-1" icon="mdi-pencil-lock" />
         <v-icon v-if="item.locked" size="small" class="ml-1" icon="mdi-lock" />

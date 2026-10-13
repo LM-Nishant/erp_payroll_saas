@@ -283,19 +283,14 @@ test.describe('Assets lifecycle · assets@greenwood.demo', () => {
     await expectClean(s, mark, 'disposal requests');
   });
 
-  test('disposal: a second request for the same asset is refused', async () => {
+  test('disposal: no second request is offered while one is pending', async () => {
     const s = session();
     const mark = s.mark();
+    // The API refuses a second pending disposal (409), so the asset page hides the action.
     await s.page.locator('button:has(.mdi-dots-vertical)').click();
-    await menu(s.page).filter({ hasText: 'Dispose / write off' }).click();
-    const d = dialog(s.page);
-    await fill(d, 'Reason', `duplicate ${id}`);
-    await d.getByRole('button', { name: /submit/i }).click();
-    await s.settle();
-    await expect(s.page.locator('.v-alert').filter({ hasText: /already pending/i })).toHaveCount(1);
-    expect((await s.failedSince(mark)).map((f) => f.status)).toEqual([409]);
-    await d.getByRole('button', { name: /cancel/i }).click();
-    await dismissAlert(s.page, /already pending/i);
+    await expect(menu(s.page).filter({ hasText: 'Dispose / write off' })).toHaveCount(0);
+    await s.page.keyboard.press('Escape');
+    await expectClean(s, mark, 'pending disposal hides dispose');
   });
 
   test('disposal: approves one (asset written off) and rejects another', async () => {
@@ -406,8 +401,9 @@ test.describe('Assets lifecycle · assets@greenwood.demo (cleanup)', () => {
     const s = session();
     await s.go('/assets/disposal');
     const mark = s.mark();
+    s.page.once('dialog', (c) => void c.accept());
     await disposalRow(s.page, assets.found)
-      .getByRole('button', { name: /cancel/i })
+      .getByRole('button', { name: /cancel request/i })
       .click();
     await s.settle();
     await expect(disposalRow(s.page, assets.found)).toHaveCount(0);

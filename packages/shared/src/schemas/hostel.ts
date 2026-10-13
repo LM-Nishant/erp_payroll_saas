@@ -411,6 +411,8 @@ export interface OutpassDto {
   reason: string;
   status: OutpassStatus;
   workflowInstanceId: string | null;
+  /** User who raised the request; the API refuses to let them decide it (maker-checker). */
+  requestedByUserId: string | null;
   decidedComment: string | null;
   decidedAt: string | null;
   outAt: string | null;

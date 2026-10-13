@@ -35,6 +35,7 @@ export const toPunchDto = (p: AttendancePunch): AttendancePunchDto => ({
 export const toRecordDto = (
   r: AttendanceRecord & { employee?: { employeeCode: string; displayName: string } },
   locked = false,
+  today?: string,
 ): AttendanceRecordDto => ({
   id: r.id,
   employeeId: r.employeeId,
@@ -64,6 +65,11 @@ export const toRecordDto = (
   leaveRequestId: r.leaveRequestId,
   holidayName: r.holidayName,
   locked,
+  inProgress:
+    !!today &&
+    dateToStr(r.date) === today &&
+    !r.overrideStatus &&
+    (r.status === 'ABSENT' || r.status === 'HALF_DAY'),
   computedAt: r.computedAt.toISOString(),
 });
 

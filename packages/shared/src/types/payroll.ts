@@ -226,6 +226,8 @@ export interface PayrollRunDto {
   reopenedAt: string | null;
   reopenReason: string | null;
   payslipsPublishedAt: string | null;
+  /** Preparer (maker) — the UI hides Approve for them (maker-checker). */
+  createdByUserId?: string | null;
   createdAt: string;
   updatedAt: string;
 }

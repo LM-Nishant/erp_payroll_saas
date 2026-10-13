@@ -62,6 +62,7 @@ async function loadTransfers() {
   }
 }
 async function cancelTransfer(t: AssetTransferDto) {
+  if (!confirm(`Cancel the pending transfer of ${t.asset?.assetTag ?? 'this asset'}?`)) return;
   try {
     await apiFetch(`/api/v1/assets/transfers/${t.id}/cancel`, { method: 'POST' });
     await loadTransfers();
@@ -191,13 +192,19 @@ watch([transferStatus, () => filters.institutionId], loadTransfers);
           <v-chip size="small" :color="ASSET_STATUS_COLORS[t.status]">{{ label(t.status) }}</v-chip>
         </td>
         <td>
-          <v-btn
-            v-if="t.status === 'PENDING_APPROVAL' && auth.can('asset.assign')"
-            size="small"
-            variant="text"
-            @click="cancelTransfer(t)"
-            >Cancel</v-btn
-          >
+          <template v-if="t.status === 'PENDING_APPROVAL' && auth.can('asset.assign')">
+            <!-- Workflow-routed transfers are withdrawn in Approvals (API refuses here). -->
+            <v-btn
+              v-if="t.workflowInstanceId"
+              size="small"
+              variant="text"
+              :to="`/approvals/${t.workflowInstanceId}`"
+              >Open in approvals</v-btn
+            >
+            <v-btn v-else size="small" variant="text" @click="cancelTransfer(t)"
+              >Cancel transfer</v-btn
+            >
+          </template>
         </td>
       </tr>
       <tr v-if="!transfers.length">

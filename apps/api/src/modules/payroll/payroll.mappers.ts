@@ -200,6 +200,7 @@ export function toRunDto(r: PayrollRun, institutionName?: string | null): Payrol
     reopenedAt: iso(r.reopenedAt),
     reopenReason: r.reopenReason,
     payslipsPublishedAt: iso(r.payslipsPublishedAt),
+    createdByUserId: r.createdByUserId,
     createdAt: r.createdAt.toISOString(),
     updatedAt: r.updatedAt.toISOString(),
   };

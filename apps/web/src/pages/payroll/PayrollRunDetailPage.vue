@@ -85,7 +85,20 @@ watch(run, (r) => {
 onBeforeUnmount(() => clearTimeout(pollTimer));
 
 const status = computed(() => run.value?.status);
-const editable = computed(() => ['DRAFT', 'COMPUTED', 'REOPENED'].includes(status.value ?? ''));
+// A REOPENED run is read-only (corrections happen on the next revision); the API refuses
+// compute / cancel / adjustments on it.
+const editable = computed(() => ['DRAFT', 'COMPUTED'].includes(status.value ?? ''));
+// Maker-checker: the preparer cannot approve their own run (org owners excepted).
+const isPreparer = computed(
+  () => !!run.value?.createdByUserId && run.value.createdByUserId === auth.me?.user.id,
+);
+const canDecide = computed(
+  () => auth.can('payroll.approve') && (!isPreparer.value || auth.can('organization.update')),
+);
+function cancelRun() {
+  if (!confirm('Cancel this payroll run? It is discarded and cannot be computed again.')) return;
+  void act('cancel');
+}
 const step = computed(() => {
   switch (status.value) {
     case 'DRAFT':
@@ -321,9 +334,16 @@ const empHeaders = [
         Submit for approval
       </v-btn>
       <template v-if="status === 'PENDING_APPROVAL' && auth.can('payroll.approve')">
-        <v-btn v-if="run.workflowInstanceId" variant="tonal" to="/hr/approvals">
+        <v-btn
+          v-if="run.workflowInstanceId"
+          variant="tonal"
+          :to="`/approvals/${run.workflowInstanceId}`"
+        >
           Open in approvals
         </v-btn>
+        <span v-else-if="!canDecide" class="text-caption text-medium-emphasis">
+          Awaiting another approver (you prepared this run)
+        </span>
         <template v-else>
           <v-btn color="success" :loading="busy" @click="act('decision', { approved: true })">
             Approve
@@ -353,7 +373,7 @@ const empHeaders = [
         v-if="editable && auth.can('payroll.process')"
         color="error"
         variant="text"
-        @click="act('cancel')"
+        @click="cancelRun"
       >
         Cancel run
       </v-btn>
@@ -484,8 +504,15 @@ const empHeaders = [
               <td>{{ label(a.status) }}</td>
               <td>
                 <v-btn
-                  v-if="editable && a.status !== 'CANCELLED' && a.source === 'manual'"
+                  v-if="
+                    editable &&
+                    auth.can('payroll.process') &&
+                    a.status !== 'CANCELLED' &&
+                    a.source === 'manual'
+                  "
                   icon="mdi-close"
+                  aria-label="Cancel adjustment"
+                  title="Cancel adjustment"
                   size="small"
                   variant="text"
                   @click="cancelAdjustment(a)"

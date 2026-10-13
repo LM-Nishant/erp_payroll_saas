@@ -62,6 +62,10 @@ async function loadSheet() {
     error.value = (e as Error).message;
   }
 }
+// Unlocking is refused once the term's results are published.
+const termPublished = computed(
+  () => terms.value.find((t) => t.id === termId.value)?.status === 'PUBLISHED',
+);
 const stats = computed(() => {
   if (!sheet.value) return null;
   const vals = Object.values(marks.value);
@@ -164,7 +168,9 @@ watch(scheduleId, loadSheet);
         ><v-btn color="secondary" prepend-icon="mdi-lock" @click="setLock(true)">Lock</v-btn>
       </template>
       <v-btn
-        v-else-if="sheet.schedule.marksStatus === 'LOCKED' && auth.can('exam.publish')"
+        v-else-if="
+          sheet.schedule.marksStatus === 'LOCKED' && auth.can('exam.publish') && !termPublished
+        "
         prepend-icon="mdi-lock-open"
         @click="setLock(false)"
         >Unlock</v-btn

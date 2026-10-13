@@ -23,6 +23,12 @@ const terms = ref<ExamTermDto[]>([]);
 const institutionId = ref('');
 const termId = ref('');
 const term = computed(() => terms.value.find((t) => t.id === termId.value));
+// Mirrors exams.service: published terms are frozen; marks block term/paper deletion.
+const published = computed(() => term.value?.status === 'PUBLISHED');
+const termHasMarks = computed(() =>
+  ['MARKS_ENTRY', 'RESULTS_COMPUTED', 'PUBLISHED'].includes(term.value?.status ?? ''),
+);
+const canEditSchedule = computed(() => canManage.value && !published.value);
 const scales = ref<GradingScaleDto[]>([]);
 
 const termDialog = ref(false);
@@ -299,9 +305,9 @@ watch([termId, sectionId], loadSchedules);
       >{{ term.name
       }}<v-chip size="small" :color="statusColor[term.status]">{{ term.status }}</v-chip
       ><v-spacer />
-      <v-btn v-if="canManage" size="small" @click="compute">Compute results</v-btn>
+      <v-btn v-if="canManage && !published" size="small" @click="compute">Compute results</v-btn>
       <v-btn
-        v-if="canPublish"
+        v-if="canPublish && !published"
         size="small"
         color="success"
         :disabled="term.status !== 'RESULTS_COMPUTED'"
@@ -316,11 +322,13 @@ watch([termId, sectionId], loadSchedules);
         >Results</v-btn
       >
       <v-btn
-        v-if="canManage"
+        v-if="canManage && !termHasMarks"
         size="small"
         icon="mdi-delete"
         variant="text"
         color="error"
+        :aria-label="`Delete ${term.name}`"
+        title="Delete exam term"
         @click="deleteTerm"
     /></v-card-title>
     <v-card-text>
@@ -352,7 +360,7 @@ watch([termId, sectionId], loadSchedules);
             <td>
               <v-checkbox
                 v-model="r.include"
-                :disabled="!canManage"
+                :disabled="!canEditSchedule || (r.schedule?.marksEntered ?? 0) > 0"
                 density="compact"
                 hide-details
               />
@@ -392,7 +400,7 @@ watch([termId, sectionId], loadSchedules);
             </td>
             <td>
               <v-btn
-                v-if="canManage && r.schedule"
+                v-if="canEditSchedule && r.schedule && !r.schedule.marksEntered"
                 icon="mdi-delete"
                 size="small"
                 variant="text"
@@ -402,7 +410,11 @@ watch([termId, sectionId], loadSchedules);
           </tr>
         </tbody>
       </v-table>
-      <v-btn v-if="canManage && rows.length" class="mt-2" color="primary" @click="saveSchedules"
+      <v-btn
+        v-if="canEditSchedule && rows.length"
+        class="mt-2"
+        color="primary"
+        @click="saveSchedules"
         >Save schedule</v-btn
       >
     </v-card-text>

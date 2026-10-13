@@ -190,7 +190,29 @@ const doEdit = () =>
       }),
     'Asset updated',
   );
-const markLost = () => run(() => api('', 'PATCH', { status: 'LOST' }), 'Asset marked lost');
+const markLost = () => {
+  if (!confirm('Mark this asset as lost?')) return;
+  return run(() => api('', 'PATCH', { status: 'LOST' }), 'Asset marked lost');
+};
+const markFound = () => run(() => api('', 'PATCH', { status: 'IN_STOCK' }), 'Asset back in stock');
+// Mirrors the API's status guards so only actions it will accept are offered.
+const hasPendingTransfer = computed(
+  () => !!asset.value?.transfers.some((t) => t.status === 'PENDING_APPROVAL'),
+);
+const hasPendingDisposal = computed(
+  () => !!asset.value?.disposals.some((d) => d.status === 'PENDING_APPROVAL'),
+);
+const canDispose = computed(
+  () =>
+    auth.can('asset.dispose') &&
+    ['IN_STOCK', 'UNDER_REPAIR', 'LOST'].includes(asset.value?.status ?? '') &&
+    !hasPendingDisposal.value,
+);
+const canMaintain = computed(
+  () =>
+    auth.can('asset.maintain') &&
+    ['IN_STOCK', 'ASSIGNED', 'UNDER_REPAIR'].includes(asset.value?.status ?? ''),
+);
 
 const invoiceFile = ref<File | null>(null);
 async function uploadInvoice() {
@@ -300,14 +322,19 @@ async function openCheckout() {
           >Check in</v-btn
         >
         <v-btn
-          v-if="asset.status === 'IN_STOCK' && auth.can('asset.assign')"
+          v-if="
+            asset.status === 'IN_STOCK' &&
+            !hasPendingTransfer &&
+            auth.can('asset.assign') &&
+            auth.can('asset.manage')
+          "
           variant="tonal"
           prepend-icon="mdi-swap-horizontal"
           @click="dialog = 'transfer'"
           >Transfer</v-btn
         >
         <v-btn
-          v-if="auth.can('asset.maintain')"
+          v-if="canMaintain"
           variant="tonal"
           prepend-icon="mdi-wrench"
           @click="dialog = 'ticket'"
@@ -320,20 +347,29 @@ async function openCheckout() {
           @click="openEdit"
           >Edit</v-btn
         >
-        <v-menu v-if="auth.can('asset.dispose') || auth.can('asset.manage')">
+        <v-menu
+          v-if="
+            canDispose || (auth.can('asset.manage') && ['IN_STOCK', 'LOST'].includes(asset.status))
+          "
+        >
           <template #activator="{ props: p }"
-            ><v-btn v-bind="p" icon="mdi-dots-vertical" variant="text"
+            ><v-btn v-bind="p" icon="mdi-dots-vertical" variant="text" aria-label="More actions"
           /></template>
           <v-list density="compact">
             <v-list-item
-              v-if="auth.can('asset.dispose') && asset.status !== 'ASSIGNED'"
+              v-if="canDispose"
               title="Dispose / write off"
               @click="dialog = 'dispose'"
             />
             <v-list-item
-              v-if="auth.can('asset.manage') && asset.status !== 'LOST'"
+              v-if="auth.can('asset.manage') && asset.status === 'IN_STOCK'"
               title="Mark lost"
               @click="markLost"
+            />
+            <v-list-item
+              v-if="auth.can('asset.manage') && asset.status === 'LOST'"
+              title="Mark found (back in stock)"
+              @click="markFound"
             />
           </v-list>
         </v-menu>

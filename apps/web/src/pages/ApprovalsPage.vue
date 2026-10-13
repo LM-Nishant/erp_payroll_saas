@@ -6,11 +6,13 @@ import type {
   WorkflowInstanceDetailDto,
   WorkflowInstanceDto,
 } from '@erp/shared';
-import { onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
+const auth = useAuthStore();
 
 /** Approvals inbox (steps waiting on me), my requests, and the full instance history. */
 const tab = ref<'inbox' | 'mine'>('inbox');
@@ -95,8 +97,28 @@ async function open(id: string) {
   await loadDelegates('');
 }
 
+/**
+ * "Withdraw" = the requester retracting their own request; an approver says no with "Reject".
+ * The API also lets workflow administrators cancel someone else's request — labelled explicitly.
+ */
+const isRequester = computed(
+  () => !!detail.value?.requester && detail.value.requester.id === auth.me?.user.id,
+);
+const cancelLabel = computed(() =>
+  isRequester.value ? 'Withdraw request' : 'Cancel request (admin)',
+);
+
 async function act(action: WorkflowActionType | 'cancel' | 'resubmit') {
   if (!detail.value) return;
+  if (
+    action === 'cancel' &&
+    !confirm(
+      isRequester.value
+        ? 'Withdraw this request? Approvers will no longer see it.'
+        : `Cancel ${detail.value.requester?.name ?? 'this user'}'s request as an administrator? Use Reject instead to decline it as an approver.`,
+    )
+  )
+    return;
   error.value = null;
   const id = detail.value.id;
   try {
@@ -245,10 +267,14 @@ const headers = [
         <v-btn v-if="detail.allowedActions.includes('resubmit')" @click="act('resubmit')"
           >Resubmit</v-btn
         >
-        <v-btn v-if="detail.allowedActions.includes('cancel')" @click="act('cancel')"
-          >Cancel request</v-btn
-        >
         <v-spacer />
+        <v-btn
+          v-if="detail.allowedActions.includes('cancel')"
+          color="warning"
+          variant="text"
+          @click="act('cancel')"
+          >{{ cancelLabel }}</v-btn
+        >
         <v-btn @click="detail = null">Close</v-btn>
       </v-card-actions>
     </v-card>

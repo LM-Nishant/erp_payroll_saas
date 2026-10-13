@@ -207,7 +207,7 @@ watch(institutionId, async () => {
       <v-card v-if="active" variant="outlined" class="mt-4">
         <v-card-title>{{ active.name }} — {{ active.status }}</v-card-title>
         <v-card-text>
-          <template v-if="active.status === 'OPEN'">
+          <template v-if="active.status === 'OPEN' && auth.can('library.manage')">
             <v-textarea
               v-model="scanText"
               label="Scan barcodes (one per line, or paste a list)"

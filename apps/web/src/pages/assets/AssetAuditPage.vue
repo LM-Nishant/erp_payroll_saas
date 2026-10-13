@@ -74,6 +74,8 @@ const doScan = () =>
   verify(clean({ ...scan, observedCondition: scan.observedCondition || undefined }));
 async function action(kind: 'complete' | 'cancel') {
   if (!current.value) return;
+  if (kind === 'cancel' && !confirm(`Cancel audit "${current.value.name}"? Results are discarded.`))
+    return;
   try {
     current.value = (
       await apiFetch<{ data: AssetAuditDto }>(`/api/v1/assets/audits/${current.value.id}/${kind}`, {
@@ -141,7 +143,7 @@ watch([itemsPage, resultFilter], loadItems);
         <h3 class="text-h6">{{ current.name }}</h3>
         <v-spacer />
         <template v-if="current.status === 'OPEN'">
-          <v-btn variant="text" @click="action('cancel')">Cancel</v-btn>
+          <v-btn variant="text" color="error" @click="action('cancel')">Cancel audit</v-btn>
           <v-btn color="primary" @click="action('complete')">Complete</v-btn>
         </template>
       </div>

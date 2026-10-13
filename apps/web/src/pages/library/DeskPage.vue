@@ -275,7 +275,16 @@ onMounted(focus);
                   <td>{{ l.copy?.barcode }}</td>
                   <td :class="l.overdue ? 'text-error' : ''">due {{ fmtDate(l.dueDate) }}</td>
                   <td>
-                    <v-btn size="small" variant="text" @click="renew(l.id)">Renew</v-btn>
+                    <v-btn
+                      v-if="!l.overdue && l.renewCount < member.policy.maxRenewals"
+                      size="small"
+                      variant="text"
+                      @click="renew(l.id)"
+                      >Renew</v-btn
+                    >
+                    <span v-else class="text-caption text-medium-emphasis">{{
+                      l.overdue ? 'Overdue — return' : 'No renewals left'
+                    }}</span>
                   </td>
                 </tr>
               </tbody>

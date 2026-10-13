@@ -23,6 +23,13 @@ async function load() {
   }
 }
 async function act(d: AssetDisposalDto, kind: 'approve' | 'reject' | 'cancel') {
+  if (
+    kind === 'cancel' &&
+    !confirm(
+      `Cancel the disposal request for ${d.asset?.assetTag ?? 'this asset'}? Use this to withdraw a request raised by mistake; to turn it down as a decision, use Reject.`,
+    )
+  )
+    return;
   const comment = kind === 'cancel' ? null : prompt(`Comment (${kind})`) || null;
   try {
     await apiFetch(`/api/v1/assets/disposals/${d.id}/${kind}`, {
@@ -89,15 +96,23 @@ watch(status, load);
         </td>
         <td>
           <template v-if="d.status === 'PENDING_APPROVAL' && auth.can('asset.dispose')">
-            <template v-if="!d.workflowInstanceId">
+            <!-- Workflow-routed requests are decided / withdrawn in Approvals (API refuses here). -->
+            <v-btn
+              v-if="d.workflowInstanceId"
+              size="x-small"
+              variant="text"
+              :to="`/approvals/${d.workflowInstanceId}`"
+              >Open in approvals</v-btn
+            >
+            <template v-else>
               <v-btn size="x-small" color="success" variant="text" @click="act(d, 'approve')"
                 >Approve</v-btn
               >
               <v-btn size="x-small" color="error" variant="text" @click="act(d, 'reject')"
                 >Reject</v-btn
               >
+              <v-btn size="x-small" variant="text" @click="act(d, 'cancel')">Cancel request</v-btn>
             </template>
-            <v-btn size="x-small" variant="text" @click="act(d, 'cancel')">Cancel</v-btn>
           </template>
         </td>
       </tr>
