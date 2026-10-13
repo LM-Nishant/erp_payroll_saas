@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import type { RouteLocationNormalized } from 'vue-router';
-import { guardDecision } from './guard';
+import { guardDecision, isPortalOnlyUser } from './guard';
 
 const route = (
   name: string,
@@ -56,5 +56,30 @@ describe('guardDecision', () => {
     const state = { ...user([]), hasFeature: (f?: string) => !f || f === 'education' };
     expect(guardDecision(to, state)).toEqual({ name: 'module-disabled' });
     expect(guardDecision(to, { ...user([]), hasFeature: () => true })).toBe(true);
+  });
+});
+
+describe('portal-only users (students/parents)', () => {
+  const me = (keys: string[], permissions: string[] = []) => ({
+    roles: keys.map((key) => ({ key })),
+    permissions,
+  });
+
+  it('detects accounts whose roles are all student/parent', () => {
+    expect(isPortalOnlyUser(me(['student']))).toBe(true);
+    expect(isPortalOnlyUser(me(['parent']))).toBe(true);
+    expect(isPortalOnlyUser(me(['parent', 'student']))).toBe(true);
+    expect(isPortalOnlyUser(me(['parent', 'teacher']))).toBe(false);
+    expect(isPortalOnlyUser(me(['parent'], ['employee.view_own']))).toBe(false);
+    expect(isPortalOnlyUser(me([]))).toBe(false);
+    expect(isPortalOnlyUser(null)).toBe(false);
+  });
+
+  it('redirects them from staff workspaces to the portal', () => {
+    const r = route('employee-home', '/employee', [{ tenant: true, staff: true }, {}]);
+    expect(guardDecision(r, { ...user([]), portalOnly: true })).toEqual({ path: '/portal' });
+    expect(guardDecision(r, { ...user([]), portalOnly: false })).toBe(true);
+    const portal = route('portal-profile', '/portal/profile', [{ tenant: true }, {}]);
+    expect(guardDecision(portal, { ...user([]), portalOnly: true })).toBe(true);
   });
 });

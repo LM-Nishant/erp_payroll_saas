@@ -24,6 +24,7 @@ import {
   type LayoutKey,
   type OrgKind,
 } from '../../apps/web/src/navigation/menus';
+import { isPortalOnlyUser } from '../../apps/web/src/navigation/guard';
 
 const DEMO_PASSWORD = process.env.DEMO_PASSWORD ?? 'password123';
 const KEEP_TABLES = new Set([
@@ -86,6 +87,7 @@ interface MeLike {
   permissions: string[];
   features: string[];
   platformRoles: string[];
+  roles: Array<{ key: string }>;
   organization: { kind: OrgKind } | null;
 }
 
@@ -100,7 +102,9 @@ async function menus() {
     const has = (f?: string) => !f || features.has(f);
     const kind = me.organization?.kind ?? 'EDUCATION';
     const workspaces = visibleMenu(WORKSPACES, can, has, kind).filter(
-      (w) => w.layout === 'platform' || Boolean(me.organization),
+      (w) =>
+        (w.layout === 'platform' || Boolean(me.organization)) &&
+        !(w.layout === 'employee' && isPortalOnlyUser(me)),
     );
     const layouts = [...new Set(workspaces.map((w) => w.layout))] as LayoutKey[];
     return {

@@ -11,7 +11,20 @@ declare module 'vue-router' {
     feature?: FeatureKey;
     /** Needs an organization (tenant) context; platform-only users are sent home. */
     tenant?: boolean;
+    /** Staff-only workspace: student/parent-only accounts are sent to their portal. */
+    staff?: boolean;
   }
+}
+
+const PORTAL_ROLE_KEYS = new Set(['student', 'parent']);
+
+/** True when every role is a student/parent portal role and the user has no employee record. */
+export function isPortalOnlyUser(
+  me: { roles: Array<{ key: string }>; permissions: string[] } | null | undefined,
+): boolean {
+  if (!me || me.roles.length === 0) return false;
+  if (me.permissions.includes('employee.view_own')) return false;
+  return me.roles.every((r) => PORTAL_ROLE_KEYS.has(r.key));
 }
 
 export interface GuardState {
@@ -21,6 +34,8 @@ export interface GuardState {
   hasFeature?: (feature?: FeatureKey) => boolean;
   /** False for platform-only users who do not belong to an organization. Defaults to true. */
   hasOrganization?: boolean;
+  /** Student/parent-only account (see isPortalOnlyUser). Defaults to false. */
+  portalOnly?: boolean;
 }
 
 /**
@@ -40,6 +55,9 @@ export function guardDecision(
   }
   if (state.hasOrganization === false && to.matched.some((r) => r.meta.tenant)) {
     return { name: 'home' };
+  }
+  if (state.portalOnly && to.matched.some((r) => r.meta.staff)) {
+    return { path: '/portal' };
   }
   const allowed = to.matched.every((r) => state.can(r.meta.permission));
   if (!allowed) return { name: 'forbidden' };

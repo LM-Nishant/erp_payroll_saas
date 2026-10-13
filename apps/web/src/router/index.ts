@@ -598,7 +598,7 @@ export const routes: RouteRecordRaw[] = [
   {
     path: '/employee',
     component: () => import('@/layouts/EmployeeLayout.vue'),
-    meta: { tenant: true },
+    meta: { tenant: true, staff: true },
     children: [
       {
         path: '',
@@ -864,6 +864,7 @@ export function installGuards(r: Router) {
       can: auth.can,
       hasFeature: auth.hasFeature,
       hasOrganization: !auth.me || Boolean(auth.me.organization),
+      portalOnly: auth.isPortalOnly,
     });
   });
 }

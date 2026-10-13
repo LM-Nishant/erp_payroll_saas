@@ -9219,39 +9219,12 @@
       "permissionsCount": 13,
       "workspaces": [
         {
-          "layout": "employee",
-          "title": "Employee",
-          "to": "/employee"
-        },
-        {
           "layout": "portal",
           "title": "Student / Parent",
           "to": "/portal"
         }
       ],
       "menus": {
-        "employee": [
-          {
-            "title": "Home",
-            "to": "/employee"
-          },
-          {
-            "title": "Approvals",
-            "to": "/employee/approvals"
-          },
-          {
-            "title": "Documents",
-            "to": "/employee/documents"
-          },
-          {
-            "title": "My library",
-            "to": "/employee/library"
-          },
-          {
-            "title": "Library catalogue",
-            "to": "/employee/opac"
-          }
-        ],
         "portal": [
           {
             "title": "My profile",
@@ -9336,39 +9309,12 @@
       "permissionsCount": 13,
       "workspaces": [
         {
-          "layout": "employee",
-          "title": "Employee",
-          "to": "/employee"
-        },
-        {
           "layout": "portal",
           "title": "Parent portal",
           "to": "/portal/wards"
         }
       ],
       "menus": {
-        "employee": [
-          {
-            "title": "Home",
-            "to": "/employee"
-          },
-          {
-            "title": "Approvals",
-            "to": "/employee/approvals"
-          },
-          {
-            "title": "Documents",
-            "to": "/employee/documents"
-          },
-          {
-            "title": "My library",
-            "to": "/employee/library"
-          },
-          {
-            "title": "Library catalogue",
-            "to": "/employee/opac"
-          }
-        ],
         "portal": [
           {
             "title": "My children",
@@ -10136,31 +10082,12 @@
       "permissionsCount": 13,
       "workspaces": [
         {
-          "layout": "employee",
-          "title": "Employee",
-          "to": "/employee"
-        },
-        {
           "layout": "portal",
           "title": "Student / Parent",
           "to": "/portal"
         }
       ],
       "menus": {
-        "employee": [
-          {
-            "title": "Home",
-            "to": "/employee"
-          },
-          {
-            "title": "Approvals",
-            "to": "/employee/approvals"
-          },
-          {
-            "title": "Documents",
-            "to": "/employee/documents"
-          }
-        ],
         "portal": [
           {
             "title": "My profile",
@@ -10210,31 +10137,12 @@
       "permissionsCount": 13,
       "workspaces": [
         {
-          "layout": "employee",
-          "title": "Employee",
-          "to": "/employee"
-        },
-        {
           "layout": "portal",
           "title": "Parent portal",
           "to": "/portal/wards"
         }
       ],
       "menus": {
-        "employee": [
-          {
-            "title": "Home",
-            "to": "/employee"
-          },
-          {
-            "title": "Approvals",
-            "to": "/employee/approvals"
-          },
-          {
-            "title": "Documents",
-            "to": "/employee/documents"
-          }
-        ],
         "portal": [
           {
             "title": "My children",
@@ -13986,39 +13894,12 @@
       "permissionsCount": 13,
       "workspaces": [
         {
-          "layout": "employee",
-          "title": "Employee",
-          "to": "/employee"
-        },
-        {
           "layout": "portal",
           "title": "Student / Parent",
           "to": "/portal"
         }
       ],
       "menus": {
-        "employee": [
-          {
-            "title": "Home",
-            "to": "/employee"
-          },
-          {
-            "title": "Approvals",
-            "to": "/employee/approvals"
-          },
-          {
-            "title": "Documents",
-            "to": "/employee/documents"
-          },
-          {
-            "title": "My library",
-            "to": "/employee/library"
-          },
-          {
-            "title": "Library catalogue",
-            "to": "/employee/opac"
-          }
-        ],
         "portal": [
           {
             "title": "My profile",
@@ -14102,39 +13983,12 @@
       "permissionsCount": 13,
       "workspaces": [
         {
-          "layout": "employee",
-          "title": "Employee",
-          "to": "/employee"
-        },
-        {
           "layout": "portal",
           "title": "Parent portal",
           "to": "/portal/wards"
         }
       ],
       "menus": {
-        "employee": [
-          {
-            "title": "Home",
-            "to": "/employee"
-          },
-          {
-            "title": "Approvals",
-            "to": "/employee/approvals"
-          },
-          {
-            "title": "Documents",
-            "to": "/employee/documents"
-          },
-          {
-            "title": "My library",
-            "to": "/employee/library"
-          },
-          {
-            "title": "Library catalogue",
-            "to": "/employee/opac"
-          }
-        ],
         "portal": [
           {
             "title": "My children",
