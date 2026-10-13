@@ -40,3 +40,5 @@ export * from './schemas/library';
 export * from './types/library';
 export * from './schemas/transport';
 export * from './schemas/hostel';
+export * from './schemas/dashboard';
+export * from './types/dashboard';
