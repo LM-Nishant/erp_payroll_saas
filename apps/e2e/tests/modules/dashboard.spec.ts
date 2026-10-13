@@ -30,7 +30,7 @@ test.describe('Dashboard · admin overview', () => {
     await s.page.getByTestId('overview-apply').click();
     expect((await res).status()).toBe(200);
     await expect(panel).toContainText('2026-10-01 → 2026-10-13');
-    await expectClean(s, mark);
+    await expectClean(s, mark, 'overview dashboard');
   });
 });
 
