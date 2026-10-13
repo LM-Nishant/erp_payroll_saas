@@ -179,10 +179,29 @@ describe.skipIf(!hasTestDatabase)('fees and finance', () => {
 
     const payment = (
       await t
-        .post('/api/v1/fees/payments', { studentId: asha.id, amount: 5000, mode: 'CASH' })
+        .post('/api/v1/fees/payments', {
+          studentId: asha.id,
+          amount: 5000,
+          reference: 'utr100200300',
+        })
         .expect(201)
     ).body.data;
     expect(payment.allocatedAmount).toBe(5000);
+    expect(payment.mode).toBe('UPI');
+    expect(payment.reference).toBe('UTR100200300');
+    // UPI only: no cash / cheque, UTR mandatory and unique
+    await t
+      .post('/api/v1/fees/payments', {
+        studentId: asha.id,
+        amount: 10,
+        mode: 'CASH',
+        reference: 'UTR999999',
+      })
+      .expect(400);
+    await t.post('/api/v1/fees/payments', { studentId: asha.id, amount: 10 }).expect(400);
+    await t
+      .post('/api/v1/fees/payments', { studentId: asha.id, amount: 10, reference: 'UTR100200300' })
+      .expect(409);
     const ashaTerm1 = (await t.get(`/api/v1/fees/invoices?studentId=${asha.id}&status=PARTIAL`))
       .body.data;
     expect(ashaTerm1).toHaveLength(1);
@@ -195,7 +214,7 @@ describe.skipIf(!hasTestDatabase)('fees and finance', () => {
       await t
         .post(`/api/v1/fees/payments/${payment.id}/refund`, {
           amount: 1000,
-          mode: 'CASH',
+          reference: 'UTRREFUND001',
           reason: 'Excess paid',
         })
         .expect(200)
@@ -207,26 +226,101 @@ describe.skipIf(!hasTestDatabase)('fees and finance', () => {
     ).body;
     expect(defaulters.meta.total).toBe(2);
 
-    // online "pay now" through the mock gateway
-    const checkout = (
-      await t
-        .post('/api/v1/fees/checkout', { studentId: ravi.id, invoiceIds: [raviTerm1.id] })
-        .expect(201)
-    ).body.data;
-    expect(checkout).toMatchObject({ provider: 'mock', amount: 6000 });
+    // UPI "pay now": institution UPI ID → QR → payer reports UTR → accountant verifies
     await t
-      .post('/api/v1/fees/checkout/confirm', {
-        orderId: checkout.orderId,
-        paymentId: checkout.test.paymentId,
-        signature: 'forged',
+      .post('/api/v1/fees/upi/intent', { studentId: ravi.id, invoiceIds: [raviTerm1.id] })
+      .expect(409);
+    await t
+      .put('/api/v1/fees/upi/settings', {
+        institutionId: institution.id,
+        upiId: 'bad id',
+        payeeName: 'Fees School',
       })
       .expect(400);
+    const setting = (
+      await t
+        .put('/api/v1/fees/upi/settings', {
+          institutionId: institution.id,
+          upiId: 'feesschool@okhdfcbank',
+          payeeName: 'Fees School 1',
+        })
+        .expect(200)
+    ).body.data;
+    expect(setting).toMatchObject({ upiId: 'feesschool@okhdfcbank', active: true });
+    const settings = (await t.get('/api/v1/fees/upi/settings').expect(200)).body.data;
+    expect(settings).toHaveLength(1);
+    expect((await other.get('/api/v1/fees/upi/settings').expect(200)).body.data).toHaveLength(0);
+
+    const intent = (
+      await t
+        .post('/api/v1/fees/upi/intent', { studentId: ravi.id, invoiceIds: [raviTerm1.id] })
+        .expect(200)
+    ).body.data;
+    expect(intent).toMatchObject({ upiId: 'feesschool@okhdfcbank', amount: 6000 });
+    expect(intent.upiUri).toMatch(/^upi:\/\/pay\?pa=feesschool%40okhdfcbank/);
+    expect(intent.qrDataUrl).toMatch(/^data:image\/png;base64,/);
+
     await t
-      .post('/api/v1/fees/checkout/confirm', {
-        orderId: checkout.orderId,
-        ...checkout.test,
+      .post('/api/v1/fees/upi/payments', {
+        studentId: ravi.id,
+        invoiceIds: [raviTerm1.id],
+        utr: 'UTR100200300',
       })
-      .expect(200);
+      .expect(409);
+    await t
+      .post('/api/v1/fees/upi/payments', {
+        studentId: ravi.id,
+        invoiceIds: [raviTerm1.id],
+        utr: 'UTR777888999',
+        paidOn: '2099-01-01',
+      })
+      .expect(400);
+    const wrong = (
+      await t
+        .post('/api/v1/fees/upi/payments', {
+          studentId: ravi.id,
+          invoiceIds: [raviTerm1.id],
+          utr: 'utr555000111',
+        })
+        .expect(201)
+    ).body.data;
+    expect(wrong).toMatchObject({ status: 'PENDING', amount: 6000, utr: 'UTR555000111' });
+    await t
+      .post('/api/v1/fees/upi/payments', {
+        studentId: ravi.id,
+        invoiceIds: [raviTerm1.id],
+        utr: 'UTR555000222',
+      })
+      .expect(409);
+    await t.post(`/api/v1/fees/upi/payments/${wrong.id}/reject`, { reason: 'x' }).expect(400);
+    const rejected = (
+      await t
+        .post(`/api/v1/fees/upi/payments/${wrong.id}/reject`, { reason: 'UTR not in statement' })
+        .expect(200)
+    ).body.data;
+    expect(rejected.status).toBe('REJECTED');
+    await t.post(`/api/v1/fees/upi/payments/${wrong.id}/verify`, {}).expect(409);
+
+    const upi = (
+      await t
+        .post('/api/v1/fees/upi/payments', {
+          studentId: ravi.id,
+          invoiceIds: [raviTerm1.id],
+          utr: 'UTR555000333',
+        })
+        .expect(201)
+    ).body.data;
+    const pending = (await t.get('/api/v1/fees/upi/payments?status=PENDING').expect(200)).body;
+    expect(pending.data.map((r: { id: string }) => r.id)).toEqual([upi.id]);
+    await other.post(`/api/v1/fees/upi/payments/${upi.id}/verify`, {}).expect(404);
+    const verified = (await t.post(`/api/v1/fees/upi/payments/${upi.id}/verify`, {}).expect(200))
+      .body.data;
+    expect(verified.status).toBe('VERIFIED');
+    expect(verified.receiptNumber).toBeTruthy();
+    await t.post(`/api/v1/fees/upi/payments/${upi.id}/verify`, {}).expect(409);
+    const summary = (await t.get(`/api/v1/fees/students/${ravi.id}/summary`).expect(200)).body.data;
+    expect(summary.upi).toMatchObject({ upiId: 'feesschool@okhdfcbank' });
+    expect(summary.upiPayments).toHaveLength(2);
     const paid = (await t.get(`/api/v1/fees/invoices/${raviTerm1.id}`).expect(200)).body.data;
     expect(paid.status).toBe('PAID');
 
@@ -259,7 +353,7 @@ describe.skipIf(!hasTestDatabase)('fees and finance', () => {
     await other.get(`/api/v1/fees/payments/${payment.id}`).expect(404);
     expect((await other.get('/api/v1/fees/invoices').expect(200)).body.meta.total).toBe(0);
     await other
-      .post('/api/v1/fees/payments', { studentId: asha.id, amount: 10, mode: 'CASH' })
+      .post('/api/v1/fees/payments', { studentId: asha.id, amount: 10, reference: 'UTR1234567' })
       .expect(404);
   });
 });

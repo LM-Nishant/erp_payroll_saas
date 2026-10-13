@@ -230,6 +230,8 @@ model Organization {
   feeRefunds                FeeRefund[]
   financeNumberSeries       FinanceNumberSeries[]
   paymentGatewayOrders      PaymentGatewayOrder[]
+  feeUpiSettings            FeeUpiSetting[]
+  feeUpiPayments            FeeUpiPayment[]
   ledgerAccounts            LedgerAccount[]
   journalVouchers           JournalVoucher[]
   journalLines              JournalLine[]
@@ -360,6 +362,9 @@ model Institution {
   libraryReservations       LibraryReservation[]
   libraryFines              LibraryFine[]
   libraryStockVerifications LibraryStockVerification[]
+
+  feeUpiSettings FeeUpiSetting[]
+  feeUpiPayments FeeUpiPayment[]
 
   @@unique([organizationId, code])
   @@index([organizationId, groupId])
@@ -619,6 +624,8 @@ model Student {
   admissions      AdmissionApplication[]
   previousSchools StudentPreviousSchool[]
   certificates    StudentCertificate[]
+
+  feeUpiPayments FeeUpiPayment[]
 
   @@unique([organizationId, admissionNo])
   @@unique([organizationId, userId])
@@ -5400,6 +5407,64 @@ model PaymentGatewayOrder {
   @@unique([provider, providerOrderId])
   @@index([organizationId, studentId, status])
   @@map("payment_gateway_orders")
+}
+
+/// Institution UPI collection account. All fee money is received via UPI (QR / upi:// link).
+model FeeUpiSetting {
+  id              String    @id @default(uuid()) @db.Char(36)
+  organizationId  String    @map("organization_id") @db.Char(36)
+  groupId         String?   @map("group_id") @db.Char(36)
+  institutionId   String    @map("institution_id") @db.Char(36)
+  upiId           String    @map("upi_id") @db.VarChar(100)
+  payeeName       String    @map("payee_name") @db.VarChar(100)
+  active          Boolean   @default(true)
+  updatedByUserId String?   @map("updated_by_user_id") @db.Char(36)
+  createdAt       DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt       DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt       DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+
+  @@unique([organizationId, institutionId])
+  @@index([organizationId, deletedAt])
+  @@map("fee_upi_settings")
+}
+
+/// UPI payment reported by a student/parent (UTR) and verified by the accountant.
+model FeeUpiPayment {
+  id                String    @id @default(uuid()) @db.Char(36)
+  organizationId    String    @map("organization_id") @db.Char(36)
+  groupId           String?   @map("group_id") @db.Char(36)
+  institutionId     String    @map("institution_id") @db.Char(36)
+  campusId          String?   @map("campus_id") @db.Char(36)
+  departmentId      String?   @map("department_id") @db.Char(36)
+  studentId         String    @map("student_id") @db.Char(36)
+  invoiceIds        Json      @map("invoice_ids")
+  amount            Decimal   @db.Decimal(14, 2)
+  utr               String    @db.VarChar(64)
+  paidOn            DateTime  @map("paid_on") @db.Date
+  upiId             String    @map("upi_id") @db.VarChar(100)
+  status            String    @default("PENDING") @db.VarChar(16)
+  paymentId         String?   @map("payment_id") @db.Char(36)
+  remarks           String?   @db.VarChar(500)
+  submittedByUserId String?   @map("submitted_by_user_id") @db.Char(36)
+  reviewedByUserId  String?   @map("reviewed_by_user_id") @db.Char(36)
+  reviewedAt        DateTime? @map("reviewed_at") @db.DateTime(3)
+  rejectReason      String?   @map("reject_reason") @db.VarChar(500)
+  createdAt         DateTime  @default(now()) @map("created_at") @db.DateTime(3)
+  updatedAt         DateTime  @updatedAt @map("updated_at") @db.DateTime(3)
+  deletedAt         DateTime? @map("deleted_at") @db.DateTime(3)
+
+  organization Organization @relation(fields: [organizationId], references: [id], onDelete: Restrict)
+  institution  Institution  @relation(fields: [institutionId], references: [id], onDelete: Restrict)
+  student      Student      @relation(fields: [studentId], references: [id], onDelete: Restrict)
+
+  @@index([organizationId, institutionId, status])
+  @@index([organizationId, studentId, status])
+  @@index([organizationId, utr])
+  @@index([organizationId, deletedAt])
+  @@map("fee_upi_payments")
 }
 
 /// Chart of accounts (org-wide tree). systemKey marks accounts used by auto-posting.

@@ -242,18 +242,33 @@ export const listFeeInvoicesQuerySchema = paginationQuerySchema
 export const feeCancelSchema = z.object({ reason: text(500).min(3) }).strict();
 export type FeeCancelInput = z.infer<typeof feeCancelSchema>;
 
+/** Historic receipts may carry any mode; new money is received via UPI only. */
 export const PAYMENT_MODES = ['CASH', 'CHEQUE', 'UPI', 'CARD', 'BANK_TRANSFER', 'ONLINE'] as const;
 export const paymentModeSchema = z.enum(PAYMENT_MODES);
 export type PaymentMode = z.infer<typeof paymentModeSchema>;
+/** Modes accepted for new receipts and refunds. */
+export const UPI_ONLY_MODES = ['UPI'] as const;
+const upiModeSchema = z.enum(UPI_ONLY_MODES).default('UPI');
+
+/** UPI transaction reference (UTR / RRN) shown in the payer's UPI app. */
+export const utrSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9-]{6,64}$/, 'Enter the UPI transaction reference (UTR)');
+/** UPI VPA, e.g. `school@okhdfcbank`. */
+export const upiIdSchema = z
+  .string()
+  .trim()
+  .regex(/^[A-Za-z0-9._-]{2,256}@[A-Za-z][A-Za-z0-9.-]{1,63}$/, 'Enter a valid UPI ID (name@bank)');
+
 export const recordPaymentSchema = z
   .object({
     studentId: idSchema,
     amount: positiveMoney,
     paidOn: isoDateSchema.optional(),
-    mode: paymentModeSchema,
-    reference: optionalText(120),
-    instrumentDate: isoDateSchema.nullish(),
-    bankName: optionalText(120),
+    mode: upiModeSchema,
+    /** UTR of the UPI transfer received at the counter. */
+    reference: utrSchema,
     remarks: optionalText(500),
     /** Explicit allocation; omitted = oldest-due-first across the student's open invoices. */
     allocations: z
@@ -261,11 +276,7 @@ export const recordPaymentSchema = z
       .max(100)
       .optional(),
   })
-  .strict()
-  .refine((v) => v.mode === 'CASH' || v.mode === 'ONLINE' || v.reference, {
-    message: 'reference is required for non-cash payments',
-    path: ['reference'],
-  });
+  .strict();
 export type RecordPaymentInput = z.infer<typeof recordPaymentSchema>;
 export const listPaymentsQuerySchema = paginationQuerySchema
   .extend({
@@ -280,29 +291,57 @@ export const listPaymentsQuerySchema = paginationQuerySchema
 export const refundPaymentSchema = z
   .object({
     amount: positiveMoney,
-    mode: paymentModeSchema,
-    reference: optionalText(120),
+    mode: upiModeSchema,
+    /** UTR of the UPI transfer sent back to the payer. */
+    reference: utrSchema,
     refundedOn: isoDateSchema.optional(),
     reason: text(500).min(3),
   })
   .strict();
 export type RefundPaymentInput = z.infer<typeof refundPaymentSchema>;
 
-export const checkoutSchema = z
+/* ------------------------------------ UPI collection ------------------------------------ */
+
+export const feeUpiSettingSchema = z
+  .object({
+    institutionId: idSchema,
+    upiId: upiIdSchema,
+    payeeName: text(100).min(2),
+    active: z.boolean().default(true),
+  })
+  .strict();
+export type FeeUpiSettingInput = z.infer<typeof feeUpiSettingSchema>;
+export const feeUpiSettingsQuerySchema = z.object({ institutionId: idSchema.optional() }).strict();
+
+/** Student / parent asks for the UPI QR of selected invoices. */
+export const upiIntentSchema = z
   .object({
     studentId: idSchema,
     invoiceIds: z.array(idSchema).min(1).max(50),
   })
   .strict();
-export type CheckoutInput = z.infer<typeof checkoutSchema>;
-export const confirmCheckoutSchema = z
-  .object({
-    orderId: text(120).min(1),
-    paymentId: text(120).min(1),
-    signature: text(256).min(1),
+export type UpiIntentInput = z.infer<typeof upiIntentSchema>;
+/** Student / parent reports a completed UPI transfer (verified by the accountant). */
+export const submitUpiPaymentSchema = upiIntentSchema
+  .extend({
+    utr: utrSchema,
+    paidOn: isoDateSchema.optional(),
+    remarks: optionalText(500),
   })
   .strict();
-export type ConfirmCheckoutInput = z.infer<typeof confirmCheckoutSchema>;
+export type SubmitUpiPaymentInput = z.infer<typeof submitUpiPaymentSchema>;
+export const UPI_PAYMENT_STATUSES = ['PENDING', 'VERIFIED', 'REJECTED'] as const;
+export const upiPaymentStatusSchema = z.enum(UPI_PAYMENT_STATUSES);
+export type UpiPaymentStatus = z.infer<typeof upiPaymentStatusSchema>;
+export const listUpiPaymentsQuerySchema = paginationQuerySchema
+  .extend({
+    institutionId: idSchema.optional(),
+    studentId: idSchema.optional(),
+    status: upiPaymentStatusSchema.optional(),
+  })
+  .strict();
+export const rejectUpiPaymentSchema = z.object({ reason: text(500).min(3) }).strict();
+export type RejectUpiPaymentInput = z.infer<typeof rejectUpiPaymentSchema>;
 
 export const defaultersQuerySchema = paginationQuerySchema
   .extend({

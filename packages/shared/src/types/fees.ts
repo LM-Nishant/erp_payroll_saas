@@ -139,7 +139,52 @@ export interface StudentFeeSummaryDto {
   totals: { billed: number; paid: number; balance: number; overdue: number };
   invoices: FeeInvoiceDto[];
   payments: FeePaymentDto[];
-  onlinePaymentEnabled: boolean;
+  /** Institution UPI account; null when UPI collection is not configured. */
+  upi: { upiId: string; payeeName: string } | null;
+  /** UPI transfers reported by the student/parent (pending verification first). */
+  upiPayments: FeeUpiPaymentDto[];
+}
+
+export interface FeeUpiSettingDto {
+  id: string;
+  institutionId: string;
+  institutionName?: string;
+  upiId: string;
+  payeeName: string;
+  active: boolean;
+  updatedAt: string;
+}
+
+/** QR / deep link the payer scans in any UPI app. */
+export interface UpiIntentDto {
+  studentId: string;
+  invoiceIds: string[];
+  amount: number;
+  upiId: string;
+  payeeName: string;
+  note: string;
+  upiUri: string;
+  qrDataUrl: string;
+}
+
+export interface FeeUpiPaymentDto {
+  id: string;
+  institutionId: string;
+  studentId: string;
+  student?: { id: string; displayName: string; admissionNo: string } | null;
+  invoiceIds: string[];
+  invoiceNumbers?: string[];
+  amount: number;
+  utr: string;
+  paidOn: string;
+  upiId: string;
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED';
+  paymentId: string | null;
+  receiptNumber?: string | null;
+  remarks: string | null;
+  rejectReason: string | null;
+  submittedAt: string;
+  reviewedAt: string | null;
 }
 
 export interface DefaulterDto {
@@ -153,16 +198,6 @@ export interface DefaulterDto {
   oldestDueDate: string;
   daysOverdue: number;
   bucket: '0-30' | '31-60' | '61-90' | '90+';
-}
-
-export interface CheckoutDto {
-  orderId: string;
-  provider: string;
-  providerOrderId: string;
-  amount: number;
-  currency: string;
-  /** Mock gateway only: values the hosted page would return (used to simulate success). */
-  test?: { paymentId: string; signature: string };
 }
 
 export interface LedgerAccountDto {

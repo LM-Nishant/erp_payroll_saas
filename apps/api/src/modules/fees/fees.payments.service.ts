@@ -1,12 +1,5 @@
 import type { FeePayment, Prisma, Student } from '@prisma/client';
-import type {
-  CheckoutDto,
-  CheckoutInput,
-  ConfirmCheckoutInput,
-  FeeCancelInput,
-  RecordPaymentInput,
-  RefundPaymentInput,
-} from '@erp/shared';
+import type { FeeCancelInput, RecordPaymentInput, RefundPaymentInput } from '@erp/shared';
 import { audit } from '../../core/audit';
 import { andScope, authorize, can, currentPrincipal, scopeWhere } from '../../core/authz';
 import { emit } from '../../core/events';
@@ -31,7 +24,7 @@ import {
 import { fromPaise, toPaise } from '../finance/finance.logic';
 import { dateStr, num, toDate, today } from '../finance/finance.mappers';
 import { loadFeeStudent } from './fees.access';
-import { resolveGateway, resolveProviderGateway, type GatewayWebhookEvent } from './fees.gateway';
+import type { GatewayWebhookEvent } from './fees.gateway';
 import { allocateOldestFirst, invoiceStatus } from './fees.logic';
 import { toPaymentDto, type PaymentWithRefs } from './fees.mappers';
 
@@ -261,8 +254,16 @@ export const feePaymentService = {
   async record(input: RecordPaymentInput) {
     const { student } = await loadFeeStudent(input.studentId, 'fee.collect');
     await authorize(p(), 'fee.collect', studentScope(student));
+    const reference = input.reference.toUpperCase();
+    const duplicate = await tenantDb().feePayment.findFirst({
+      where: { reference, status: { not: 'CANCELLED' } },
+      select: { number: true },
+    });
+    if (duplicate) throw new ConflictError(`UTR already recorded on receipt ${duplicate.number}`);
     return recordPaymentInternal(student, {
       ...input,
+      mode: 'UPI',
+      reference,
       paidOn: input.paidOn ?? today(),
     });
   },
@@ -391,8 +392,8 @@ export const feePaymentService = {
           number: number as string,
           refundedOn: toDate(refundedOn),
           amount: input.amount,
-          mode: input.mode,
-          reference: input.reference ?? null,
+          mode: 'UPI',
+          reference: input.reference.toUpperCase(),
           reason: input.reason,
           refundedByUserId: p().userId ?? null,
         }),
@@ -425,7 +426,7 @@ export const feePaymentService = {
           { accountId: accountFor(keys, 'fee_advance'), debit: fromPaise(fromAdvance), credit: 0 },
           { accountId: accountFor(keys, 'fee_refunds'), debit: fromPaise(fromIncome), credit: 0 },
           {
-            accountId: accountFor(keys, moneyAccountKey(input.mode)),
+            accountId: accountFor(keys, moneyAccountKey('UPI')),
             debit: 0,
             credit: input.amount,
           },
@@ -502,88 +503,13 @@ export const feePaymentService = {
     );
     return { body: rendered.body, fileName: `receipt-${pay.number}.pdf` };
   },
-
-  /* ------------------------------- Online payment ------------------------------------ */
-
-  async checkout(input: CheckoutInput): Promise<CheckoutDto> {
-    const { student } = await loadFeeStudent(input.studentId, 'fee.collect');
-    const db = tenantDb();
-    const invoices = await db.feeInvoice.findMany({
-      where: {
-        id: { in: input.invoiceIds },
-        studentId: student.id,
-        status: { in: ['UNPAID', 'PARTIAL'] },
-      },
-    });
-    if (invoices.length !== new Set(input.invoiceIds).size) {
-      throw new InvalidReferenceError('invoiceIds', 'Open invoice of the student');
-    }
-    const amount = fromPaise(
-      invoices.reduce((s, i) => s + toPaise(i.netAmount) - toPaise(i.paidAmount), 0),
-    );
-    if (amount <= 0) throw new ValidationError('Nothing to pay');
-    const gateway = await resolveGateway(student.institutionId);
-    if (!gateway) throw new ConflictError('Online payment is not configured for the institution');
-    const receipt = `FEE-${student.admissionNo}-${Date.now()}`.slice(0, 40);
-    const order = await gateway.createOrder({
-      amount,
-      currency: 'INR',
-      receipt,
-      notes: { studentId: student.id },
-    });
-    const row = await db.paymentGatewayOrder.create({
-      data: withTenant({
-        ...studentScope(student),
-        studentId: student.id,
-        provider: gateway.provider,
-        providerOrderId: order.providerOrderId,
-        amount,
-        currency: order.currency,
-        invoiceIds: invoices.map((i) => i.id),
-        status: 'CREATED',
-        initiatedByUserId: p().userId ?? null,
-      }),
-    });
-    await audit.record({
-      action: 'fee_checkout.created',
-      entityType: 'payment_gateway_order',
-      entityId: row.id,
-      after: { provider: gateway.provider, amount, invoiceIds: input.invoiceIds },
-    });
-    return {
-      orderId: row.id,
-      provider: gateway.provider,
-      providerOrderId: order.providerOrderId,
-      amount,
-      currency: order.currency,
-      ...(gateway.simulate ? { test: gateway.simulate(order.providerOrderId) } : {}),
-    };
-  },
-
-  async confirmCheckout(input: ConfirmCheckoutInput) {
-    const order = await tenantDb().paymentGatewayOrder.findUnique({ where: { id: input.orderId } });
-    if (!order) throw new NotFoundError('Payment order');
-    await loadFeeStudent(order.studentId, 'fee.collect');
-    const gateway = await resolveProviderGateway(order.provider, order.institutionId);
-    if (!gateway) throw new ConflictError('Payment gateway is not configured');
-    if (
-      !gateway.verifyPayment({
-        providerOrderId: order.providerOrderId,
-        paymentId: input.paymentId,
-        signature: input.signature,
-      })
-    ) {
-      await tenantDb().paymentGatewayOrder.updateMany({
-        where: { id: order.id, status: 'CREATED' },
-        data: { status: 'FAILED', failureReason: 'Signature verification failed' },
-      });
-      throw new ValidationError('Payment signature verification failed');
-    }
-    return completeOrder(order.id, input.paymentId);
-  },
 };
 
-/** Marks a gateway order paid and records the ONLINE receipt (idempotent). */
+/**
+ * Marks a legacy gateway order paid and records the ONLINE receipt (idempotent). New checkouts
+ * are no longer created — fees are paid via UPI — but webhooks for orders already in flight
+ * still settle.
+ */
 export async function completeOrder(orderId: string, providerPaymentId: string | null) {
   const db = tenantDb();
   // Claim the order atomically so the callback and the webhook cannot both record a receipt.

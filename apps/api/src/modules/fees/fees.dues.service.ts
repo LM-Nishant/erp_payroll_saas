@@ -20,10 +20,10 @@ import {
 import { fromPaise, toPaise } from '../finance/finance.logic';
 import { dateStr, num, toDate, today } from '../finance/finance.mappers';
 import { loadFeeStudent } from './fees.access';
-import { resolveGateway } from './fees.gateway';
 import { agingBucket, daysOverdue, invoiceStatus, lateFee } from './fees.logic';
 import { toInvoiceDto, toPaymentDto } from './fees.mappers';
 import { feeRecipients } from './fees.payments.service';
+import { activeUpiSetting, feeUpiService } from './fees.upi.service';
 
 const p = () => currentPrincipal();
 const OPEN = { in: ['UNPAID', 'PARTIAL'] };
@@ -283,7 +283,10 @@ async function summaryFor(studentId: string): Promise<StudentFeeSummaryDto> {
   const overdue = live
     .filter((i) => i.dueDate < now)
     .reduce((s, i) => s + toPaise(balanceOf(i)), 0);
-  const gateway = await resolveGateway(student.institutionId).catch(() => null);
+  const [upi, upiPayments] = await Promise.all([
+    activeUpiSetting(student.institutionId),
+    feeUpiService.forStudent(student.id),
+  ]);
   return {
     student: { ...ref, classSection: student.classSection },
     totals: {
@@ -294,7 +297,8 @@ async function summaryFor(studentId: string): Promise<StudentFeeSummaryDto> {
     },
     invoices: invoices.map((i) => toInvoiceDto(i, ref)),
     payments: payments.map((pm) => toPaymentDto(pm, ref)),
-    onlinePaymentEnabled: !!gateway,
+    upi: upi ? { upiId: upi.upiId, payeeName: upi.payeeName } : null,
+    upiPayments,
   };
 }
 

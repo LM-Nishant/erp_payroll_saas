@@ -718,7 +718,11 @@ export const circulationService = {
     return { items: rows.map(toFineDto), total, pendingAmount: num(pending._sum.amount) };
   },
 
-  async settleFine(id: string, action: 'COLLECTED' | 'WAIVED', input: SettleLibraryFineInput) {
+  async settleFine(
+    id: string,
+    action: 'COLLECTED' | 'WAIVED',
+    input: SettleLibraryFineInput & { utr?: string },
+  ) {
     const fine = await db().libraryFine.findUnique({ where: { id } });
     if (!fine || !(await canLib('library.view', fine))) throw new NotFoundError('Library fine');
     await authorize(currentPrincipal(), 'library.fine', libResource(fine));
@@ -728,11 +732,14 @@ export const circulationService = {
           ? 'Fine was posted to the fee account; settle it through fees'
           : 'Fine is already settled',
       );
+    const note = input.utr
+      ? `UPI UTR ${input.utr.toUpperCase()}${input.note ? ` — ${input.note}` : ''}`.slice(0, 500)
+      : (input.note ?? null);
     const updated = await db().libraryFine.update({
       where: { id },
       data: {
         status: action,
-        note: input.note ?? null,
+        note,
         settledAt: new Date(),
         settledByUserId: currentPrincipal().userId ?? null,
       },
@@ -743,7 +750,7 @@ export const circulationService = {
       entityType: 'library_fine',
       entityId: id,
       before: { status: 'PENDING' },
-      after: { status: action, amount: num(fine.amount), note: input.note ?? null },
+      after: { status: action, amount: num(fine.amount), note },
     });
     await emit(
       LIBRARY_EVENTS.fineSettled,

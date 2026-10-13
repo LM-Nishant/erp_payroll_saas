@@ -188,7 +188,7 @@ describe.skipIf(!hasTestDatabase)('library', () => {
     // Fines: student cannot settle; a posted fine is settled through fees, not the library desk.
     await student.post(`/api/v1/library/fines/${returned.fine.id}/collect`).expect(403);
     await librarian
-      .post(`/api/v1/library/fines/${returned.fine.id}/collect`, { note: 'Cash' })
+      .post(`/api/v1/library/fines/${returned.fine.id}/collect`, { utr: 'UTR4455667788' })
       .expect(409);
     await librarian.post(`/api/v1/library/fines/${returned.fine.id}/waive`).expect(409);
 

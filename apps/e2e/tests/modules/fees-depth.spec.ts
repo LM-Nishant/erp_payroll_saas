@@ -118,8 +118,8 @@ test.describe('Fees depth · finance@greenwood.demo', () => {
     for (const n of [1, 2]) {
       await inv.locator('input[type=checkbox]').check();
       await fill(s.page, 'Amount', '1000');
-      await fill(s.page, 'Reference (cheque / UTR / txn)', `E2E-${id}-${n}`);
-      await s.page.getByRole('button', { name: /^Collect/ }).click();
+      await fill(s.page, 'UPI UTR / transaction ID *', `E2E-${id}-${n}`);
+      await s.page.getByRole('button', { name: /^Record UPI/ }).click();
       await s.settle();
       await expect(s.page.getByText(/Receipt .* recorded for/)).toBeVisible();
     }
@@ -138,14 +138,15 @@ test.describe('Fees depth · finance@greenwood.demo', () => {
     await first.getByTitle('Refund').click();
     const d = dialog(s.page);
     await fill(d, 'Amount', '5000');
+    await fill(d, 'Refund UPI UTR *', `RF-${id}-1`);
     await fill(d, 'Reason', 'E2E over-refund');
-    await d.getByRole('button', { name: /^Refund$/i }).click();
+    await d.getByRole('button', { name: /^Refund via UPI$/i }).click();
     await s.settle();
     const overRefund = s.page.locator('.v-alert').filter({ hasText: /At most .* can be refunded/ });
     await expect(overRefund).toBeVisible();
     await fill(d, 'Amount', '400');
     await fill(d, 'Reason', 'E2E partial refund');
-    await d.getByRole('button', { name: /^Refund$/i }).click();
+    await d.getByRole('button', { name: /^Refund via UPI$/i }).click();
     await s.settle();
     await expect(d).toBeHidden();
     // The successful refund reloads the list, which clears the earlier rejection message.
@@ -191,14 +192,18 @@ test.describe('Fees depth · finance@greenwood.demo', () => {
     const mark = s.mark();
     await expect(s.page.getByRole('heading', { name: 'Fee defaulters' })).toBeVisible();
     await pick(s.page, 'Institution', 'Greenwood International School');
-    await pick(s.page, 'Class section', /^Grade 1 - A$/);
     await s.settle();
-    const row = rows(s.page).filter({ hasText: 'GWIS-MAIN-2026-0001' });
+    // Demo data changes as people pay; any overdue student works.
+    const row = rows(s.page).first();
     await expect(row).toBeVisible();
+    const admissionNo = (await row.innerText()).match(/GWIS-MAIN-\d{4}-\d{4}/)?.[0];
+    expect(admissionNo).toBeTruthy();
     await row.getByRole('button', { name: /^Collect$/i }).click();
     await expect(s.page).toHaveURL(/\/institution\/fees\/collect\?studentId=[0-9a-f-]{36}/);
     await s.settle();
-    await expect(s.page.locator('.v-field').filter({ hasText: 'Student' })).toContainText(/Aarav/);
+    await expect(s.page.locator('.v-field').filter({ hasText: 'Student' })).toContainText(
+      admissionNo!,
+    );
     await expectRows(s.page);
     await expectClean(s, mark, 'defaulters → collect');
   });
