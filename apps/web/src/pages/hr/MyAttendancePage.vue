@@ -12,7 +12,7 @@ import SelfieCaptureDialog from '@/components/SelfieCaptureDialog.vue';
 import { useAuthStore } from '@/stores/auth';
 import { label } from './useHrOptions';
 import {
-  ATTENDANCE_COLORS,
+  recordStatus,
   REQUEST_COLORS,
   WEEKDAYS,
   currentMonth,
@@ -251,8 +251,8 @@ const regStatuses = ['PRESENT', 'HALF_DAY', 'ON_DUTY'].map((value) => ({
           />
         </div>
         <template v-if="c.record">
-          <v-chip :color="ATTENDANCE_COLORS[c.record.status]" size="x-small">
-            {{ label(c.record.status) }}
+          <v-chip :color="recordStatus(c.record).color" size="x-small">
+            {{ recordStatus(c.record).text }}
           </v-chip>
           <div class="text-caption">
             <template v-if="c.record.workedMinutes">{{ hhmm(c.record.workedMinutes) }} h</template>

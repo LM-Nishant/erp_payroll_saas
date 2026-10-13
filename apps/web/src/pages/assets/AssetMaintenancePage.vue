@@ -229,6 +229,11 @@ watch([page, () => ({ ...filters })], load, { deep: true });
             ><v-select
               v-model="form.status"
               :items="opts(ASSET_MAINTENANCE_STATUSES)"
+              :disabled="['COMPLETED', 'CANCELLED'].includes(editing.status)"
+              :hint="
+                ['COMPLETED', 'CANCELLED'].includes(editing.status) ? 'Ticket is closed' : undefined
+              "
+              persistent-hint
               label="Status"
           /></v-col>
           <v-col cols="6"><v-text-field v-model="form.vendor" label="Vendor" /></v-col>

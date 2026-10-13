@@ -85,6 +85,38 @@ async function catalogueAndIssue(
   return copy;
 }
 
+/** Returns E2E copies an aborted earlier run left on loan to the member, freeing their quota. */
+async function returnLeftoverLoans(s: AppSession, member: string, memberType: 'Student' | 'Staff') {
+  await s.go('/institution/library/desk');
+  await s.page.getByRole('button', { name: 'Issue', exact: true }).first().click();
+  await s.page.getByRole('button', { name: memberType, exact: true }).click();
+  const search = s.page.getByRole('combobox', {
+    name: 'Search name / admission no / employee code',
+  });
+  await search.click();
+  await search.fill(member);
+  await s.settle();
+  const option = s.page.getByRole('option', { name: new RegExp(member) });
+  await expect(option).toHaveCount(1, { timeout: 15_000 });
+  await option.click();
+  await s.settle();
+  const leftovers = s.page.locator('tbody tr').filter({ hasText: /^E2E (Reserve|Staff Copy) / });
+  const barcodes: string[] = [];
+  for (const row of await leftovers.all()) {
+    barcodes.push((await row.locator('td').nth(1).innerText()).trim());
+  }
+  for (const code of barcodes) {
+    await s.page.getByRole('button', { name: 'Return', exact: true }).first().click();
+    const scan = s.page.getByLabel('Barcode / accession number', { exact: true });
+    await scan.fill(code);
+    await scan.press('Enter');
+    await s.settle();
+    await expect(s.page.getByText(/Returned “/)).toBeVisible();
+  }
+  // The desk remembers its mode; leave it in Issue mode for the next step.
+  await s.page.getByRole('button', { name: 'Issue', exact: true }).first().click();
+}
+
 /** Returns a copy at the desk as DAMAGED with a 150 charge. */
 async function returnDamaged(s: AppSession, copy: string, title: string) {
   await s.go('/institution/library/desk');
@@ -104,6 +136,8 @@ test.describe('Portal · librarian@greenwood.demo lends out single copies', () =
 
   test('catalogues one-copy titles and issues them to a student and a staff member', async () => {
     const s = session();
+    await returnLeftoverLoans(s, 'GWIS-MAIN-2026-0002', 'Student');
+    await returnLeftoverLoans(s, STAFF, 'Staff');
     const mark = s.mark();
     barcode = await catalogueAndIssue(s, book, 'GWIS-MAIN-2026-0002', 'Student');
     staffBarcode = await catalogueAndIssue(s, staffBook, STAFF, 'Staff');
@@ -328,10 +362,10 @@ test.describe('Portal · student@greenwood.demo hostel self-service', () => {
     await saveDialog(s, 'Submit');
     const row = s.page.locator('tbody tr').filter({ hasText: visit });
     await expect(row).toContainText('PENDING');
-    await row.getByRole('button', { name: /^Cancel$/i }).click();
+    await row.getByRole('button', { name: /^Withdraw$/i }).click();
     await s.settle();
     await expect(row).toContainText('CANCELLED');
-    await expect(row.getByRole('button', { name: /^Cancel$/i })).toHaveCount(0);
+    await expect(row.getByRole('button', { name: /^Withdraw$/i })).toHaveCount(0);
     await expectClean(s, mark, 'cancel out-pass');
   });
 

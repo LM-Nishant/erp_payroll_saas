@@ -285,6 +285,8 @@ const opt = (values: readonly string[]) => values.map((value) => ({ value, title
         <v-btn icon="mdi-pencil" size="small" variant="text" @click="openDialog(item)" />
         <v-btn
           :icon="item.status === 'ACTIVE' ? 'mdi-cancel' : 'mdi-check'"
+          :aria-label="item.status === 'ACTIVE' ? 'Deactivate' : 'Activate'"
+          :title="item.status === 'ACTIVE' ? 'Deactivate' : 'Activate'"
           size="small"
           variant="text"
           @click="toggleStatus(item)"

@@ -33,12 +33,13 @@ test.describe('Profile change request · librarian@greenwood.demo', () => {
     const pending = rows(s.page).filter({ hasText: REQUEST }).filter({ hasText: 'PENDING' });
     while (await pending.count()) {
       await pending.first().click();
+      s.page.once('dialog', (c) => void c.accept());
       await dialog(s.page)
-        .getByRole('button', { name: /cancel request/i })
+        .getByRole('button', { name: /withdraw request/i })
         .click();
       await s.settle();
       await expect(
-        dialog(s.page).locator('.v-chip').filter({ hasText: 'CANCELLED' }),
+        dialog(s.page).locator('.v-chip').filter({ hasText: 'CANCELLED' }).first(),
       ).toBeVisible();
       await dialog(s.page)
         .getByRole('button', { name: /^close$/i })
@@ -58,9 +59,13 @@ test.describe('Profile change request · librarian@greenwood.demo', () => {
     await fill(d, 'Reason', reason);
     await saveDialog(s, /submit/i);
     await expect(s.page.getByText('Change request submitted.')).toBeVisible();
-    await expect(
-      s.page.locator('.v-card').filter({ hasText: 'Pending change requests' }),
-    ).toContainText(/Personal\s*phone/i);
+    await expect(s.page.locator('.v-card').filter({ hasText: 'My change requests' })).toContainText(
+      /Personal\s*phone/i,
+    );
+    // One pending request at a time: the button gives way to a notice and a withdraw link.
+    await expect(s.page.getByText('A change request is awaiting approval')).toBeVisible();
+    await expect(s.page.getByRole('button', { name: /request changes/i })).toHaveCount(0);
+    await expect(s.page.getByRole('link', { name: /view \/ withdraw/i })).toHaveCount(1);
     await expectClean(s, mark, 'profile change request');
   });
 
@@ -76,7 +81,8 @@ test.describe('Profile change request · librarian@greenwood.demo', () => {
     await expect(d.locator('.v-card-title')).toContainText(REQUEST);
     await expect(d.getByRole('button', { name: /^approve$/i })).toHaveCount(0);
     await expect(d.getByRole('button', { name: /^reject$/i })).toHaveCount(0);
-    await expect(d.getByRole('button', { name: /cancel request/i })).toBeVisible();
+    // The requester withdraws; "Cancel request (admin)" is only for other managers.
+    await expect(d.getByRole('button', { name: /withdraw request/i })).toBeVisible();
     await d.getByRole('button', { name: /^close$/i }).click();
     await expectClean(s, mark, 'my requests');
   });

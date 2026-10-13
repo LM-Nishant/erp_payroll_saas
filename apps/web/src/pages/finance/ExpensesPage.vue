@@ -217,7 +217,8 @@ watch([page, () => ({ ...filters })], load, { deep: true });
           size="small"
           variant="text"
           icon="mdi-cancel"
-          title="Cancel"
+          title="Cancel expense"
+          :aria-label="`Cancel expense ${item.number}`"
           @click="cancel(item)"
       /></template>
     </v-data-table-server>

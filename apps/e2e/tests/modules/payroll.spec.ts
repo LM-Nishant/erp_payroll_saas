@@ -169,6 +169,19 @@ test.describe('Payroll · payroll@greenwood.demo (maker)', () => {
   test('creates, computes and submits the run', async () => {
     const s = session();
     await s.go('/hr/payroll/runs');
+    // An aborted earlier run can leave an open E2E draft for this period; cancel it first.
+    const leftover = s.page
+      .locator('tbody tr')
+      .filter({ hasText: /E2E run / })
+      .filter({ hasText: /Draft|Computed/ });
+    while (await leftover.count()) {
+      await leftover.first().click();
+      await s.settle();
+      s.page.once('dialog', (c) => void c.accept());
+      await s.page.getByRole('button', { name: 'Cancel run' }).click();
+      await s.settle();
+      await s.go('/hr/payroll/runs');
+    }
     const mark = s.mark();
     await s.page.getByRole('button', { name: 'New run' }).click();
     const d = dialog(s.page);
@@ -278,6 +291,7 @@ test.describe('Payroll · payroll@greenwood.demo (cleanup)', () => {
     const s = session();
     await s.go(runUrl);
     const mark = s.mark();
+    s.page.once('dialog', (c) => void c.accept());
     await s.page.getByRole('button', { name: 'Cancel run' }).click();
     await s.settle();
     await expect(s.page.getByText('Cancelled', { exact: true }).first()).toBeVisible();

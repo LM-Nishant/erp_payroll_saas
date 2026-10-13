@@ -128,6 +128,12 @@ async function uploadCover(files: File | File[]) {
     error.value = (e as Error).message;
   }
 }
+// removeBook refuses while copies are issued/reserved or reservations are open.
+const deleteBlocked = computed(
+  () =>
+    reservations.value.length > 0 ||
+    !!book.value?.copies.some((c) => c.status === 'ISSUED' || c.status === 'RESERVED'),
+);
 async function remove() {
   if (!confirm('Withdraw all copies and delete this title?')) return;
   try {
@@ -152,7 +158,19 @@ onMounted(load);
       <template v-if="auth.can('library.manage')">
         <v-btn variant="text" prepend-icon="mdi-barcode" @click="labels">Labels PDF</v-btn>
         <v-btn variant="text" prepend-icon="mdi-plus" @click="addOpen = true">Add copies</v-btn>
-        <v-btn variant="text" color="error" prepend-icon="mdi-delete" @click="remove">Delete</v-btn>
+        <v-btn
+          variant="text"
+          color="error"
+          prepend-icon="mdi-delete"
+          :disabled="deleteBlocked"
+          :title="
+            deleteBlocked
+              ? 'Return issued copies and clear open reservations before deleting'
+              : undefined
+          "
+          @click="remove"
+          >Delete</v-btn
+        >
       </template>
     </div>
     <v-row>

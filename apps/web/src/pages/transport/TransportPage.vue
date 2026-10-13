@@ -64,6 +64,10 @@ const patch = (path: string, body: unknown) =>
   apiFetch(`${API}${path}`, { method: 'PATCH', body: JSON.stringify(body) });
 const del = (path: string) => apiFetch(`${API}${path}`, { method: 'DELETE' });
 const get = async <T,>(path: string) => (await apiFetch<{ data: T }>(`${API}${path}`)).data;
+async function cancelTrip(t: Row, reload: () => unknown) {
+  if (!confirm(`Cancel the ${t.direction} trip on ${t.route?.code ?? ''} (${t.tripDate})?`)) return;
+  await act(() => patch(`/trips/${t.id}`, { status: 'CANCELLED' }), reload);
+}
 
 const institutionField: ResourceField = {
   key: 'institutionId',
@@ -844,10 +848,19 @@ watch(
             >End</v-btn
           >
           <v-btn
+            v-if="(item as Row).status !== 'CANCELLED'"
             size="small"
             variant="text"
             @click="openBoarding(item as unknown as TransportTripDto)"
             >Boarding</v-btn
+          >
+          <v-btn
+            v-if="['SCHEDULED', 'IN_PROGRESS'].includes((item as Row).status)"
+            size="small"
+            variant="text"
+            color="error"
+            @click="cancelTrip(item as Row, reload)"
+            >Cancel trip</v-btn
           >
         </template>
       </template>

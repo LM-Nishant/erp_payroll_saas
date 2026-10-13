@@ -229,6 +229,38 @@ async function decide(id: string, decision: 'APPROVE' | 'REJECT') {
     () => outpassTable.value?.reload(),
   );
 }
+// Mirrors outpassService.decide: PENDING only, not workflow-managed, never your own request.
+function canDecideOutpass(o: Row) {
+  return (
+    canApprove.value &&
+    o.status === 'PENDING' &&
+    !o.workflowInstanceId &&
+    o.requestedByUserId !== auth.me?.user.id
+  );
+}
+/**
+ * Cancel withdraws the pass (PENDING/APPROVED, before the student leaves). On a pending pass the
+ * approver should Reject instead, so Cancel is only offered there when the user cannot decide it.
+ */
+function canCancelOutpass(o: Row) {
+  if (!canManage.value) return false;
+  if (o.status === 'APPROVED') return true;
+  return o.status === 'PENDING' && !canDecideOutpass(o);
+}
+const cancelOutpass = reactive({ open: false, item: null as Row | null });
+function openCancelOutpass(o: Row) {
+  error.value = null;
+  Object.assign(cancelOutpass, { open: true, item: o });
+}
+async function confirmCancelOutpass() {
+  const o = cancelOutpass.item;
+  if (!o) return;
+  await act(
+    () => post(`/outpasses/${o.id}/cancel`),
+    () => outpassTable.value?.reload(),
+  );
+  if (!error.value) cancelOutpass.open = false;
+}
 
 // ---- Roll call -----------------------------------------------------------------------------
 const roll = reactive({ date: today, session: 'NIGHT', sheet: null as RollCallSheetDto | null });
@@ -649,7 +681,7 @@ watch(
       new Date((item as Row).toAt).toLocaleString()
     }}</template>
     <template #[`item.actions`]="{ item, reload }">
-      <template v-if="(item as Row).status === 'PENDING' && canApprove">
+      <template v-if="canDecideOutpass(item as Row)">
         <v-btn
           size="small"
           variant="text"
@@ -661,6 +693,23 @@ watch(
           >Reject</v-btn
         >
       </template>
+      <v-chip
+        v-else-if="(item as Row).status === 'PENDING' && (item as Row).workflowInstanceId"
+        size="small"
+        variant="tonal"
+        prepend-icon="mdi-source-branch"
+        title="Decided in the Approvals inbox"
+        >In approvals</v-chip
+      >
+      <v-btn
+        v-if="canCancelOutpass(item as Row)"
+        size="small"
+        variant="text"
+        color="warning"
+        title="Withdraw this out-pass (not a rejection)"
+        @click="openCancelOutpass(item as Row)"
+        >Cancel out-pass</v-btn
+      >
       <v-btn
         v-if="(item as Row).status === 'APPROVED' && canManage"
         size="small"
@@ -816,6 +865,13 @@ watch(
           "
           >Resolve</v-btn
         >
+        <v-btn
+          v-if="(item as Row).status === 'RESOLVED'"
+          size="small"
+          variant="text"
+          @click="act(() => patch(`/complaints/${(item as Row).id}`, { status: 'CLOSED' }), reload)"
+          >Close ticket</v-btn
+        >
       </template>
     </template>
   </ResourceTable>
@@ -848,7 +904,14 @@ watch(
         style="max-width: 160px"
       />
       <v-spacer />
-      <v-btn v-if="canManage" color="primary" @click="saveRoll">Save roll call</v-btn>
+      <v-btn
+        v-if="canManage"
+        color="primary"
+        :disabled="roll.date > today || !roll.sheet?.entries.length"
+        :title="roll.date > today ? 'Roll call cannot be taken for a future date' : undefined"
+        @click="saveRoll"
+        >Save roll call</v-btn
+      >
     </div>
     <v-table v-if="roll.sheet" density="compact">
       <thead>
@@ -866,7 +929,12 @@ watch(
           </td>
           <td>{{ e.roomNo }} / {{ e.bedNo }}</td>
           <td>
-            <v-btn-toggle v-model="e.status" density="compact" mandatory>
+            <v-btn-toggle
+              v-model="e.status"
+              density="compact"
+              mandatory
+              :disabled="!canManage || roll.date > today"
+            >
               <v-btn value="PRESENT" color="success">Present</v-btn>
               <v-btn value="ABSENT" color="error">Absent</v-btn>
               <v-btn value="ON_LEAVE" color="warning">Leave</v-btn>
@@ -944,4 +1012,25 @@ watch(
       </v-col>
     </v-row>
   </template>
+
+  <v-dialog v-model="cancelOutpass.open" max-width="480">
+    <v-card v-if="cancelOutpass.item" title="Cancel out-pass">
+      <v-card-text>
+        <p class="mb-2">
+          <strong>{{ cancelOutpass.item.studentName }}</strong> ·
+          {{ new Date(cancelOutpass.item.fromAt).toLocaleString() }} →
+          {{ new Date(cancelOutpass.item.toAt).toLocaleString() }}
+        </p>
+        <p class="text-medium-emphasis">
+          Cancelling withdraws the out-pass (e.g. plans changed). It is not a rejection — use Reject
+          to refuse a pending request.
+        </p>
+      </v-card-text>
+      <v-card-actions>
+        <v-spacer />
+        <v-btn @click="cancelOutpass.open = false">Keep</v-btn>
+        <v-btn color="warning" @click="confirmCancelOutpass">Cancel out-pass</v-btn>
+      </v-card-actions>
+    </v-card>
+  </v-dialog>
 </template>

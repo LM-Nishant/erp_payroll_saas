@@ -148,11 +148,13 @@ onMounted(load);
               </td>
               <td>
                 <v-btn
-                  v-if="o.status === 'PENDING' && auth.can('hostel.apply_own')"
+                  v-if="['PENDING', 'APPROVED'].includes(o.status) && auth.can('hostel.apply_own')"
                   size="x-small"
                   variant="text"
+                  color="warning"
+                  title="Withdraw your request before you leave"
                   @click="cancelOutpass(o.id)"
-                  >Cancel</v-btn
+                  >Withdraw</v-btn
                 >
               </td>
             </tr>

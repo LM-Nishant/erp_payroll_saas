@@ -52,7 +52,7 @@ test.describe('HR · hr@greenwood.demo', () => {
     await fill(d, 'Start', '09:00');
     await fill(d, 'End', '17:00');
     await saveDialog(s);
-    await expect(s.page.getByText(`E2E Shift ${code}`).first()).toBeVisible();
+    await expectRow(s.page, `E2E Shift ${code}`);
     await expectClean(s, mark, 'shift create');
   });
 

@@ -322,6 +322,7 @@ async function onMovement(m: EmployeeMovementDto) {
   await refresh();
 }
 async function cancelMovement(m: EmployeeMovementDto) {
+  if (!confirm(`Cancel this ${label(m.type).toLowerCase()} effective ${m.effectiveDate}?`)) return;
   try {
     await apiFetch(`${base.value}/movements/${m.id}/cancel`, { method: 'POST', body: '{}' });
     await loadTab('movements');
@@ -687,8 +688,21 @@ const personalRows = computed(() => {
               <td>{{ m.reason }}</td>
               <td>{{ m.decidedComment ?? '' }}</td>
               <td class="text-right">
+                <!-- Movements awaiting workflow approval are withdrawn in Approvals (API refuses here). -->
                 <v-btn
                   v-if="
+                    auth.can('employee.transfer') &&
+                    m.status === 'PENDING_APPROVAL' &&
+                    m.workflowInstanceId
+                  "
+                  size="small"
+                  variant="text"
+                  :to="`/approvals/${m.workflowInstanceId}`"
+                >
+                  Open in approvals
+                </v-btn>
+                <v-btn
+                  v-else-if="
                     auth.can('employee.transfer') &&
                     (m.status === 'SCHEDULED' || m.status === 'PENDING_APPROVAL')
                   "
@@ -697,7 +711,7 @@ const personalRows = computed(() => {
                   color="error"
                   @click="cancelMovement(m)"
                 >
-                  Cancel
+                  Cancel movement
                 </v-btn>
               </td>
             </tr>
@@ -712,7 +726,7 @@ const personalRows = computed(() => {
         <div class="d-flex mb-2">
           <v-spacer />
           <v-btn
-            v-if="auth.can('salary.update')"
+            v-if="auth.can('salary.update') && employee.status !== 'EXITED'"
             size="small"
             color="primary"
             prepend-icon="mdi-plus"

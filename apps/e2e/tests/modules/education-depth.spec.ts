@@ -262,7 +262,7 @@ test.describe('Education depth · principal@greenwood.demo (results & grading)',
     const mark = s.mark();
     await unitTestRow(s).click();
     // Already published: publishing again is not offered.
-    await expect(s.page.getByRole('button', { name: /^Publish$/i })).toBeDisabled();
+    await expect(s.page.getByRole('button', { name: /^Publish$/i })).toHaveCount(0);
     await s.page
       .getByRole('main')
       .getByRole('link', { name: /^Results$/i })

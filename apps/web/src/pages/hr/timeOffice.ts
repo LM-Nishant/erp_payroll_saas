@@ -1,4 +1,5 @@
-import type { AttendanceStatus, WeeklyOffRule } from '@erp/shared';
+import type { AttendanceRecordDto, AttendanceStatus, WeeklyOffRule } from '@erp/shared';
+import { label } from './useHrOptions';
 
 /** Formatting helpers shared by the attendance / leave / holiday / shift pages (Layer 7). */
 
@@ -44,6 +45,19 @@ export const ATTENDANCE_COLORS: Partial<Record<AttendanceStatus, string>> = {
   WEEKLY_OFF: 'grey',
   ON_DUTY: 'teal',
 };
+
+/**
+ * Status chip for a day record. Today's incomplete day is not shown as absent: it reads
+ * "In progress" once punched in, or "Not punched yet".
+ */
+export const recordStatus = (
+  r: Pick<AttendanceRecordDto, 'status' | 'inProgress' | 'firstIn'>,
+): { text: string; color: string | undefined } =>
+  r.inProgress
+    ? r.firstIn
+      ? { text: 'In progress', color: 'info' }
+      : { text: 'Not punched yet', color: 'grey' }
+    : { text: label(r.status), color: ATTENDANCE_COLORS[r.status] };
 
 export const REQUEST_COLORS: Record<string, string> = {
   PENDING_APPROVAL: 'warning',

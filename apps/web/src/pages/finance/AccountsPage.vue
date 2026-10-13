@@ -136,9 +136,12 @@ onMounted(load);
         <td>{{ a.active ? 'Yes' : 'No' }}</td>
         <td class="text-right">
           <template v-if="canManage"
-            ><v-btn size="small" variant="text" @click="toggle(a)">{{
-              a.active ? 'Deactivate' : 'Activate'
-            }}</v-btn
+            ><v-btn
+              v-if="!(a.systemKey && a.active)"
+              size="small"
+              variant="text"
+              @click="toggle(a)"
+              >{{ a.active ? 'Deactivate' : 'Activate' }}</v-btn
             ><v-btn
               v-if="!a.systemKey"
               size="small"

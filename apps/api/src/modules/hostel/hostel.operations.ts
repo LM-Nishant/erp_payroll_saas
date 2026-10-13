@@ -241,6 +241,7 @@ function toOutpassDto(o: OutpassRow, studentName: string): OutpassDto {
     reason: o.reason,
     status: o.status as OutpassStatus,
     workflowInstanceId: o.workflowInstanceId,
+    requestedByUserId: o.requestedByUserId,
     decidedComment: o.decidedComment,
     decidedAt: isoOrNull(o.decidedAt),
     outAt: isoOrNull(o.outAt),

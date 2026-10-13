@@ -38,6 +38,13 @@ export async function pick(
   if (search !== undefined) await input.fill(search);
   const items = menu(page);
   const choice = option === undefined ? items.first() : items.filter({ hasText: option }).first();
+  await expect(items.first()).toBeVisible({ timeout: 15_000 });
+  // Long v-select menus are virtualized: scroll until the wanted option is rendered.
+  const list = page.locator('.v-menu.v-overlay--active .v-list').first();
+  for (let i = 0; i < 40 && !(await choice.isVisible()); i++) {
+    await list.evaluate((el) => el.scrollBy(0, 240));
+    await page.waitForTimeout(50);
+  }
   await expect(choice).toBeVisible({ timeout: 15_000 });
   await choice.click();
   // Multi-selects keep the menu open; single selects close it.

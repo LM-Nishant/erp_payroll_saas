@@ -85,6 +85,20 @@ test.describe('Attendance · employee@greenwood.demo (self-service)', () => {
     await expect(s.page.locator('button:has(.mdi-pencil)')).toHaveCount(0);
   });
 
+  test('today is not shown as absent and only one punch button is offered', async () => {
+    const s = session();
+    await s.go('/employee/attendance');
+    const today = String(new Date().getDate());
+    const cell = s.page
+      .locator('.calendar .cell')
+      .filter({ has: s.page.locator('strong', { hasText: new RegExp(`^${today}$`) }) });
+    await expect(cell).toHaveCount(1);
+    const chip = cell.locator('.v-chip');
+    if (await chip.count()) await expect(chip).not.toHaveText(/^\s*Absent\s*$/);
+    const punch = s.page.getByRole('button', { name: /^Punch (in|out)$/ });
+    await expect(punch).toHaveCount(1);
+  });
+
   test('requests two status regularizations from My attendance', async () => {
     const s = session();
     await s.go('/employee/attendance');
