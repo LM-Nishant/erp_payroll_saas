@@ -1,21 +1,34 @@
 <script setup lang="ts">
-import type { CheckoutDto, FeePaymentDto, StudentFeeSummaryDto } from '@erp/shared';
-import { onMounted, ref } from 'vue';
+import type { FeePaymentDto, StudentFeeSummaryDto, UpiIntentDto } from '@erp/shared';
+import { onMounted, reactive, ref } from 'vue';
 import { apiDownload, apiFetch } from '@/api/client';
-import { errorText, money } from './fees';
+import { errorText, money, todayStr } from './fees';
 
 const summaries = ref<StudentFeeSummaryDto[]>([]);
 const loading = ref(true);
 const error = ref<string | null>(null);
 const info = ref<string | null>(null);
 const selected = ref<Record<string, string[]>>({});
-const paying = ref<{ summary: StudentFeeSummaryDto; order: CheckoutDto } | null>(null);
+const paying = ref<{ summary: StudentFeeSummaryDto; intent: UpiIntentDto } | null>(null);
+const utrForm = reactive({ utr: '', paidOn: todayStr(), remarks: '' });
 const busy = ref(false);
+const UTR = /^[A-Za-z0-9-]{6,64}$/;
+const UPI_STATUS_COLOR: Record<string, string> = {
+  PENDING: 'warning',
+  VERIFIED: 'success',
+  REJECTED: 'error',
+};
 
 const openInvoices = (s: StudentFeeSummaryDto) =>
   s.invoices.filter((i) => i.status === 'UNPAID' || i.status === 'PARTIAL');
+const pendingInvoiceIds = (s: StudentFeeSummaryDto) =>
+  new Set(s.upiPayments.filter((u) => u.status === 'PENDING').flatMap((u) => u.invoiceIds));
+const payableInvoices = (s: StudentFeeSummaryDto) => {
+  const pending = pendingInvoiceIds(s);
+  return openInvoices(s).filter((i) => !pending.has(i.id));
+};
 const selectedTotal = (s: StudentFeeSummaryDto) =>
-  openInvoices(s)
+  payableInvoices(s)
     .filter((i) => (selected.value[s.student.id] ?? []).includes(i.id))
     .reduce((t, i) => t + i.balance, 0);
 
@@ -35,7 +48,7 @@ async function load() {
     seen.has(s.student.id) ? false : (seen.add(s.student.id), true),
   );
   selected.value = Object.fromEntries(
-    summaries.value.map((s) => [s.student.id, openInvoices(s).map((i) => i.id)]),
+    summaries.value.map((s) => [s.student.id, payableInvoices(s).map((i) => i.id)]),
   );
   if (!summaries.value.length) error.value = 'No fee records found for your account.';
   loading.value = false;
@@ -45,14 +58,15 @@ async function payNow(s: StudentFeeSummaryDto) {
   busy.value = true;
   error.value = null;
   try {
-    const r = await apiFetch<{ data: CheckoutDto }>('/api/v1/fees/checkout', {
+    const r = await apiFetch<{ data: UpiIntentDto }>('/api/v1/fees/upi/intent', {
       method: 'POST',
       body: JSON.stringify({
         studentId: s.student.id,
         invoiceIds: selected.value[s.student.id] ?? [],
       }),
     });
-    paying.value = { summary: s, order: r.data };
+    Object.assign(utrForm, { utr: '', paidOn: todayStr(), remarks: '' });
+    paying.value = { summary: s, intent: r.data };
   } catch (e) {
     error.value = errorText(e);
   } finally {
@@ -60,20 +74,22 @@ async function payNow(s: StudentFeeSummaryDto) {
   }
 }
 
-/** Mock gateway: simulates the hosted checkout returning a signed success callback. */
-async function confirmPayment() {
-  if (!paying.value?.order.test) return;
+/** The payer reports the UTR from their UPI app; the accountant verifies it and issues the receipt. */
+async function submitUtr() {
+  if (!paying.value) return;
   busy.value = true;
   try {
-    const r = await apiFetch<{ data: FeePaymentDto }>('/api/v1/fees/checkout/confirm', {
+    await apiFetch('/api/v1/fees/upi/payments', {
       method: 'POST',
       body: JSON.stringify({
-        orderId: paying.value.order.orderId,
-        paymentId: paying.value.order.test.paymentId,
-        signature: paying.value.order.test.signature,
+        studentId: paying.value.intent.studentId,
+        invoiceIds: paying.value.intent.invoiceIds,
+        utr: utrForm.utr.trim(),
+        paidOn: utrForm.paidOn,
+        remarks: utrForm.remarks.trim() || null,
       }),
     });
-    info.value = `Payment successful — receipt ${r.data.number} for ${money(r.data.amount)}.`;
+    info.value = `UPI payment of ${money(paying.value.intent.amount)} submitted. The receipt is issued once the accounts office verifies UTR ${utrForm.utr.trim().toUpperCase()}.`;
     paying.value = null;
     await load();
   } catch (e) {
@@ -138,11 +154,20 @@ onMounted(load);
                 v-model="selected[s.student.id]"
                 :value="i.id"
                 density="compact"
-                :disabled="!s.onlinePaymentEnabled"
+                :disabled="!s.upi || pendingInvoiceIds(s).has(i.id)"
               />
             </td>
             <td>{{ i.number }}</td>
-            <td>{{ i.description }}</td>
+            <td>
+              {{ i.description }}
+              <v-chip
+                v-if="pendingInvoiceIds(s).has(i.id)"
+                size="x-small"
+                color="warning"
+                class="ml-1"
+                >UPI verification pending</v-chip
+              >
+            </td>
             <td>{{ i.dueDate }}</td>
             <td class="text-right">{{ money(i.netAmount) }}</td>
             <td class="text-right">{{ money(i.balance) }}</td>
@@ -153,20 +178,58 @@ onMounted(load);
         </tbody>
       </v-table>
       <div v-if="openInvoices(s).length" class="d-flex align-center mt-2">
-        <span v-if="!s.onlinePaymentEnabled" class="text-medium-emphasis"
-          >Online payment is not available; please pay at the fee counter.</span
+        <span v-if="!s.upi" class="text-medium-emphasis"
+          >UPI payment is not set up for this institution yet. Please contact the accounts
+          office.</span
+        >
+        <span v-else class="text-medium-emphasis"
+          >Fees are paid via UPI only, to {{ s.upi.upiId }} ({{ s.upi.payeeName }}).</span
         >
         <v-spacer />
         <v-btn
-          v-if="s.onlinePaymentEnabled"
+          v-if="s.upi"
           color="primary"
-          prepend-icon="mdi-credit-card-outline"
+          prepend-icon="mdi-qrcode"
           :loading="busy"
           :disabled="!selectedTotal(s)"
+          data-testid="pay-upi"
           @click="payNow(s)"
-          >Pay {{ money(selectedTotal(s)) }} online</v-btn
+          >Pay {{ money(selectedTotal(s)) }} via UPI</v-btn
         >
       </div>
+      <template v-if="s.upiPayments.length">
+        <h4 class="text-subtitle-1 mt-4 mb-1">UPI payments</h4>
+        <v-table density="compact">
+          <thead>
+            <tr>
+              <th>Paid on</th>
+              <th>UTR</th>
+              <th>Invoices</th>
+              <th class="text-right">Amount</th>
+              <th>Status</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr v-for="u in s.upiPayments" :key="u.id">
+              <td>{{ u.paidOn }}</td>
+              <td>{{ u.utr }}</td>
+              <td>{{ (u.invoiceNumbers ?? []).join(', ') }}</td>
+              <td class="text-right">{{ money(u.amount) }}</td>
+              <td>
+                <v-chip size="small" :color="UPI_STATUS_COLOR[u.status]">{{
+                  u.status === 'PENDING' ? 'Awaiting verification' : u.status
+                }}</v-chip>
+                <span v-if="u.receiptNumber" class="ml-2 text-caption"
+                  >Receipt {{ u.receiptNumber }}</span
+                >
+                <div v-if="u.rejectReason" class="text-caption text-error">
+                  {{ u.rejectReason }}
+                </div>
+              </td>
+            </tr>
+          </tbody>
+        </v-table>
+      </template>
       <h4 class="text-subtitle-1 mt-4 mb-1">Receipts</h4>
       <v-table density="compact">
         <tbody>
@@ -189,27 +252,54 @@ onMounted(load);
       </v-table>
     </v-card-text>
   </v-card>
-  <v-dialog :model-value="!!paying" max-width="480" persistent
+  <v-dialog :model-value="!!paying" max-width="520" persistent
     ><v-card v-if="paying"
-      ><v-card-title>Online payment</v-card-title
+      ><v-card-title>Pay via UPI</v-card-title
       ><v-card-text>
-        <p>
-          Paying <strong>{{ money(paying.order.amount) }}</strong> for
-          {{ paying.summary.student.displayName }} via {{ paying.order.provider }} (order
-          {{ paying.order.providerOrderId }}).
+        <p class="mb-2">
+          Pay <strong>{{ money(paying.intent.amount) }}</strong> for
+          {{ paying.summary.student.displayName }} to <strong>{{ paying.intent.upiId }}</strong> ({{
+            paying.intent.payeeName
+          }}).
         </p>
-        <v-alert v-if="paying.order.test" type="info" variant="tonal" class="mt-3"
-          >Test gateway: no real money is charged. Click “Complete payment” to simulate a successful
-          checkout.</v-alert
-        ></v-card-text
+        <div class="text-center">
+          <img
+            :src="paying.intent.qrDataUrl"
+            alt="UPI QR code"
+            width="220"
+            height="220"
+            data-testid="upi-qr"
+          />
+          <div class="text-caption mb-2">Scan with any UPI app (GPay, PhonePe, Paytm, BHIM…)</div>
+          <v-btn
+            :href="paying.intent.upiUri"
+            variant="tonal"
+            prepend-icon="mdi-cellphone"
+            class="mb-3"
+            >Open UPI app</v-btn
+          >
+        </div>
+        <v-alert type="info" variant="tonal" density="compact" class="mb-3"
+          >After paying, enter the 12-digit UTR / UPI reference number shown in your UPI
+          app.</v-alert
+        >
+        <v-text-field
+          v-model="utrForm.utr"
+          label="UTR / UPI reference no. *"
+          :rules="[(v: string) => UTR.test((v ?? '').trim()) || 'Enter the 6–64 character UTR']"
+          data-testid="upi-utr"
+        />
+        <v-text-field v-model="utrForm.paidOn" label="Paid on" type="date" :max="todayStr()" />
+        <v-text-field v-model="utrForm.remarks" label="Remarks (optional)" /> </v-card-text
       ><v-card-actions
         ><v-spacer /><v-btn variant="text" :disabled="busy" @click="paying = null">Cancel</v-btn
         ><v-btn
           color="primary"
           :loading="busy"
-          :disabled="!paying.order.test"
-          @click="confirmPayment"
-          >Complete payment</v-btn
+          :disabled="!UTR.test(utrForm.utr.trim())"
+          data-testid="upi-submit"
+          @click="submitUtr"
+          >I have paid — submit UTR</v-btn
         ></v-card-actions
       ></v-card
     ></v-dialog

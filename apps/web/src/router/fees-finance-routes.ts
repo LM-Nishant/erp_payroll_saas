@@ -31,6 +31,18 @@ export function feesFinanceRoutes(scope: 'group' | 'institution'): RouteRecordRa
       () => import('@/pages/fees/CollectFeePage.vue'),
     ),
     fees(
+      'fees/upi',
+      n('fee-upi-payments'),
+      'fee.collect',
+      () => import('@/pages/fees/UpiPaymentsPage.vue'),
+    ),
+    fees(
+      'fees/upi-settings',
+      n('fee-upi-settings'),
+      'fee.view',
+      () => import('@/pages/fees/UpiSettingsPage.vue'),
+    ),
+    fees(
       'fees/receipts',
       n('fee-receipts'),
       'fee.view',

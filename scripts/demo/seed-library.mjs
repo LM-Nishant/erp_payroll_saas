@@ -327,7 +327,10 @@ for (const inst of institutions) {
   const pending = await all(api, `/library/fines?institutionId=${inst.id}&status=PENDING`);
   const settled = await all(api, `/library/fines?institutionId=${inst.id}&status=COLLECTED`);
   if (!settled.length && pending.length >= 2) {
-    await api('POST', `/library/fines/${pending[0].id}/collect`, { note: 'Paid at desk (cash)' });
+    await api('POST', `/library/fines/${pending[0].id}/collect`, {
+      utr: `LIB${pending[0].id.replace(/-/g, '').slice(0, 12).toUpperCase()}`,
+      note: 'Paid at desk via UPI',
+    });
     await api('POST', `/library/fines/${pending[1].id}/waive`, { note: 'Medical leave' });
   }
 

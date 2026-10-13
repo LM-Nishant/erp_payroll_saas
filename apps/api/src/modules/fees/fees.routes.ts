@@ -1,8 +1,6 @@
 import { Router, type Request } from 'express';
 import { z } from 'zod';
 import {
-  checkoutSchema,
-  confirmCheckoutSchema,
   createAdhocInvoiceSchema,
   createConcessionSchema,
   createFeeHeadSchema,
@@ -12,6 +10,8 @@ import {
   feeCancelSchema,
   feeReportQuerySchema,
   feeReportSchema,
+  feeUpiSettingSchema,
+  feeUpiSettingsQuerySchema,
   generateInvoicesSchema,
   idParamSchema,
   listConcessionsQuerySchema,
@@ -19,15 +19,19 @@ import {
   listFeeInvoicesQuerySchema,
   listFeeStructuresQuerySchema,
   listPaymentsQuerySchema,
+  listUpiPaymentsQuerySchema,
   recordPaymentSchema,
   refundPaymentSchema,
+  rejectUpiPaymentSchema,
   sendRemindersSchema,
   studentChargeSchema,
+  submitUpiPaymentSchema,
   updateConcessionSchema,
   updateFeeHeadSchema,
   updateFeeStructureSchema,
   updateLateRuleSchema,
   updateNumberSeriesSchema,
+  upiIntentSchema,
 } from '@erp/shared';
 import { audit } from '../../core/audit';
 import { authorize, currentPrincipal, requirePermission } from '../../core/authz';
@@ -43,6 +47,7 @@ import { feeDuesService } from './fees.dues.service';
 import { resolveProviderGateway } from './fees.gateway';
 import { createStudentCharge, feeInvoiceService } from './fees.invoices.service';
 import { feePaymentService, handleGatewayEvent } from './fees.payments.service';
+import { feeUpiService } from './fees.upi.service';
 import {
   concessionService,
   feeHeadService,
@@ -215,15 +220,35 @@ feesRouter.post('/payments/:id/refund', requirePermission('fee.refund'), async (
   });
 });
 
-/* ---- online payment (portal "pay now") ---- */
-feesRouter.post('/checkout', async (req, res) => {
+/* ---- UPI collection (the only way fees are paid) ---- */
+feesRouter.get('/upi/settings', requirePermission('fee.view'), async (req, res) => {
+  const q = parseInput(feeUpiSettingsQuerySchema, req.query);
+  res.json({ data: await feeUpiService.listSettings(q) });
+});
+feesRouter.put('/upi/settings', requirePermission('fee.manage'), async (req, res) => {
+  res.json({ data: await feeUpiService.saveSetting(parseInput(feeUpiSettingSchema, req.body)) });
+});
+/** Payer (student / guardian / staff): QR + upi:// link for the selected invoices. */
+feesRouter.post('/upi/intent', async (req, res) => {
+  res.json({ data: await feeUpiService.intent(parseInput(upiIntentSchema, req.body)) });
+});
+/** Payer reports the UTR of a completed UPI transfer. */
+feesRouter.post('/upi/payments', async (req, res) => {
   res
     .status(201)
-    .json({ data: await feePaymentService.checkout(parseInput(checkoutSchema, req.body)) });
+    .json({ data: await feeUpiService.submit(parseInput(submitUpiPaymentSchema, req.body)) });
 });
-feesRouter.post('/checkout/confirm', async (req, res) => {
+feesRouter.get('/upi/payments', requirePermission('fee.collect'), async (req, res) => {
+  const q = parseInput(listUpiPaymentsQuerySchema, req.query);
+  const { items, total } = await feeUpiService.list(q);
+  res.json(toListResponse(items, total, q));
+});
+feesRouter.post('/upi/payments/:id/verify', requirePermission('fee.collect'), async (req, res) => {
+  res.json({ data: await feeUpiService.verify(idOf(req)) });
+});
+feesRouter.post('/upi/payments/:id/reject', requirePermission('fee.collect'), async (req, res) => {
   res.json({
-    data: await feePaymentService.confirmCheckout(parseInput(confirmCheckoutSchema, req.body)),
+    data: await feeUpiService.reject(idOf(req), parseInput(rejectUpiPaymentSchema, req.body)),
   });
 });
 

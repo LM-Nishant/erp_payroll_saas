@@ -148,6 +148,8 @@ export const TENANT_SCOPED_MODELS: ReadonlySet<string> = new Set([
   'FeeRefund',
   'FinanceNumberSeries',
   'PaymentGatewayOrder',
+  'FeeUpiSetting',
+  'FeeUpiPayment',
   'LedgerAccount',
   'JournalVoucher',
   'JournalLine',

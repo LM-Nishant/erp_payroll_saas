@@ -72,7 +72,7 @@ async function cancel(p: FeePaymentDto) {
 const refundFor = ref<FeePaymentDto | null>(null);
 const refund = reactive({
   amount: 0,
-  mode: 'CASH',
+  mode: 'UPI',
   reference: '',
   reason: '',
   refundedOn: todayStr(),
@@ -81,7 +81,7 @@ function openRefund(p: FeePaymentDto) {
   refundFor.value = p;
   Object.assign(refund, {
     amount: Math.round((p.amount - p.refundedAmount) * 100) / 100,
-    mode: 'CASH',
+    mode: 'UPI',
     reference: '',
     reason: '',
     refundedOn: todayStr(),
@@ -95,7 +95,7 @@ async function saveRefund() {
       body: JSON.stringify({
         ...refund,
         amount: Number(refund.amount),
-        reference: refund.reference || null,
+        reference: refund.reference.trim(),
       }),
     });
     refundFor.value = null;
@@ -201,17 +201,31 @@ watch([page, () => ({ ...filters })], load, { deep: true });
             ><v-text-field v-model.number="refund.amount" label="Amount" type="number" /></v-col
           ><v-col cols="6"
             ><v-text-field v-model="refund.refundedOn" label="Date" type="date" /></v-col
-          ><v-col cols="6"
-            ><v-select
-              v-model="refund.mode"
-              :items="[...PAYMENT_MODES] as string[]"
-              label="Mode" /></v-col
-          ><v-col cols="6"><v-text-field v-model="refund.reference" label="Reference" /></v-col
+          ><v-col cols="12"
+            ><v-alert type="info" variant="tonal" density="compact"
+              >Refunds are sent back via <strong>UPI</strong> only. Enter the UTR of the refund
+              transfer.</v-alert
+            ></v-col
+          ><v-col cols="12"
+            ><v-text-field
+              v-model="refund.reference"
+              label="Refund UPI UTR *"
+              :rules="[
+                (v: string) =>
+                  /^[A-Za-z0-9-]{6,64}$/.test((v ?? '').trim()) || 'Enter the 6–64 character UTR',
+              ]" /></v-col
           ><v-col cols="12"
             ><v-text-field v-model="refund.reason" label="Reason" /></v-col></v-row></v-card-text
       ><v-card-actions
         ><v-spacer /><v-btn variant="text" @click="refundFor = null">Cancel</v-btn
-        ><v-btn color="primary" @click="saveRefund">Refund</v-btn></v-card-actions
+        ><v-btn
+          color="primary"
+          :disabled="
+            !/^[A-Za-z0-9-]{6,64}$/.test(refund.reference.trim()) || refund.reason.trim().length < 3
+          "
+          @click="saveRefund"
+          >Refund via UPI</v-btn
+        ></v-card-actions
       ></v-card
     ></v-dialog
   >

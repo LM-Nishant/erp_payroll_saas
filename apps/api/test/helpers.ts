@@ -13,6 +13,8 @@ export function asTenant(app: ReturnType<typeof createApp>, organization: string
       agent.post(url).set(DEV_TENANT_HEADER, organization).send(body),
     patch: (url: string, body: object) =>
       agent.patch(url).set(DEV_TENANT_HEADER, organization).send(body),
+    put: (url: string, body: object) =>
+      agent.put(url).set(DEV_TENANT_HEADER, organization).send(body),
     delete: (url: string) => agent.delete(url).set(DEV_TENANT_HEADER, organization),
   };
 }

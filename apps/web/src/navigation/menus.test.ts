@@ -115,7 +115,8 @@ describe('fees & finance menus', () => {
     const finance = (f?: string) => !f || f === 'finance';
     const titles = visibleMenu(MENUS.institution, can, finance).map((i) => i.title);
     expect(titles).toEqual(expect.arrayContaining(['Fee structures', 'Trial balance']));
-    expect(titles).not.toContain('Collect fee');
+    expect(titles).not.toContain('Collect fee (UPI)');
+    expect(titles).not.toContain('UPI verifications');
     expect(visibleMenu(MENUS.institution, can, (f) => !f).map((i) => i.title)).not.toContain(
       'Fee heads',
     );

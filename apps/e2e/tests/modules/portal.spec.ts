@@ -221,8 +221,10 @@ test.describe('Portal · librarian@greenwood.demo damaged returns & fine waiver'
     await s.settle();
     const row = rows(s.page).filter({ hasText: staffBook });
     await expect(row).toContainText('PENDING');
-    s.page.once('dialog', (x) => void x.accept('E2E goodwill waiver'));
     await row.getByRole('button', { name: /^Waive$/i }).click();
+    const d = dialog(s.page);
+    await fill(d, 'Reason for waiver', 'E2E goodwill waiver');
+    await d.getByRole('button', { name: /^Waive$/i }).click();
     await s.settle();
     // The default "PENDING" filter drops the waived fine; it shows up under WAIVED.
     await expect(row).toHaveCount(0);

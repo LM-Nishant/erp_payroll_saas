@@ -22,6 +22,7 @@ import {
   reserveOwnSchema,
   returnLibraryCopySchema,
   scanStockVerificationSchema,
+  collectLibraryFineSchema,
   settleLibraryFineSchema,
   updateLibraryBookSchema,
   updateLibraryCopySchema,
@@ -252,7 +253,7 @@ libraryRouter.post('/fines/:id/collect', requirePermission('library.fine'), asyn
     data: await circulationService.settleFine(
       idOf(req),
       'COLLECTED',
-      parseInput(settleLibraryFineSchema, req.body ?? {}),
+      parseInput(collectLibraryFineSchema, req.body ?? {}),
     ),
   });
 });

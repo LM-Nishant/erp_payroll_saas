@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type { FeePaymentDto, StudentFeeSummaryDto } from '@erp/shared';
-import { PAYMENT_MODES } from '@erp/shared';
 import { computed, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiDownload, apiFetch } from '@/api/client';
@@ -16,12 +15,12 @@ const saving = ref(false);
 const form = reactive({
   amount: 0,
   paidOn: todayStr(),
-  mode: 'CASH',
   reference: '',
-  bankName: '',
   remarks: '',
 });
 const selected = ref<string[]>([]);
+const UTR = /^[A-Za-z0-9-]{6,64}$/;
+const utrRule = (v: string) => UTR.test((v ?? '').trim()) || 'Enter the 6–64 character UPI UTR';
 const openInvoices = computed(
   () =>
     summary.value?.invoices.filter((i) => i.status === 'UNPAID' || i.status === 'PARTIAL') ?? [],
@@ -72,9 +71,8 @@ async function collect() {
         studentId: studentId.value,
         amount: Number(form.amount),
         paidOn: form.paidOn,
-        mode: form.mode,
-        reference: form.reference || null,
-        bankName: form.bankName || null,
+        mode: 'UPI',
+        reference: form.reference.trim(),
         remarks: form.remarks || null,
         allocations,
       }),
@@ -165,17 +163,21 @@ async function download(p: FeePaymentDto) {
                 ><v-text-field v-model.number="form.amount" label="Amount" type="number" /></v-col
               ><v-col cols="6"
                 ><v-text-field v-model="form.paidOn" label="Date" type="date" /></v-col
-              ><v-col cols="6"
-                ><v-select
-                  v-model="form.mode"
-                  :items="[...PAYMENT_MODES] as string[]"
-                  label="Mode" /></v-col
-              ><v-col cols="6"
+              ><v-col cols="12"
+                ><v-alert v-if="summary.upi" type="info" variant="tonal" density="compact"
+                  >Payment mode: <strong>UPI</strong> to {{ summary.upi.upiId }} ({{
+                    summary.upi.payeeName
+                  }}). Ask the payer for the UTR shown in their UPI app.</v-alert
+                ><v-alert v-else type="warning" variant="tonal" density="compact"
+                  >Payment mode: <strong>UPI</strong>. No UPI ID is set up for this institution yet
+                  (Fees → UPI settings).</v-alert
+                ></v-col
+              ><v-col cols="12"
                 ><v-text-field
                   v-model="form.reference"
-                  label="Reference (cheque / UTR / txn)" /></v-col
-              ><v-col v-if="form.mode === 'CHEQUE' || form.mode === 'BANK_TRANSFER'" cols="12"
-                ><v-text-field v-model="form.bankName" label="Bank" /></v-col
+                  label="UPI UTR / transaction ID *"
+                  :rules="[utrRule]"
+                  data-testid="collect-utr" /></v-col
               ><v-col cols="12"
                 ><v-text-field v-model="form.remarks" label="Remarks" /></v-col></v-row
           ></v-card-text>
@@ -183,9 +185,9 @@ async function download(p: FeePaymentDto) {
             ><v-spacer /><v-btn
               color="primary"
               :loading="saving"
-              :disabled="!form.amount"
+              :disabled="!form.amount || utrRule(form.reference) !== true"
               @click="collect"
-              >Collect {{ money(form.amount) }}</v-btn
+              >Record UPI {{ money(form.amount) }}</v-btn
             ></v-card-actions
           ></v-card
         >

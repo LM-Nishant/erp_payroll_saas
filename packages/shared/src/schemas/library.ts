@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { idSchema, paginationQuerySchema } from './common';
+import { utrSchema } from './fees';
 import { isoDateSchema } from './hr';
 
 const text = (max: number) => z.string().trim().max(max);
@@ -298,6 +299,9 @@ export type ListLibraryFinesQuery = z.infer<typeof listLibraryFinesQuerySchema>;
 
 export const settleLibraryFineSchema = z.object({ note: optionalText(500) }).strict();
 export type SettleLibraryFineInput = z.infer<typeof settleLibraryFineSchema>;
+/** Desk collection is UPI only: the UTR of the transfer is required. */
+export const collectLibraryFineSchema = settleLibraryFineSchema.extend({ utr: utrSchema }).strict();
+export type CollectLibraryFineInput = z.infer<typeof collectLibraryFineSchema>;
 
 /* ------------------------------------- Members ------------------------------------------- */
 

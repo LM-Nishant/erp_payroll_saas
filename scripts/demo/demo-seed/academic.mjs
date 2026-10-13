@@ -214,11 +214,16 @@ export async function seedFees(ctx, inst, sections, { tuition = 15000 } = {}) {
     ).data;
     bump('fee_invoices', gen.created ?? 0);
   }
+  // all fee payments are via UPI, to the institution's own UPI ID
+  await ctx.api('PUT', '/fees/upi/settings', {
+    institutionId: inst.id,
+    upiId: `${inst.code.toLowerCase().replace(/[^a-z0-9]/g, '')}.fees@okhdfcbank`,
+    payeeName: inst.name.slice(0, 100),
+  });
   const invoices = await all(ctx.api, `/fees/invoices?institutionId=${inst.id}`);
   const byStudent = new Map();
   for (const inv of invoices)
     byStudent.set(inv.studentId, [...(byStudent.get(inv.studentId) ?? []), inv]);
-  const modes = ['UPI', 'CASH', 'BANK_TRANSFER', 'CHEQUE', 'CARD'];
   let k = 0;
   for (const [studentId, list] of byStudent) {
     k++;
@@ -226,17 +231,14 @@ export async function seedFees(ctx, inst, sections, { tuition = 15000 } = {}) {
     list.sort((a, b) => a.dueDate.localeCompare(b.dueDate));
     const amount = k % 3 === 0 ? list[0].balance : list[0].balance + (list[1]?.balance ?? 0);
     if (amount <= 0) continue;
-    const mode = modes[k % modes.length];
     const paidOn = k % 3 === 0 ? `${y}-06-10` : `${y}-09-10`;
     await ctx.api('POST', '/fees/payments', {
       studentId,
       amount,
       paidOn,
-      mode,
-      reference: mode === 'CASH' ? null : `TXN${String(700000 + k * 913)}`,
-      bankName: mode === 'CHEQUE' ? 'State Bank of India' : null,
-      instrumentDate: mode === 'CHEQUE' ? paidOn : null,
-      remarks: 'Collected at fee counter',
+      mode: 'UPI',
+      reference: `UTR${inst.code.replace(/[^A-Za-z0-9]/g, '').toUpperCase()}${700000 + k * 913}`,
+      remarks: 'UPI received at fee counter',
     });
     bump('fee_payments');
   }

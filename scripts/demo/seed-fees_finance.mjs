@@ -71,6 +71,13 @@ async function seedInstitution(inst, instSections, stats) {
   const school = inst.type === 'SCHOOL';
   console.log(`\n== ${inst.code} ${inst.name} (${instSections.length} sections)`);
 
+  // fees are collected only via UPI: each institution has its own UPI ID
+  await api('PUT', '/fees/upi/settings', {
+    institutionId: inst.id,
+    upiId: `${inst.code.toLowerCase().replace(/[^a-z0-9]/g, '')}.fees@okhdfcbank`,
+    payeeName: inst.name.slice(0, 100),
+  });
+
   const heads = new Map(
     (await all(`/fees/heads?institutionId=${inst.id}`)).map((h) => [h.code, h]),
   );
@@ -197,7 +204,6 @@ async function seedInstitution(inst, instSections, stats) {
     if (inv.status === 'CANCELLED') continue;
     byStudent.set(inv.studentId, [...(byStudent.get(inv.studentId) ?? []), inv]);
   }
-  const modes = ['CASH', 'UPI', 'BANK_TRANSFER', 'CHEQUE', 'CARD', 'ONLINE'];
   for (const [studentId, list] of byStudent) {
     if (paidStudents.has(studentId)) continue;
     const r = rand(studentId);
@@ -209,17 +215,14 @@ async function seedInstitution(inst, instSections, stats) {
     else if (r < 0.45) amount = t1.balance;
     else amount = Math.round(t1.balance * 0.5);
     if (amount <= 0) continue;
-    const mode = modes[Math.floor(rand(`${studentId}m`) * modes.length)];
     const day = String(1 + Math.floor(rand(`${studentId}d`) * 27)).padStart(2, '0');
     const paidOn = r < 0.3 ? `2026-09-${day}` : `2026-06-${day}`;
     await post('/fees/payments', {
       studentId,
       amount,
       paidOn,
-      mode,
-      reference: mode === 'CASH' ? null : `DEMO-${studentId.slice(0, 8).toUpperCase()}`,
-      bankName: mode === 'CHEQUE' ? 'State Bank of India' : null,
-      instrumentDate: mode === 'CHEQUE' ? paidOn : null,
+      mode: 'UPI',
+      reference: `DEMO${studentId.replace(/-/g, '').slice(0, 12).toUpperCase()}`,
       remarks: 'Demo seed',
     });
     stats.payments++;
@@ -234,8 +237,8 @@ async function seedInstitution(inst, instSections, stats) {
     if (p) {
       await post(`/fees/payments/${p.id}/refund`, {
         amount: 500,
-        mode: 'BANK_TRANSFER',
-        reference: `RF-${p.number}`.slice(0, 120),
+        mode: 'UPI',
+        reference: `RF-${p.number}`.replace(/[^A-Za-z0-9-]/g, '').slice(0, 64),
         refundedOn: '2026-09-28',
         reason: 'Activity fee waived for medical leave',
       });

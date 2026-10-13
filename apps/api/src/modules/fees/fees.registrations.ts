@@ -37,6 +37,8 @@ for (const [key, label] of EVENTS) registerEventType({ key, label, webhook: true
 const NOTIFICATIONS: [string, string][] = [
   ['fee.payment_received', 'Fee payment received (receipt)'],
   ['fee.due_reminder', 'Fee due reminder'],
+  ['fee.upi_submitted', 'UPI fee payment awaiting verification'],
+  ['fee.upi_rejected', 'UPI fee payment rejected'],
 ];
 for (const [key, label] of NOTIFICATIONS) {
   registerNotificationEvent({ key, label, defaultChannels: ['in_app', 'email'] });

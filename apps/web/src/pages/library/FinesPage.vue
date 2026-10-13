@@ -6,7 +6,7 @@ import {
   type LibraryLoanDto,
   type LibraryFineStatus,
 } from '@erp/shared';
-import { onMounted, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
 import { useAuthStore } from '@/stores/auth';
 import LibraryTabs from './LibraryTabs.vue';
@@ -87,17 +87,35 @@ async function loadFines() {
     loading.value = false;
   }
 }
-async function settle(f: LibraryFineDto, action: 'collect' | 'waive') {
-  const note = prompt(action === 'collect' ? 'Receipt / note (optional)' : 'Reason for waiver');
-  if (note === null) return;
+const UTR = /^[A-Za-z0-9-]{6,64}$/;
+const settling = ref<{ fine: LibraryFineDto; action: 'collect' | 'waive' } | null>(null);
+const settleForm = reactive({ utr: '', note: '' });
+const settleBusy = ref(false);
+function settle(f: LibraryFineDto, action: 'collect' | 'waive') {
+  Object.assign(settleForm, { utr: '', note: '' });
+  settling.value = { fine: f, action };
+}
+const settleValid = computed(() =>
+  settling.value?.action === 'collect' ? UTR.test(settleForm.utr.trim()) : true,
+);
+async function confirmSettle() {
+  if (!settling.value) return;
+  const { fine, action } = settling.value;
+  settleBusy.value = true;
   try {
-    await apiFetch(`/api/v1/library/fines/${f.id}/${action}`, {
+    await apiFetch(`/api/v1/library/fines/${fine.id}/${action}`, {
       method: 'POST',
-      body: JSON.stringify({ note: note || null }),
+      body: JSON.stringify({
+        ...(action === 'collect' ? { utr: settleForm.utr.trim() } : {}),
+        note: settleForm.note.trim() || null,
+      }),
     });
+    settling.value = null;
     await loadFines();
   } catch (e) {
     error.value = (e as Error).message;
+  } finally {
+    settleBusy.value = false;
   }
 }
 const loadAll = () => Promise.all([loadOverdue(), loadFines()]);
@@ -190,4 +208,40 @@ watch([finesPage, fineStatus], loadFines);
       </template>
     </v-data-table-server>
   </template>
+  <v-dialog :model-value="!!settling" max-width="460" @update:model-value="settling = null"
+    ><v-card v-if="settling"
+      ><v-card-title>{{
+        settling.action === 'collect' ? 'Collect fine via UPI' : 'Waive fine'
+      }}</v-card-title
+      ><v-card-text>
+        <p class="mb-3">
+          {{ money(settling.fine.amount) }} ·
+          {{ settling.fine.reason }}
+        </p>
+        <v-text-field
+          v-if="settling.action === 'collect'"
+          v-model="settleForm.utr"
+          label="UPI UTR / transaction ID *"
+          hint="Fines are collected via UPI only"
+          persistent-hint
+          :rules="[(v: string) => UTR.test((v ?? '').trim()) || 'Enter the 6–64 character UTR']"
+          data-testid="fine-utr"
+          class="mb-2"
+        />
+        <v-text-field
+          v-model="settleForm.note"
+          :label="settling.action === 'collect' ? 'Note (optional)' : 'Reason for waiver'"
+        /> </v-card-text
+      ><v-card-actions
+        ><v-spacer /><v-btn variant="text" @click="settling = null">Close</v-btn
+        ><v-btn
+          color="primary"
+          :loading="settleBusy"
+          :disabled="!settleValid"
+          @click="confirmSettle"
+          >{{ settling.action === 'collect' ? 'Record UPI payment' : 'Waive' }}</v-btn
+        ></v-card-actions
+      ></v-card
+    ></v-dialog
+  >
 </template>
