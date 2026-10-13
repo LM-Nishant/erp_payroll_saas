@@ -139,11 +139,15 @@ for (const u of manifest.users.filter((x) => x.loginOk)) {
       test(`all ${unlicensed.length} unlicensed module pages are blocked by direct URL`, async () => {
         test.setTimeout(60_000 + unlicensed.length * 10_000);
         const problems: string[] = [];
+        const ownLayouts = new Set(layoutsOf(u).map((w) => w.layout));
         for (const m of unlicensed) {
           const mark = s.mark();
           await s.go(m.to);
           const path = s.pathname();
           if (BLOCKED_PATHS.includes(path)) continue;
+          // Staff workspaces the user has no card for (e.g. Employee for students/parents)
+          // send them back to their own portal before any module check.
+          if (!ownLayouts.has(m.layout) && path.startsWith('/portal')) continue;
           const failed = await s.failedSince(mark);
           const alerts = await s.errorAlerts();
           if (!failed.some(isFeatureBlock) || alerts.length === 0) {

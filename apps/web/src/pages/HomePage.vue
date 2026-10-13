@@ -12,9 +12,12 @@ const changingPassword = ref(false);
 const router = useRouter();
 const hasOrganization = computed(() => Boolean(auth.me?.organization));
 // Tenant workspaces need an organization; the platform super admin only gets "Platform".
+// Student/parent-only accounts use the portal, so the staff Employee workspace is hidden.
 const workspaces = computed(() =>
   visibleMenu(WORKSPACES, auth.can, auth.hasFeature, auth.me?.organization?.kind).filter(
-    (w) => w.layout === 'platform' || hasOrganization.value,
+    (w) =>
+      (w.layout === 'platform' || hasOrganization.value) &&
+      !(w.layout === 'employee' && auth.isPortalOnly),
   ),
 );
 const terms = useTerms();

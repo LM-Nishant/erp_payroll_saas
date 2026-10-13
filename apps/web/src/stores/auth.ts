@@ -2,6 +2,7 @@ import type { FeatureKey, LoginResult, MeResponse } from '@erp/shared';
 import { defineStore } from 'pinia';
 import { computed, ref } from 'vue';
 import { ApiError, installAuthHooks, rawFetch } from '@/api/client';
+import { isPortalOnlyUser } from '@/navigation/guard';
 
 type Data<T> = { data: T };
 
@@ -38,6 +39,8 @@ export const useAuthStore = defineStore('auth', () => {
     () => (feature?: FeatureKey) => !feature || features.value.has(feature),
   );
   const isPlatformUser = computed(() => (me.value?.platformRoles.length ?? 0) > 0);
+  /** Only student/parent roles (self-service portal); no staff workspace such as Employee. */
+  const isPortalOnly = computed(() => isPortalOnlyUser(me.value));
 
   async function loadMe() {
     me.value = (await rawFetch<Data<MeResponse>>('/api/v1/me', {}, accessToken.value)).data;
@@ -150,6 +153,7 @@ export const useAuthStore = defineStore('auth', () => {
     initialized,
     isAuthenticated,
     isPlatformUser,
+    isPortalOnly,
     can,
     hasFeature,
     login,

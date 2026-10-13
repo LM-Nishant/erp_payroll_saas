@@ -107,8 +107,8 @@ test.describe('Home widgets · hr@acme.demo (company)', () => {
   });
 });
 
-test.describe('Home widgets · student@greenwood.demo (no employee record)', () => {
-  const session = signedIn('student@greenwood.demo');
+test.describe('Home widgets · group.finance@greenwood.demo (no employee record)', () => {
+  const session = signedIn('group.finance@greenwood.demo');
 
   test('employee home without an employee record shows no highlights', async () => {
     const s = session();
@@ -117,6 +117,18 @@ test.describe('Home widgets · student@greenwood.demo (no employee record)', () 
     await expect(s.page.getByRole('heading', { name: /^Welcome, / })).toBeVisible();
     await expect(card(s.page, 'Upcoming holidays')).toHaveCount(0);
     await expect(card(s.page, 'Birthdays')).toHaveCount(0);
+    expect(s.calls.slice(mark).filter((c) => c.path.includes('/employees/highlights'))).toEqual([]);
+  });
+});
+
+test.describe('Home widgets · student@greenwood.demo (portal only)', () => {
+  const session = signedIn('student@greenwood.demo');
+
+  test('the staff employee home redirects a student to the portal', async () => {
+    const s = session();
+    const mark = s.mark();
+    await s.go('/employee');
+    expect(s.pathname()).toMatch(/^\/portal/);
     expect(s.calls.slice(mark).filter((c) => c.path.includes('/employees/highlights'))).toEqual([]);
   });
 });
