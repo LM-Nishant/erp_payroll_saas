@@ -624,7 +624,7 @@ export const leaveRequestService = {
       db.leaveRequest.findMany({
         where,
         include: requestInclude,
-        orderBy: [{ fromDate: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ fromDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
         ...toPageWindow(query),
       }),
       db.leaveRequest.count({ where }),

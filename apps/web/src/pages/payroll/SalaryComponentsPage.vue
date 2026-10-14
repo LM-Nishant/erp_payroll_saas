@@ -4,7 +4,6 @@ import {
   SALARY_CALC_TYPES,
   SALARY_COMPONENT_TYPES,
   STATUTORY_CODES,
-  type ApiListResponse,
   type PayrollSettingsDto,
   type SalaryCalcType,
   type SalaryComponentDto,
@@ -13,6 +12,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 import { label, useHrOptions } from '@/pages/hr/useHrOptions';
 
@@ -20,21 +20,19 @@ import { label, useHrOptions } from '@/pages/hr/useHrOptions';
 const auth = useAuthStore();
 const { institutions, loadBase } = useHrOptions();
 const institutionId = ref<string | null>(null);
-const items = ref<SalaryComponentDto[]>([]);
 const settings = ref<PayrollSettingsDto | null>(null);
-const loading = ref(false);
 const error = ref<string | null>(null);
 const canManage = computed(() => auth.can('payroll.manage'));
+const components = useServerList<SalaryComponentDto>('/api/v1/payroll/components', {
+  error,
+  pageSize: 50,
+  immediate: false,
+  params: () => ({ institutionId: institutionId.value ?? undefined }),
+});
+const { items, total, page, pageSize, loading } = components;
 
-async function load() {
-  loading.value = true;
-  error.value = null;
+async function loadSettings() {
   try {
-    const q = new URLSearchParams({ pageSize: '100' });
-    if (institutionId.value) q.set('institutionId', institutionId.value);
-    items.value = (
-      await apiFetch<ApiListResponse<SalaryComponentDto>>(`/api/v1/payroll/components?${q}`)
-    ).data;
     settings.value = institutionId.value
       ? (
           await apiFetch<{ data: PayrollSettingsDto }>(
@@ -44,14 +42,16 @@ async function load() {
       : null;
   } catch (e) {
     error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
   }
+}
+async function load() {
+  error.value = null;
+  await Promise.all([components.load(), loadSettings()]);
 }
 onMounted(async () => {
   await Promise.all([load(), loadBase()]);
 });
-watch(institutionId, load);
+watch(institutionId, loadSettings);
 
 const instName = (id: string | null) =>
   id ? (institutions.value.find((i) => i.id === id)?.name ?? id) : 'Organization default';
@@ -264,7 +264,16 @@ const opt = (values: readonly string[]) => values.map((value) => ({ value, title
     </v-card-text>
   </v-card>
 
-  <v-data-table :headers="headers" :items="items" :loading="loading" items-per-page="50">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :headers="headers"
+    :items="items"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.type`]="{ item }">{{ label(item.type) }}</template>
     <template #[`item.calc`]="{ item }">
       <code class="text-caption">{{ describe(item) }}</code>
@@ -293,7 +302,7 @@ const opt = (values: readonly string[]) => values.map((value) => ({ value, title
         />
       </template>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="720">
     <v-card :title="dialog.id ? 'Edit component' : 'New component'">

@@ -6,7 +6,12 @@ import {
   SUBSCRIPTION_STATUSES,
   type FeatureKey,
 } from '../licensing/features';
-import { idSchema, nameSchema, paginationQuerySchema } from './common';
+import {
+  idSchema,
+  nameSchema,
+  optionalPaginationQuerySchema,
+  paginationQuerySchema,
+} from './common';
 
 /*
  * Subscription / module licensing request schemas. All `.strict()` (unknown keys → 400).
@@ -185,6 +190,10 @@ export const listInvoicesQuerySchema = paginationQuerySchema
   .extend({ status: invoiceStatusSchema.optional() })
   .strict();
 export type ListInvoicesQuery = z.infer<typeof listInvoicesQuerySchema>;
+
+/** Plan catalog: full list by default (plan pickers); paged when page/pageSize is sent. */
+export const listPlansQuerySchema = optionalPaginationQuerySchema.strict();
+export type ListPlansQuery = z.infer<typeof listPlansQuerySchema>;
 
 export const platformReasonSchema = z.object({ reason: reasonSchema }).strict();
 

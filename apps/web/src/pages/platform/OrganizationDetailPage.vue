@@ -5,7 +5,6 @@ import {
   LIMIT_KEYS,
   LIMITS,
   SUBSCRIPTION_STATUSES,
-  type ApiListResponse,
   type FeatureKey,
   type InvoiceDto,
   type LimitKey,
@@ -19,6 +18,7 @@ import {
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiDownload, apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { invoiceStatusColor, invoiceStatusLabel } from '@/components/billing/billing';
 import InvoiceActions from '@/components/billing/InvoiceActions.vue';
 import InvoiceStatusDialog from '@/components/billing/InvoiceStatusDialog.vue';
@@ -34,9 +34,20 @@ const canBilling = computed(() => auth.can('platform.subscription.manage'));
 
 const org = ref<PlatformOrganizationDetailDto | null>(null);
 const subscription = ref<SubscriptionDto | null>(null);
-const invoices = ref<InvoiceDto[]>([]);
 const plans = ref<PlanDto[]>([]);
 const error = ref<string | null>(null);
+const {
+  items: invoices,
+  total: invoiceTotal,
+  page: invoicePage,
+  pageSize: invoicePageSize,
+  loading: invoicesLoading,
+  load: loadInvoices,
+} = useServerList<InvoiceDto>(() => `${base.value}/invoices`, {
+  enabled: () => canBilling.value,
+  immediate: false,
+  error,
+});
 const notice = ref<string | null>(null);
 
 async function loadOrg() {
@@ -45,12 +56,11 @@ async function loadOrg() {
 
 async function loadBilling() {
   if (!canBilling.value) return;
-  const [sub, inv] = await Promise.all([
+  const [sub] = await Promise.all([
     apiFetch<{ data: SubscriptionDto | null }>(`${base.value}/subscription`),
-    apiFetch<ApiListResponse<InvoiceDto>>(`${base.value}/invoices?pageSize=50`),
+    loadInvoices(),
   ]);
   subscription.value = sub.data;
-  invoices.value = inv.data;
   if (auth.can('platform.plan.manage') && plans.value.length === 0) {
     plans.value = (await apiFetch<{ data: PlanDto[] }>('/api/v1/platform/plans')).data;
   }
@@ -386,7 +396,17 @@ const downloadInvoice = (inv: InvoiceDto) =>
           New invoice
         </v-btn>
       </v-card-title>
-      <v-data-table :items="invoices" :headers="invoiceHeaders" density="compact">
+      <v-data-table-server
+        v-model:page="invoicePage"
+        v-model:items-per-page="invoicePageSize"
+        :items="invoices"
+        :headers="invoiceHeaders"
+        :loading="invoicesLoading"
+        :items-length="invoiceTotal"
+        :items-per-page-options="PAGE_SIZE_OPTIONS"
+        disable-sort
+        density="compact"
+      >
         <template #[`item.status`]="{ item }">
           <v-chip size="small" :color="invoiceStatusColor(item.status)">
             {{ invoiceStatusLabel(item.status) }}
@@ -409,7 +429,7 @@ const downloadInvoice = (inv: InvoiceDto) =>
           {{ money(item.amountCents, item.currency) }}
         </template>
         <template #[`item.dueAt`]="{ item }">{{ date(item.dueAt) }}</template>
-      </v-data-table>
+      </v-data-table-server>
     </v-card>
   </template>
 

@@ -297,7 +297,12 @@ export const categoryService = {
       ];
     }
     const [items, total] = await Promise.all([
-      tenantDb().assetCategory.findMany({ where, orderBy: [{ name: 'asc' }], skip, take }),
+      tenantDb().assetCategory.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        skip,
+        take,
+      }),
       tenantDb().assetCategory.count({ where }),
     ]);
     const counts = await tenantDb().asset.groupBy({

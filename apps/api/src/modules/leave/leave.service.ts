@@ -4,6 +4,8 @@ import type {
   LeaveAdjustmentInput,
   LeaveBalanceDto,
   LeavePolicyRuleInput,
+  ListLeavePoliciesQuery,
+  ListLeaveTypesQuery,
   UpdateLeavePolicyInput,
   UpdateLeaveTypeInput,
 } from '@erp/shared';
@@ -27,7 +29,11 @@ import {
   InvalidReferenceError,
   NotFoundError,
 } from '../../core/http/errors';
-import { toPageWindow } from '../../core/http/pagination';
+import {
+  toOptionalListResponse,
+  toOptionalPageWindow,
+  toPageWindow,
+} from '../../core/http/pagination';
 import { tenantDb, withTenant } from '../../core/tenancy';
 import {
   institutionResource,
@@ -375,13 +381,19 @@ export async function runYearEnd(
 export const leaveService = {
   /* ---- leave types ---- */
 
-  async listTypes(includeInactive = false) {
+  async listTypes(query: ListLeaveTypesQuery = {}) {
     assertAnyPermission('leave.view', 'leave.view_own', 'leave.manage');
-    const rows = await tenantDb().leaveType.findMany({
-      where: includeInactive ? {} : { status: 'ACTIVE' },
-      orderBy: { code: 'asc' },
-    });
-    return rows.map(toLeaveTypeDto);
+    const where: Prisma.LeaveTypeWhereInput =
+      query.includeInactive === 'true' ? {} : { status: 'ACTIVE' };
+    const [rows, total] = await Promise.all([
+      tenantDb().leaveType.findMany({
+        where,
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
+        ...toOptionalPageWindow(query),
+      }),
+      tenantDb().leaveType.count({ where }),
+    ]);
+    return toOptionalListResponse(rows.map(toLeaveTypeDto), total, query);
   },
 
   async createType(input: CreateLeaveTypeInput) {
@@ -432,7 +444,7 @@ export const leaveService = {
 
   /* ---- policies ---- */
 
-  async listPolicies() {
+  async listPolicies(query: ListLeavePoliciesQuery = {}) {
     const scope = await institutionWhere('leave.view');
     let where: Prisma.LeavePolicyWhereInput = {};
     if (scope) {
@@ -454,12 +466,16 @@ export const leaveService = {
         ],
       };
     }
-    const rows = await tenantDb().leavePolicy.findMany({
-      where,
-      include: policyInclude,
-      orderBy: [{ institutionId: 'asc' }, { groupId: 'asc' }, { name: 'asc' }],
-    });
-    return rows.map(toLeavePolicyDto);
+    const [rows, total] = await Promise.all([
+      tenantDb().leavePolicy.findMany({
+        where,
+        include: policyInclude,
+        orderBy: [{ institutionId: 'asc' }, { groupId: 'asc' }, { name: 'asc' }, { id: 'asc' }],
+        ...toOptionalPageWindow(query),
+      }),
+      tenantDb().leavePolicy.count({ where }),
+    ]);
+    return toOptionalListResponse(rows.map(toLeavePolicyDto), total, query);
   },
 
   async getPolicy(id: string) {

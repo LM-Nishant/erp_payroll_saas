@@ -14,6 +14,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { label, todayIso, useHrOptions, type Option } from './useHrOptions';
@@ -26,9 +27,20 @@ const auth = useAuthStore();
 const terms = useTerms();
 const { institutions, loadBase } = useHrOptions();
 const groups = ref<Option[]>([]);
+/** Every leave type (unpaged), for code lookup and the policy rule pickers. */
 const types = ref<LeaveTypeDto[]>([]);
-const policies = ref<LeavePolicyDto[]>([]);
 const error = ref<string | null>(null);
+const typeList = useServerList<LeaveTypeDto>('/api/v1/leave/types', {
+  error,
+  immediate: false,
+  params: () => ({ includeInactive: true }),
+});
+const policyList = useServerList<LeavePolicyDto>('/api/v1/leave/policies', {
+  error,
+  immediate: false,
+});
+const { items: typeRows } = typeList;
+const { items: policies } = policyList;
 const notice = ref<string | null>(null);
 const canManage = computed(() => auth.can('leave.manage'));
 
@@ -42,12 +54,12 @@ const run = async (fn: () => Promise<void>) => {
 };
 async function load() {
   await run(async () => {
-    [types.value, policies.value] = await Promise.all([
-      apiFetch<{ data: LeaveTypeDto[] }>('/api/v1/leave/types?includeInactive=true').then(
-        (r) => r.data,
-      ),
-      apiFetch<{ data: LeavePolicyDto[] }>('/api/v1/leave/policies').then((r) => r.data),
+    const [all] = await Promise.all([
+      apiFetch<{ data: LeaveTypeDto[] }>('/api/v1/leave/types?includeInactive=true'),
+      typeList.load(),
+      policyList.load(),
     ]);
+    types.value = all.data;
   });
 }
 onMounted(async () => {
@@ -314,6 +326,14 @@ const typeHeaders = [
   { title: 'Status', key: 'status' },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ];
+const policyHeaders = [
+  { title: 'Name', key: 'name' },
+  { title: 'Applies to', key: 'scope' },
+  { title: 'Employment type', key: 'employmentType' },
+  { title: 'Entitlements', key: 'rules' },
+  { title: 'Status', key: 'status' },
+  { title: '', key: 'actions', align: 'end' as const },
+];
 const employmentTypes = EMPLOYMENT_TYPES.map((value) => ({ value, title: label(value) }));
 const frequencies = ACCRUAL_FREQUENCIES.map((value) => ({ value, title: label(value) }));
 const yesNo = (v: boolean) => (v ? 'Yes' : 'No');
@@ -372,7 +392,17 @@ const ruleSummary = (r: LeavePolicyRuleDto) => {
       New leave type
     </v-btn>
   </div>
-  <v-data-table :items="types" :headers="typeHeaders" density="compact">
+  <v-data-table-server
+    v-model:page="typeList.page.value"
+    v-model:items-per-page="typeList.pageSize.value"
+    :items="typeRows"
+    :headers="typeHeaders"
+    density="compact"
+    :items-length="typeList.total.value"
+    :loading="typeList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.isPaid`]="{ item }">{{ yesNo(item.isPaid) }}</template>
     <template #[`item.allowHalfDay`]="{ item }">{{ yesNo(item.allowHalfDay) }}</template>
     <template #[`item.sandwichRule`]="{ item }">{{ yesNo(item.sandwichRule) }}</template>
@@ -391,7 +421,7 @@ const ruleSummary = (r: LeavePolicyRuleDto) => {
         @click="openType(item)"
       />
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <div class="d-flex align-center mt-8 mb-2">
     <h3 class="text-h6">Policies</h3>
@@ -406,45 +436,42 @@ const ruleSummary = (r: LeavePolicyRuleDto) => {
       New policy
     </v-btn>
   </div>
-  <v-table density="compact">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Applies to</th>
-        <th>Employment type</th>
-        <th>Entitlements</th>
-        <th>Status</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="p in policies" :key="p.id">
-        <td>{{ p.name }}</td>
-        <td>{{ scopeName(p) }}</td>
-        <td>{{ p.employmentType ? label(p.employmentType) : 'All' }}</td>
-        <td>
-          {{
-            p.rules
-              .map(
-                (r) =>
-                  `${typeCode(r.leaveTypeId)} ${r.annualQuota}/yr (${label(r.accrualFrequency)})${ruleSummary(r)}`,
-              )
-              .join(', ')
-          }}
-        </td>
-        <td>{{ label(p.status) }}</td>
-        <td class="text-right">
-          <v-btn
-            v-if="canManage"
-            size="small"
-            variant="text"
-            icon="mdi-pencil"
-            @click="openPolicy(p)"
-          />
-        </td>
-      </tr>
-    </tbody>
-  </v-table>
+  <v-data-table-server
+    v-model:page="policyList.page.value"
+    v-model:items-per-page="policyList.pageSize.value"
+    :items-length="policyList.total.value"
+    :loading="policyList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    :items="policies"
+    :headers="policyHeaders"
+    density="compact"
+    disable-sort
+  >
+    <template #[`item.scope`]="{ item: p }">{{ scopeName(p) }}</template>
+    <template #[`item.employmentType`]="{ item: p }">
+      {{ p.employmentType ? label(p.employmentType) : 'All' }}
+    </template>
+    <template #[`item.rules`]="{ item: p }">
+      {{
+        p.rules
+          .map(
+            (r) =>
+              `${typeCode(r.leaveTypeId)} ${r.annualQuota}/yr (${label(r.accrualFrequency)})${ruleSummary(r)}`,
+          )
+          .join(', ')
+      }}
+    </template>
+    <template #[`item.status`]="{ item: p }">{{ label(p.status) }}</template>
+    <template #[`item.actions`]="{ item: p }">
+      <v-btn
+        v-if="canManage"
+        size="small"
+        variant="text"
+        icon="mdi-pencil"
+        @click="openPolicy(p)"
+      />
+    </template>
+  </v-data-table-server>
 
   <template v-if="canManage">
     <h3 class="text-h6 mt-8 mb-2">Accrual &amp; year-end</h3>

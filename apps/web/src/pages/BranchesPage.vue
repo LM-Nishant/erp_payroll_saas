@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { ApiListResponse } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { useHrOptions } from './hr/useHrOptions';
@@ -21,31 +21,19 @@ const auth = useAuthStore();
 const terms = useTerms();
 const { institutions, loadBase } = useHrOptions();
 const institutionId = ref<string | null>(null);
-const items = ref<BranchRow[]>([]);
-const loading = ref(false);
 const error = ref<string | null>(null);
-
-async function load() {
-  if (!institutionId.value) return;
-  loading.value = true;
-  error.value = null;
-  try {
-    items.value = (
-      await apiFetch<ApiListResponse<BranchRow>>(
-        `/api/v1/campuses?pageSize=100&institutionId=${institutionId.value}`,
-      )
-    ).data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
+const { items, total, page, pageSize, loading, load } = useServerList<BranchRow>(
+  '/api/v1/campuses',
+  {
+    params: () => ({ institutionId: institutionId.value }),
+    enabled: () => !!institutionId.value,
+    error,
+  },
+);
 
 onMounted(async () => {
   await loadBase();
   institutionId.value = institutions.value[0]?.id ?? null;
-  await load();
 });
 
 const dialog = reactive({
@@ -121,7 +109,6 @@ const headers = [
       density="compact"
       hide-details
       style="max-width: 320px"
-      @update:model-value="load"
     />
     <v-spacer />
     <v-btn
@@ -141,7 +128,16 @@ const headers = [
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.name`]="{ item }">
       {{ item.name }}
       <v-chip v-if="item.isMain" size="x-small" color="primary" class="ml-2">Main</v-chip>
@@ -167,7 +163,7 @@ const headers = [
         @click="remove(item)"
       />
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="480">
     <v-card :title="dialog.id ? 'Edit branch' : 'New branch'">

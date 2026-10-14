@@ -9,6 +9,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { label, todayIso, useHrOptions } from '@/pages/hr/useHrOptions';
@@ -18,36 +19,36 @@ const auth = useAuthStore();
 const terms = useTerms();
 const { institutions, loadBase } = useHrOptions();
 const institutionId = ref<string | null>(null);
-const items = ref<SalaryStructureDto[]>([]);
 const components = ref<SalaryComponentDto[]>([]);
-const loading = ref(false);
 const error = ref<string | null>(null);
 const canManage = computed(() => auth.can('payroll.manage'));
+const structures = useServerList<SalaryStructureDto>('/api/v1/payroll/structures', {
+  error,
+  immediate: false,
+  params: () => ({ institutionId: institutionId.value ?? undefined }),
+});
+const { items, total, page, pageSize, loading } = structures;
 
-async function load() {
-  loading.value = true;
-  error.value = null;
+/** Active components of the selected scope, for the structure editor pickers. */
+async function loadComponents() {
   try {
-    const q = new URLSearchParams({ pageSize: '100' });
+    const q = new URLSearchParams({ pageSize: '100', status: 'ACTIVE' });
     if (institutionId.value) q.set('institutionId', institutionId.value);
-    [items.value, components.value] = await Promise.all([
-      apiFetch<ApiListResponse<SalaryStructureDto>>(`/api/v1/payroll/structures?${q}`).then(
-        (r) => r.data,
-      ),
-      apiFetch<ApiListResponse<SalaryComponentDto>>(
-        `/api/v1/payroll/components?${q}&status=ACTIVE`,
-      ).then((r) => r.data),
-    ]);
+    components.value = (
+      await apiFetch<ApiListResponse<SalaryComponentDto>>(`/api/v1/payroll/components?${q}`)
+    ).data;
   } catch (e) {
     error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
   }
+}
+async function load() {
+  error.value = null;
+  await Promise.all([structures.load(), loadComponents()]);
 }
 onMounted(async () => {
   await Promise.all([load(), loadBase()]);
 });
-watch(institutionId, load);
+watch(institutionId, loadComponents);
 
 const instName = (id: string) => institutions.value.find((i) => i.id === id)?.name ?? id;
 /** Statutory components (PF, ESI, PT, TDS…) are applied automatically and never listed. */
@@ -307,8 +308,13 @@ const types = computed(() =>
     {{ error }}
   </v-alert>
 
-  <v-data-table
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
     v-model:expanded="expanded"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
     :headers="headers"
     :items="items"
     :loading="loading"
@@ -349,7 +355,7 @@ const types = computed(() =>
         </td>
       </tr>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="900" scrollable>
     <v-card :title="dialog.structureId ? `New version of ${dialog.code}` : 'New salary structure'">

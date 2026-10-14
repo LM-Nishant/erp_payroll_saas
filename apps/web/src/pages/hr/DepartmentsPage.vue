@@ -2,6 +2,7 @@
 import type { ApiListResponse, DesignationDto } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { useHrOptions } from './useHrOptions';
@@ -20,32 +21,35 @@ const auth = useAuthStore();
 const terms = useTerms();
 const { institutions, loadBase } = useHrOptions();
 const institutionId = ref<string | null>(null);
-const items = ref<DepartmentRow[]>([]);
 const designations = ref<DesignationDto[]>([]);
-const loading = ref(false);
 const error = ref<string | null>(null);
 /** Designations (roles inside a department) are part of the HR module. */
 const showRoles = computed(() => auth.hasFeature('hr') && auth.can('designation.view'));
+const departments = useServerList<DepartmentRow>('/api/v1/departments', {
+  error,
+  immediate: false,
+  enabled: () => !!institutionId.value,
+  params: () => ({ institutionId: institutionId.value ?? undefined }),
+});
+const { items, total, page, pageSize, loading } = departments;
 
+async function loadRoles() {
+  designations.value =
+    showRoles.value && institutionId.value
+      ? (
+          await apiFetch<ApiListResponse<DesignationDto>>(
+            `/api/v1/designations?pageSize=100&institutionId=${institutionId.value}`,
+          )
+        ).data
+      : [];
+}
 async function load() {
   if (!institutionId.value) return;
-  loading.value = true;
   error.value = null;
   try {
-    [items.value, designations.value] = await Promise.all([
-      apiFetch<ApiListResponse<DepartmentRow>>(
-        `/api/v1/departments?pageSize=100&institutionId=${institutionId.value}`,
-      ).then((r) => r.data),
-      showRoles.value
-        ? apiFetch<ApiListResponse<DesignationDto>>('/api/v1/designations?pageSize=100').then(
-            (r) => r.data,
-          )
-        : Promise.resolve([]),
-    ]);
+    await Promise.all([departments.load(), loadRoles()]);
   } catch (e) {
     error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
   }
 }
 
@@ -155,7 +159,7 @@ const headers = computed(() => [
       density="compact"
       hide-details
       style="max-width: 320px"
-      @update:model-value="load"
+      @update:model-value="loadRoles"
     />
     <v-spacer />
     <v-btn
@@ -171,7 +175,16 @@ const headers = computed(() => [
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.roles`]="{ item }">
       <v-chip v-for="r in rolesOf(item.id)" :key="r.id" size="small" class="mr-1 my-1">
         {{ r.name }}
@@ -202,7 +215,7 @@ const headers = computed(() => [
         @click="remove(item)"
       />
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="480">
     <v-card :title="dialog.id ? 'Edit department' : 'New department'">

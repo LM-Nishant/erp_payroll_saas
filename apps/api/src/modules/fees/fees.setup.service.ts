@@ -5,6 +5,7 @@ import type {
   CreateFeeStructureInput,
   CreateLateRuleInput,
   FeeInstallmentInput,
+  ListLateRulesQuery,
   UpdateConcessionInput,
   UpdateFeeHeadInput,
   UpdateFeeStructureInput,
@@ -19,7 +20,11 @@ import {
   NotFoundError,
   ValidationError,
 } from '../../core/http/errors';
-import { toPageWindow } from '../../core/http/pagination';
+import {
+  toOptionalListResponse,
+  toOptionalPageWindow,
+  toPageWindow,
+} from '../../core/http/pagination';
 import { tenantDb, withTenant } from '../../core/tenancy';
 import { institutionScope, type Tx } from '../finance/finance.ledger';
 import { fromPaise, toPaise } from '../finance/finance.logic';
@@ -68,7 +73,7 @@ export const feeHeadService = {
     const [rows, total] = await Promise.all([
       db.feeHead.findMany({
         where: scoped,
-        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }],
+        orderBy: [{ sortOrder: 'asc' }, { name: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db.feeHead.count({ where: scoped }),
@@ -174,13 +179,20 @@ async function loadLateRule(id: string) {
 }
 
 export const lateRuleService = {
-  async list(query: { institutionId?: string }) {
+  async list(query: ListLateRulesQuery = {}) {
     const where = andScope(
       query.institutionId ? { institutionId: query.institutionId } : {},
       await scopeWhere(p(), 'fee.view', 'finance'),
     );
-    const rows = await tenantDb().feeLateRule.findMany({ where, orderBy: { name: 'asc' } });
-    return rows.map(toLateRuleDto);
+    const [rows, total] = await Promise.all([
+      tenantDb().feeLateRule.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        ...toOptionalPageWindow(query),
+      }),
+      tenantDb().feeLateRule.count({ where }),
+    ]);
+    return toOptionalListResponse(rows.map(toLateRuleDto), total, query);
   },
 
   async create(input: CreateLateRuleInput) {

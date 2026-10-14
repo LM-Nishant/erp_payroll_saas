@@ -258,7 +258,7 @@ export const regularizationService = {
       db.attendanceRegularization.findMany({
         where,
         include: { employee: { select: { employeeCode: true, displayName: true } } },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...toPageWindow(query),
       }),
       db.attendanceRegularization.count({ where }),

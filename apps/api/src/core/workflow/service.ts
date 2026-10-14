@@ -325,7 +325,7 @@ export const workflowInstancesService = {
     const [rows, total] = await Promise.all([
       db.workflowInstance.findMany({
         where,
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...toPageWindow(query),
       }),
       db.workflowInstance.count({ where }),
@@ -359,7 +359,7 @@ export const workflowInstancesService = {
       db.workflowStepAssignee.findMany({
         where,
         include: { stepInstance: { include: { instance: true } } },
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db.workflowStepAssignee.count({ where }),

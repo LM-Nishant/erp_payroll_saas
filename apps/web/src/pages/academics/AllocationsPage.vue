@@ -7,19 +7,26 @@ import type {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 import { teacherOptions, useAcademicOptions } from './useAcademics';
 
 const auth = useAuthStore();
 const { sections, load: loadOptions } = useAcademicOptions();
 const sectionId = ref('');
-const items = ref<SubjectAllocationDto[]>([]);
 const subjects = ref<SubjectDto[]>([]);
 const teachers = ref<{ id: string; title: string }[]>([]);
 const classTeacher = ref<ClassTeacherDto | null>(null);
 const classTeacherId = ref<string | null>(null);
 const error = ref<string | null>(null);
-const loading = ref(false);
+const allocations = useServerList<SubjectAllocationDto>('/api/v1/subject-allocations', {
+  error,
+  pageSize: 50,
+  immediate: false,
+  enabled: () => !!sectionId.value,
+  params: () => ({ classSectionId: sectionId.value }),
+});
+const { items, total, page, pageSize, loading } = allocations;
 const form = reactive({ subjectId: '', teacherUserId: '' });
 const canManage = computed(() => auth.can('subject.manage'));
 const section = computed(() => sections.value.find((s) => s.id === sectionId.value));
@@ -31,18 +38,12 @@ const headers = [
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ];
 
-async function load() {
-  if (!sectionId.value) {
-    items.value = [];
-    return;
-  }
-  loading.value = true;
+/** Subjects, class teacher and teacher options of the selected section. */
+async function loadSection() {
+  if (!sectionId.value) return;
   error.value = null;
   try {
-    const [a, s, ct] = await Promise.all([
-      apiFetch<ApiListResponse<SubjectAllocationDto>>(
-        `/api/v1/subject-allocations?classSectionId=${sectionId.value}&pageSize=100`,
-      ),
+    const [s, ct] = await Promise.all([
       apiFetch<ApiListResponse<SubjectDto>>(
         `/api/v1/subjects?classSectionId=${sectionId.value}&pageSize=100`,
       ),
@@ -50,7 +51,6 @@ async function load() {
         `/api/v1/subject-allocations/class-teacher/${sectionId.value}`,
       ),
     ]);
-    items.value = a.data;
     subjects.value = s.data;
     classTeacher.value = ct.data;
     classTeacherId.value = ct.data?.teacherUserId ?? null;
@@ -58,9 +58,10 @@ async function load() {
       teachers.value = await teacherOptions(section.value.institutionId);
   } catch (e) {
     error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
   }
+}
+async function load() {
+  await Promise.all([allocations.load(), loadSection()]);
 }
 async function allocate() {
   try {
@@ -98,7 +99,7 @@ async function saveClassTeacher() {
   }
 }
 onMounted(loadOptions);
-watch(sectionId, load);
+watch(sectionId, loadSection);
 </script>
 <template>
   <h2 class="text-h5 mb-4">Subject-teacher allocation</h2>
@@ -156,7 +157,15 @@ watch(sectionId, load);
         >Allocate</v-btn
       >
     </div>
-    <v-data-table :headers="headers" :items="items" :loading="loading" items-per-page="-1"
+    <v-data-table-server
+      v-model:page="page"
+      v-model:items-per-page="pageSize"
+      :headers="headers"
+      :items="items"
+      :loading="loading"
+      :items-length="total"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
       ><template #[`item.actions`]="{ item }"
         ><v-btn
           v-if="canManage"
@@ -166,6 +175,6 @@ watch(sectionId, load);
           color="error"
           @click="remove(item)" /></template
       ><template #bottom
-    /></v-data-table>
+    /></v-data-table-server>
   </template>
 </template>

@@ -1,4 +1,5 @@
 import { expect, type Browser, type Page, type Response } from '@playwright/test';
+import { guideUser, installStepCapture, logNav } from './guide-steps';
 import { PASSWORD, type DemoUser } from './manifest';
 
 export interface ApiCall {
@@ -41,7 +42,9 @@ export class AppSession {
 
   static async open(browser: Browser): Promise<AppSession> {
     const context = await browser.newContext({ viewport: { width: 1440, height: 900 } });
-    return new AppSession(await context.newPage());
+    const page = await context.newPage();
+    installStepCapture(page);
+    return new AppSession(page);
   }
 
   async close() {
@@ -123,6 +126,7 @@ export class AppSession {
 
   /** Logs in and waits for the workspace chooser (home page). */
   async signIn(u: DemoUser) {
+    guideUser(this.page, u.email);
     const res = await this.login(u);
     expect(res.status(), `login ${u.email}`).toBe(200);
     await expect(this.page.getByText(`Signed in as ${u.name}`)).toBeVisible();
@@ -134,6 +138,7 @@ export class AppSession {
    * a reload would spend an /auth/refresh call, which is rate limited.
    */
   async go(path: string) {
+    logNav(this.page, path);
     await this.page.evaluate(async (to) => {
       const el = document.querySelector('#app') as
         | (Element & {

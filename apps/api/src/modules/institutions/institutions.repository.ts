@@ -28,7 +28,7 @@ export const institutionRepository = {
         where,
         skip: filter.skip,
         take: filter.take,
-        orderBy: { name: 'asc' },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
       }),
       db.institution.count({ where }),
     ]);

@@ -1,7 +1,8 @@
 <script setup lang="ts">
-import type { ApiListResponse, SecretDto } from '@erp/shared';
-import { computed, onMounted, reactive, ref } from 'vue';
+import type { SecretDto } from '@erp/shared';
+import { computed, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -9,26 +10,13 @@ import { useAuthStore } from '@/stores/auth';
  * metadata; values are typed into password fields and sent once.
  */
 const auth = useAuthStore();
-const items = ref<SecretDto[]>([]);
-const error = ref<string | null>(null);
-const loading = ref(false);
+const { items, total, page, pageSize, loading, error, load } =
+  useServerList<SecretDto>('/api/v1/secrets');
 const canManage = computed(() => auth.can('secret.manage'));
 
 const dialog = ref(false);
 const rotating = ref<SecretDto | null>(null);
 const form = reactive({ kind: 'smtp', name: 'default', description: '', value: '', metadata: '' });
-
-async function load() {
-  loading.value = true;
-  try {
-    items.value = (await apiFetch<ApiListResponse<SecretDto>>('/api/v1/secrets?pageSize=100')).data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
-onMounted(load);
 
 function openCreate() {
   rotating.value = null;
@@ -105,7 +93,16 @@ const headers = [
     Secret values are encrypted and write-only — they can be replaced (rotated) but never viewed.
   </v-alert>
   <v-alert v-if="error" type="error" class="mb-4" closable>{{ error }}</v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.masked`]="{ item }">
       <code>{{ item.masked }}</code>
       <span class="text-caption ml-2">fp {{ item.fingerprint.slice(0, 8) }}</span>
@@ -125,7 +122,7 @@ const headers = [
         <v-btn size="small" variant="text" icon="mdi-delete" title="Delete" @click="remove(item)" />
       </template>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog" max-width="520">
     <v-card :title="rotating ? `Rotate ${rotating.kind}/${rotating.name}` : 'Add secret'">

@@ -34,7 +34,7 @@ export const userRepository = {
       db.organizationMembership.findMany({
         where,
         include: membershipInclude,
-        orderBy: { createdAt: 'asc' },
+        orderBy: [{ createdAt: 'asc' }, { id: 'asc' }],
         skip: filter.skip,
         take: filter.take,
       }),

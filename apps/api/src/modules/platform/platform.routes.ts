@@ -9,6 +9,7 @@ import {
   idParamSchema,
   idSchema,
   listInvoicesQuerySchema,
+  listPlansQuerySchema,
   platformBillingSettingsSchema,
   platformInvoicesQuerySchema,
   listPlatformAuditLogsQuerySchema,
@@ -139,8 +140,8 @@ platformRouter.get(
 platformRouter.get(
   '/plans',
   requirePlatformPermission('platform.plan.manage'),
-  async (_req, res) => {
-    res.json({ data: await platformBillingService.listPlans() });
+  async (req, res) => {
+    res.json(await platformBillingService.listPlans(parseInput(listPlansQuerySchema, req.query)));
   },
 );
 

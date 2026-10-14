@@ -27,7 +27,7 @@ export const departmentRepository = {
         where,
         skip: filter.skip,
         take: filter.take,
-        orderBy: { name: 'asc' },
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
       }),
       db.department.count({ where }),
     ]);

@@ -240,7 +240,7 @@ export const allocationService = {
       tenantDb().subjectAllocation.findMany({
         where,
         include: allocationInclude,
-        orderBy: [{ classSectionId: 'asc' }, { createdAt: 'asc' }],
+        orderBy: [{ classSectionId: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       tenantDb().subjectAllocation.count({ where }),

@@ -1,5 +1,6 @@
 import { test } from '@playwright/test';
 import { AppSession } from './app';
+import { registerResultShot } from './guide-steps';
 import { user } from './manifest';
 
 /**
@@ -13,6 +14,7 @@ export function signedIn(email: string): () => AppSession {
     s = await AppSession.open(browser);
     await s.signIn(user(email));
   });
+  registerResultShot(() => s?.page);
   test.afterAll(async () => {
     await s?.close();
   });

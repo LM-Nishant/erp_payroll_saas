@@ -538,17 +538,20 @@ export const attendanceService = {
 
   /* ---- period locks ---- */
 
-  async listLocks(institutionId?: string) {
+  async listLocks(query: { institutionId?: string; page: number; pageSize: number }) {
     const where = andScope<Prisma.AttendancePeriodLockWhereInput>(
-      institutionId ? { institutionId } : {},
+      query.institutionId ? { institutionId: query.institutionId } : {},
       await institutionWhere('attendance.view'),
     );
-    const rows = await tenantDb().attendancePeriodLock.findMany({
-      where,
-      orderBy: [{ periodStart: 'desc' }],
-      take: 500,
-    });
-    return rows.map(toLockDto);
+    const [rows, total] = await Promise.all([
+      tenantDb().attendancePeriodLock.findMany({
+        where,
+        orderBy: [{ periodStart: 'desc' }, { id: 'asc' }],
+        ...toPageWindow(query),
+      }),
+      tenantDb().attendancePeriodLock.count({ where }),
+    ]);
+    return { items: rows.map(toLockDto), total };
   },
 
   /**

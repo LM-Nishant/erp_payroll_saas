@@ -114,7 +114,7 @@ export const holidayService = {
     const rows = await tenantDb().holidayCalendar.findMany({
       where,
       include: { _count: { select: { holidays: true } } },
-      orderBy: [{ year: 'desc' }, { scope: 'asc' }, { name: 'asc' }],
+      orderBy: [{ year: 'desc' }, { scope: 'asc' }, { name: 'asc' }, { id: 'asc' }],
       take: 2000,
     });
     const allowed: CalendarWithCount[] = [];

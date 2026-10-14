@@ -1,15 +1,18 @@
 <script setup lang="ts">
 import { ASSET_CATEGORY_KINDS, DEPRECIATION_METHODS } from '@erp/shared';
-import type { ApiListResponse, AssetAttributeDef, AssetCategoryDto } from '@erp/shared';
+import type { AssetAttributeDef, AssetCategoryDto } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 import { clean, label, useAssetOptions, opts } from './assetUi';
 
 const auth = useAuthStore();
 const { institutions, loadBase } = useAssetOptions();
-const items = ref<AssetCategoryDto[]>([]);
-const error = ref<string | null>(null);
+const { items, total, page, pageSize, loading, error, load } = useServerList<AssetCategoryDto>(
+  '/api/v1/assets/categories',
+  { immediate: false },
+);
 const open = ref(false);
 const editing = ref<AssetCategoryDto | null>(null);
 const blank = () => ({
@@ -37,15 +40,6 @@ const headers = [
   { title: '', key: 'actions', sortable: false },
 ];
 
-async function load() {
-  try {
-    items.value = (
-      await apiFetch<ApiListResponse<AssetCategoryDto>>('/api/v1/assets/categories?pageSize=100')
-    ).data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  }
-}
 function openForm(c?: AssetCategoryDto) {
   editing.value = c ?? null;
   Object.assign(
@@ -140,7 +134,18 @@ onMounted(async () => {
   <v-alert v-if="error" type="error" class="mb-3" closable @click:close="error = null">{{
     error
   }}</v-alert>
-  <v-data-table :headers="headers" :items="items" item-value="id" density="compact">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :headers="headers"
+    :items="items"
+    item-value="id"
+    density="compact"
+    :items-length="total"
+    :loading="loading"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.kind`]="{ item }">{{ label(item.kind) }}</template>
     <template #[`item.depreciationMethod`]="{ item }"
       >{{ item.depreciationMethod }}
@@ -157,7 +162,7 @@ onMounted(async () => {
         <v-btn icon="mdi-delete" size="small" variant="text" @click="remove(item)" />
       </template>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="open" max-width="820">
     <v-card :title="editing ? `Edit ${editing.name}` : 'New category'">

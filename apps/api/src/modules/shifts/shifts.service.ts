@@ -115,7 +115,11 @@ export const shiftService = {
     );
     const db = tenantDb();
     const [rows, total] = await Promise.all([
-      db.shift.findMany({ where, orderBy: [{ code: 'asc' }], ...toPageWindow(query) }),
+      db.shift.findMany({
+        where,
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
+        ...toPageWindow(query),
+      }),
       db.shift.count({ where }),
     ]);
     return { items: rows.map(toShiftDto), total };
@@ -226,7 +230,7 @@ export const shiftService = {
       db.shiftAssignment.findMany({
         where,
         include: { employee: { select: { employeeCode: true, displayName: true } } },
-        orderBy: [{ effectiveFrom: 'desc' }],
+        orderBy: [{ effectiveFrom: 'desc' }, { id: 'desc' }],
         ...toPageWindow(query),
       }),
       db.shiftAssignment.count({ where }),

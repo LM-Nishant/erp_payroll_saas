@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { codeSchema, idSchema, nameSchema, paginationQuerySchema } from './common';
+import {
+  codeSchema,
+  idSchema,
+  nameSchema,
+  optionalPaginationQuerySchema,
+  paginationQuerySchema,
+} from './common';
 import { isoDateSchema } from './hr';
 
 const text = (max: number) => z.string().trim().max(max);
@@ -68,6 +74,11 @@ export const createLateRuleSchema = z
   })
   .strict();
 export type CreateLateRuleInput = z.infer<typeof createLateRuleSchema>;
+/** Late-fee rules: full list by default (pickers); paged when page/pageSize is sent. */
+export const listLateRulesQuerySchema = optionalPaginationQuerySchema
+  .extend({ institutionId: idSchema.optional() })
+  .strict();
+export type ListLateRulesQuery = z.infer<typeof listLateRulesQuerySchema>;
 export const updateLateRuleSchema = createLateRuleSchema
   .omit({ institutionId: true })
   .partial()

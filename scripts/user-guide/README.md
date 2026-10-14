@@ -23,3 +23,16 @@ when it is shown).
    ```
 
 Open the file in Word and accept "update fields" to fill the table of contents.
+
+## Step-by-step workflow guide
+
+Every button click, field entry and result in the e2e suite can be recorded as a narrated workflow, with the clicked button outlined in red in each screenshot.
+
+```bash
+pnpm -C apps/api db:sync-roles
+cd apps/e2e && GUIDE_STEPS=/tmp/erp-steps E2E_WORKERS=2 pnpm exec playwright test --reporter=line
+cd ../.. && /tmp/guide-venv/bin/python scripts/user-guide/build_guide.py workflows \
+  /tmp/erp-steps docs/user-guide/ERP-Workflows-Guide.docx scripts/demo/demo-manifest.json /tmp/erp-guide
+```
+
+Capture is off unless `GUIDE_STEPS` is set. The last argument, the crawler output directory, is optional; when given, it maps URLs to menu names. The builder skips failed tests and access-check specs.

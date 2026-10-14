@@ -334,7 +334,7 @@ def main():
         'After login you land on the workspace chooser. Pick a workspace card (for example Institution, HR & Payroll, My workspace or Portal).',
         'Use the left sidebar to move between pages of the workspace. The top bar shows the institution switcher, notifications, and your account menu (change password, sign out).',
     ]:
-        doc.add_paragraph(s, style='List Number')
+        stepp(doc, n, s)
     if roles:
         first = roles[1][1] if len(roles) > 1 else roles[0][1]
         key = roles[1][0] if len(roles) > 1 else roles[0][0]
@@ -503,5 +503,204 @@ def main():
     print('saved', OUT, os.path.getsize(OUT) // 1024, 'KB')
 
 
+
+
+# ---------------------------------------------------------------------------------------------
+# Part 2: step-by-step workflows captured from the e2e suite (GUIDE_STEPS=<dir>).
+# ---------------------------------------------------------------------------------------------
+
+MODULE_NAMES = {
+    'login': 'Login & sign-in', 'passwords': 'Passwords', 'users': 'Users & roles',
+    'users-branding': 'Users & branding', 'admin-group': 'Group administration',
+    'platform': 'Platform', 'platform-admin': 'Platform administration', 'subscription': 'Subscription & UPI billing',
+    'licence': 'Licences & features', 'students': 'Students', 'admissions-actions': 'Admissions',
+    'academics': 'Academics (classes, subjects, timetable)', 'education-depth': 'Academics in depth',
+    'student-attendance': 'Student attendance', 'exams': 'Examinations & results', 'certificates': 'Certificates',
+    'fees': 'Fees', 'fees-depth': 'Fees in depth (UPI, refunds, concessions)', 'finance': 'Finance & accounts',
+    'hr': 'HR (employees, departments, designations)', 'hr-attendance': 'Employee attendance & regularization',
+    'leave': 'Leave', 'leave-balances': 'Leave balances', 'payroll': 'Payroll', 'self-service': 'Employee self-service',
+    'portal': 'Student / parent portal', 'hostel': 'Hostel', 'transport': 'Transport', 'library': 'Library',
+    'assets': 'Assets', 'assets-lifecycle': 'Asset lifecycle', 'documents': 'Documents',
+    'communication': 'Communication & messages', 'notifications-approvals': 'Notifications & approvals',
+    'notification-links': 'Notification links', 'home-widgets': 'Home widgets', 'dashboard': 'Dashboard',
+    'roles': 'Role access', 'education-roles': 'Education roles access', 'smoke-greenwood': 'Smoke test (all pages)',
+    'company-acme': 'Company (non-school) tenant',
+}
+SKIP_MODULES = {'roles', 'education-roles', 'smoke-greenwood', 'licence', 'notification-links'}
+
+
+def path_titles(src):
+    titles = {}
+    if not src or not os.path.isdir(src):
+        return titles
+    for k in os.listdir(src):
+        f = os.path.join(src, k, 'pages.json')
+        if os.path.exists(f):
+            for p in json.load(open(f))['pages']:
+                titles.setdefault(p['path'], (p['menu'], WORKSPACE_INFO.get(p['layout'], p['layout'])))
+    return titles
+
+
+def role_label(users, email):
+    u = users.get(email or '', {})
+    rk = (u.get('roles') or [{}])[0].get('key')
+    name = ROLE_INFO.get(rk, (rk or 'User',))[0]
+    return '%s – %s (%s)' % (name, u.get('name', ''), email) if email else 'User'
+
+
+def stepp(doc, n, text):
+    para = doc.add_paragraph()
+    para.paragraph_format.left_indent = Inches(0.3)
+    para.paragraph_format.first_line_indent = Inches(-0.3)
+    para.add_run('%d.  ' % n).bold = True
+    if text:
+        para.add_run(text)
+    return para
+
+
+def build_workflows(steps_dir, out, manifest_path, crawl_dir=None):
+    manifest = json.load(open(manifest_path))
+    users = {u['email']: u for u in manifest['users']}
+    titles = path_titles(crawl_dir)
+    recs = [json.loads(l) for l in open(os.path.join(steps_dir, 'steps.jsonl')) if l.strip()]
+    recs.sort(key=lambda r: (r.get('pid', 0), r.get('seq', 0)))
+    tests = {}
+    order = []
+    for r in recs:
+        if not r.get('testId'):
+            continue
+        k = r['testId']
+        if k not in tests:
+            tests[k] = {'file': r['file'], 'title': r['title'], 'steps': []}
+            order.append(k)
+        tests[k]['steps'].append(r)
+    modules = {}
+    for k in order:
+        t = tests[k]
+        res = [s for s in t['steps'] if s['action'] == 'result']
+        if res and res[-1].get('status') not in ('passed', None):
+            continue
+        mod = os.path.basename(t['file']).replace('.spec.ts', '')
+        if mod in SKIP_MODULES:
+            continue
+        modules.setdefault(mod, []).append(t)
+
+    doc = Document()
+    sec = doc.sections[0]
+    sec.left_margin = sec.right_margin = Inches(0.8)
+    sec.top_margin = sec.bottom_margin = Inches(0.7)
+    doc.styles['Normal'].font.name = 'Calibri'
+    doc.styles['Normal'].font.size = Pt(10.5)
+    for _ in range(6):
+        doc.add_paragraph()
+    t = doc.add_paragraph()
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = t.add_run('Education ERP · HRMS · Payroll')
+    r.bold = True
+    r.font.size = Pt(30)
+    r.font.color.rgb = RGBColor(0x1E, 0x3A, 0x8A)
+    t = doc.add_paragraph()
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    t.add_run('Step-by-step workflows – create, edit, delete, apply, approve, reject, cancel, pay, verify').font.size = Pt(15)
+    t = doc.add_paragraph()
+    t.alignment = WD_ALIGN_PARAGRAPH.CENTER
+    r = t.add_run('Every case below was performed live in the application by the named role. The button '
+                  'clicked in each step is outlined in red in the screenshot.')
+    r.italic = True
+    page_break(doc)
+    doc.add_heading('Contents', level=1)
+    add_toc(doc)
+    page_break(doc)
+    doc.add_heading('How to read this guide', level=1)
+    for s in [
+        'Each chapter is a module (Leave, Fees, Hostel…). Each section is one case, performed by the role named in the heading – log in as that role to repeat it (demo password: %s).' % manifest.get('password', 'password123'),
+        '"Open" steps tell you which menu page to go to; "Enter" and "Choose" steps fill the form; "Click" steps show a screenshot with the button outlined in red and explain what the button does.',
+        'The "Result" screenshot shows what you should see after the case is completed.',
+        'Values like "E2E-…" are sample data; enter your own real values.',
+    ]:
+        bullet(doc, s)
+
+    ch = 0
+    for mod in sorted(modules, key=lambda m: MODULE_NAMES.get(m, m)):
+        cases = modules[mod]
+        ch += 1
+        page_break(doc)
+        doc.add_heading('%d. %s' % (ch, MODULE_NAMES.get(mod, mod.replace('-', ' ').title())), level=1)
+        doc.add_paragraph('Cases in this chapter:')
+        for i, c in enumerate(cases, 1):
+            email = next((s.get('user') for s in c['steps'] if s.get('user')), None)
+            bullet(doc, '%s  (%s)' % (c['title'][-1], role_label(users, email).split(' – ')[0]), '%d.%d ' % (ch, i))
+        for i, c in enumerate(cases, 1):
+            email = next((s.get('user') for s in c['steps'] if s.get('user')), None)
+            doc.add_heading('%d.%d %s' % (ch, i, c['title'][-1][:1].upper() + c['title'][-1][1:]), level=2)
+            p = doc.add_paragraph()
+            p.add_run('Performed by: ').bold = True
+            p.add_run(role_label(users, email))
+            if len(c['title']) > 1:
+                p = doc.add_paragraph()
+                p.add_run('Scenario: ').bold = True
+                p.add_run(' › '.join(c['title'][:-1]))
+            n = 0
+            pending_open = None
+            last_shot_text = None
+            for s in c['steps']:
+                a = s['action']
+                if a == 'open':
+                    pending_open = s.get('text')
+                    continue
+                if a == 'select':
+                    n += 1
+                    fld = pending_open or 'the list'
+                    stepp(doc, n, 'Choose "%s" in %s.' % (s.get('text', '')[:70], fld))
+                    pending_open = None
+                    continue
+                if a == 'nav':
+                    menu, ws = titles.get(s['path'], (s['path'], ''))
+                    n += 1
+                    stepp(doc, n, 'Open %s%s.' % (menu, (' in the ' + ws) if ws else ''))
+                    continue
+                if a == 'fill':
+                    n += 1
+                    stepp(doc, n, 'Enter "%s" in %s.' % (s.get('value', ''), s.get('text') or 'the field'))
+                    continue
+                if a == 'check':
+                    n += 1
+                    stepp(doc, n, 'Tick %s.' % (s.get('text') or 'the checkbox'))
+                    continue
+                if a == 'upload':
+                    n += 1
+                    stepp(doc, n, 'Choose the file to upload.')
+                    continue
+                if a == 'click':
+                    label, what, _ = describe(clean(s.get('text', '')), s.get('icon'))
+                    where = ''
+                    if s.get('dialog'):
+                        where = ' in the "%s" dialog' % s['dialog']
+                    elif s.get('row'):
+                        where = ' on the row "%s"' % s['row']
+                    n += 1
+                    para = stepp(doc, n, '')
+                    para.add_run('Click ')
+                    para.add_run(label).bold = True
+                    para.add_run(where + '. ')
+                    if not what.startswith('Opens / performs') and not what.startswith('Switches'):
+                        r = para.add_run(what)
+                        r.italic = True
+                    key = (label, s.get('path'), s.get('dialog'))
+                    if key != last_shot_text and os.path.exists(os.path.join(steps_dir, s['shot'])):
+                        picture(doc, os.path.join(steps_dir, s['shot']), width=5.6)
+                    last_shot_text = key
+                    continue
+                if a == 'result' and os.path.exists(os.path.join(steps_dir, s.get('shot', ''))):
+                    doc.add_paragraph().add_run('Result').bold = True
+                    picture(doc, os.path.join(steps_dir, s['shot']), width=5.6)
+    doc.save(out)
+    print('saved', out, os.path.getsize(out) // 1024, 'KB', sum(len(v) for v in modules.values()), 'cases')
+
+
 if __name__ == '__main__':
-    main()
+    if len(sys.argv) > 1 and sys.argv[1] == 'workflows':
+        # build_guide.py workflows <steps_dir> <out.docx> <manifest> [crawl_dir]
+        build_workflows(sys.argv[2], sys.argv[3], sys.argv[4], sys.argv[5] if len(sys.argv) > 5 else None)
+    else:
+        main()

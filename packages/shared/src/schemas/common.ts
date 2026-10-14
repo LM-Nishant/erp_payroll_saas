@@ -18,6 +18,16 @@ export const paginationQuerySchema = z.object({
 });
 export type PaginationQuery = z.infer<typeof paginationQuerySchema>;
 
+/**
+ * Opt-in paging for list endpoints whose existing callers (pickers, setup screens) expect the full
+ * list: rows are paged only when `page` or `pageSize` is sent; otherwise everything is returned.
+ */
+export const optionalPaginationQuerySchema = z.object({
+  page: z.coerce.number().int().min(1).optional(),
+  pageSize: z.coerce.number().int().min(1).max(100).optional(),
+});
+export type OptionalPaginationQuery = z.infer<typeof optionalPaginationQuerySchema>;
+
 export const idParamSchema = z.object({ id: idSchema });
 
 /** Fields that are always derived server-side and must never be accepted from clients. */

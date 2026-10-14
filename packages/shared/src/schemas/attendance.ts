@@ -1,5 +1,11 @@
 import { z } from 'zod';
-import { codeSchema, idSchema, nameSchema, paginationQuerySchema } from './common';
+import {
+  codeSchema,
+  idSchema,
+  nameSchema,
+  optionalPaginationQuerySchema,
+  paginationQuerySchema,
+} from './common';
 import { employmentTypeSchema, faceDescriptorSchema, isoDateSchema } from './hr';
 
 /*
@@ -649,6 +655,16 @@ export const listLeaveRequestsQuerySchema = paginationQuerySchema
   })
   .strict();
 export type ListLeaveRequestsQuery = z.infer<typeof listLeaveRequestsQuerySchema>;
+
+/** Leave types: full list by default (pickers); paged when page/pageSize is sent. */
+export const listLeaveTypesQuerySchema = optionalPaginationQuerySchema
+  .extend({ includeInactive: z.enum(['true', 'false']).optional() })
+  .strict();
+export type ListLeaveTypesQuery = z.infer<typeof listLeaveTypesQuerySchema>;
+
+/** Leave policies: full list by default; paged when page/pageSize is sent. */
+export const listLeavePoliciesQuerySchema = optionalPaginationQuerySchema.strict();
+export type ListLeavePoliciesQuery = z.infer<typeof listLeavePoliciesQuerySchema>;
 
 export const leaveBalanceQuerySchema = z
   .object({ employeeId: idSchema, asOf: isoDateSchema.optional() })

@@ -281,7 +281,7 @@ export const examTermService = {
           institution: { select: { id: true, name: true, code: true } },
           _count: { select: { schedules: true } },
         },
-        orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }],
+        orderBy: [{ startDate: 'desc' }, { createdAt: 'desc' }, { id: 'desc' }],
         skip: (query.page - 1) * query.pageSize,
         take: query.pageSize,
       }),

@@ -2,12 +2,12 @@
 import {
   COMPANY_EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPES,
-  type ApiListResponse,
   type EmployeeTypeDto,
   type EmploymentType,
 } from '@erp/shared';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, reactive } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { label } from './useHrOptions';
@@ -15,24 +15,8 @@ import { label } from './useHrOptions';
 /** Organization-defined employee types (e.g. Permanent, Probationer, Consultant). */
 const auth = useAuthStore();
 const terms = useTerms();
-const items = ref<EmployeeTypeDto[]>([]);
-const loading = ref(false);
-const error = ref<string | null>(null);
-
-async function load() {
-  loading.value = true;
-  error.value = null;
-  try {
-    items.value = (
-      await apiFetch<ApiListResponse<EmployeeTypeDto>>('/api/v1/employee-types?pageSize=100')
-    ).data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
-onMounted(load);
+const { items, total, page, pageSize, loading, error, load } =
+  useServerList<EmployeeTypeDto>('/api/v1/employee-types');
 
 const categories = computed(() =>
   (terms.value.isCompany ? COMPANY_EMPLOYMENT_TYPES : EMPLOYMENT_TYPES).map((value) => ({
@@ -115,7 +99,16 @@ const headers = [
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.category`]="{ item }">{{ label(item.category) }}</template>
     <template #[`item.actions`]="{ item }">
       <template v-if="auth.can('designation.manage')">
@@ -129,7 +122,7 @@ const headers = [
         />
       </template>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="480">
     <v-card :title="dialog.id ? 'Edit employee type' : 'New employee type'">
