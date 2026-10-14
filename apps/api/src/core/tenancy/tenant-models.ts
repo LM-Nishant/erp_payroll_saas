@@ -244,6 +244,8 @@ export const SOFT_DELETE_MODELS: ReadonlySet<string> = new Set([
   'FeeLateRule',
   'FeeStructure',
   'FeeConcession',
+  'FeeUpiSetting',
+  'FeeUpiPayment',
   'LedgerAccount',
   'Vendor',
   // Assets
