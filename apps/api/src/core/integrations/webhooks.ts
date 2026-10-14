@@ -119,7 +119,11 @@ export const webhooksService = {
       : {};
     const db = tenantDb();
     const [rows, total] = await Promise.all([
-      db.webhook.findMany({ where, orderBy: { createdAt: 'desc' }, ...toPageWindow(query) }),
+      db.webhook.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...toPageWindow(query),
+      }),
       db.webhook.count({ where }),
     ]);
     return toListResponse(rows.map(dto), total, query);
@@ -216,7 +220,11 @@ export const webhooksService = {
     };
     const db = tenantDb();
     const [rows, total] = await Promise.all([
-      db.webhookEvent.findMany({ where, orderBy: { createdAt: 'desc' }, ...toPageWindow(query) }),
+      db.webhookEvent.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...toPageWindow(query),
+      }),
       db.webhookEvent.count({ where }),
     ]);
     return toListResponse(rows.map(deliveryDto), total, query);

@@ -59,7 +59,7 @@ export async function listPlatformOrganizations(query: ListOrganizationsQuery) {
   const [rows, total] = await prisma.$transaction([
     prisma.organization.findMany({
       where,
-      orderBy: { name: 'asc' },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
       select: orgSelect,
       ...toPageWindow(query),
     }),

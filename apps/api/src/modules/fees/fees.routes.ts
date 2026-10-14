@@ -18,6 +18,7 @@ import {
   listFeeHeadsQuerySchema,
   listFeeInvoicesQuerySchema,
   listFeeStructuresQuerySchema,
+  listLateRulesQuerySchema,
   listPaymentsQuerySchema,
   listUpiPaymentsQuerySchema,
   recordPaymentSchema,
@@ -94,7 +95,7 @@ feesRouter.delete('/heads/:id', requirePermission('fee.manage'), async (req, res
 
 /* ---- late-fee rules ---- */
 feesRouter.get('/late-rules', requirePermission('fee.view'), async (req, res) => {
-  res.json({ data: await lateRuleService.list(parseInput(institutionQuerySchema, req.query)) });
+  res.json(await lateRuleService.list(parseInput(listLateRulesQuerySchema, req.query)));
 });
 feesRouter.post('/late-rules', requirePermission('fee.manage'), async (req, res) => {
   res

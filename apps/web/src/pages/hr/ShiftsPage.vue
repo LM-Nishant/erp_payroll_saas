@@ -2,6 +2,7 @@
 import type { ApiListResponse, ShiftAssignmentDto, ShiftDto, WeeklyOffRule } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import WeeklyOffsPicker from '@/components/WeeklyOffsPicker.vue';
 import { useAuthStore } from '@/stores/auth';
@@ -12,27 +13,32 @@ import { useHrOptions } from './useHrOptions';
 const auth = useAuthStore();
 const { institutions, departments, loadBase, loadForInstitution } = useHrOptions();
 const institutionId = ref<string | null>(null);
-const shifts = ref<ShiftDto[]>([]);
-const assignments = ref<ShiftAssignmentDto[]>([]);
-const loading = ref(false);
+/** All shifts of the institution, for name lookup and the assignment pickers. */
+const shiftOptions = ref<ShiftDto[]>([]);
 const error = ref<string | null>(null);
 const canManage = computed(() => auth.can('shift.manage'));
+const listOptions = {
+  error,
+  immediate: false,
+  params: () => ({ institutionId: institutionId.value ?? undefined }),
+};
+const shiftList = useServerList<ShiftDto>('/api/v1/shifts', listOptions);
+const { items: shifts, total, page, pageSize, loading } = shiftList;
+const assignmentList = useServerList<ShiftAssignmentDto>('/api/v1/shifts/assignments', listOptions);
+const { items: assignments } = assignmentList;
 
+async function loadShiftOptions() {
+  const q = institutionId.value ? `&institutionId=${institutionId.value}` : '';
+  shiftOptions.value = (
+    await apiFetch<ApiListResponse<ShiftDto>>(`/api/v1/shifts?pageSize=100${q}`)
+  ).data;
+}
 async function load() {
-  loading.value = true;
   error.value = null;
   try {
-    const q = institutionId.value ? `&institutionId=${institutionId.value}` : '';
-    [shifts.value, assignments.value] = await Promise.all([
-      apiFetch<ApiListResponse<ShiftDto>>(`/api/v1/shifts?pageSize=100${q}`).then((r) => r.data),
-      apiFetch<ApiListResponse<ShiftAssignmentDto>>(
-        `/api/v1/shifts/assignments?pageSize=100${q}`,
-      ).then((r) => r.data),
-    ]);
+    await Promise.all([shiftList.load(), assignmentList.load(), loadShiftOptions()]);
   } catch (e) {
     error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
   }
 }
 onMounted(async () => {
@@ -41,10 +47,10 @@ onMounted(async () => {
   await Promise.all([load(), loadForInstitution(institutionId.value)]);
 });
 async function changeInstitution() {
-  await Promise.all([load(), loadForInstitution(institutionId.value)]);
+  await Promise.all([loadShiftOptions(), loadForInstitution(institutionId.value)]);
 }
 
-const shiftName = (id: string) => shifts.value.find((s) => s.id === id)?.code ?? id;
+const shiftName = (id: string) => shiftOptions.value.find((s) => s.id === id)?.code ?? id;
 const deptName = (id: string | null) =>
   id ? (departments.value.find((d) => d.id === id)?.name ?? id) : null;
 
@@ -133,7 +139,7 @@ function openAssign() {
     target: 'department',
     employeeId: null,
     departmentId: null,
-    shiftId: shifts.value[0]?.id ?? null,
+    shiftId: shiftOptions.value[0]?.id ?? null,
     rotationShiftIds: [],
     rotationDays: null,
     effectiveFrom: '',
@@ -182,6 +188,13 @@ const shiftHeaders = [
   { title: 'Status', key: 'status' },
   { title: '', key: 'actions', sortable: false, align: 'end' as const },
 ];
+const assignmentHeaders = [
+  { title: 'Applies to', key: 'appliesTo' },
+  { title: 'Shift / rotation', key: 'shiftId' },
+  { title: 'From', key: 'effectiveFrom' },
+  { title: 'To', key: 'effectiveTo' },
+  { title: '', key: 'actions', align: 'end' as const },
+];
 </script>
 
 <template>
@@ -212,7 +225,16 @@ const shiftHeaders = [
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="shifts" :headers="shiftHeaders" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="shifts"
+    :headers="shiftHeaders"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.code`]="{ item }">
       {{ item.code }}
       <v-chip v-if="item.isDefault" size="x-small" color="primary" class="ml-1">default</v-chip>
@@ -237,59 +259,55 @@ const shiftHeaders = [
         @click="openDialog(item)"
       />
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <div class="d-flex align-center mt-8 mb-2">
     <h3 class="text-h6">Assignments</h3>
     <v-spacer />
-    <v-btn v-if="canManage && shifts.length" size="small" variant="tonal" @click="openAssign">
+    <v-btn v-if="canManage && shiftOptions.length" size="small" variant="tonal" @click="openAssign">
       Assign shift
     </v-btn>
   </div>
-  <v-table density="compact">
-    <thead>
-      <tr>
-        <th>Applies to</th>
-        <th>Shift / rotation</th>
-        <th>From</th>
-        <th>To</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="a in assignments" :key="a.id">
-        <td>
-          {{
-            a.employeeId
-              ? `Employee ${a.employeeName ?? a.employeeId}${a.employeeCode ? ` (${a.employeeCode})` : ''}`
-              : `Department ${deptName(a.departmentId)}`
-          }}
-        </td>
-        <td>
-          <template v-if="a.rotationShiftIds">
-            {{ a.rotationShiftIds.map(shiftName).join(' → ') }} (every {{ a.rotationDays }} d)
-          </template>
-          <template v-else>{{ shiftName(a.shiftId) }}</template>
-        </td>
-        <td>{{ a.effectiveFrom }}</td>
-        <td>{{ a.effectiveTo ?? '—' }}</td>
-        <td class="text-right">
-          <v-btn
-            v-if="canManage"
-            size="small"
-            variant="text"
-            icon="mdi-delete"
-            @click="removeAssign(a)"
-          />
-        </td>
-      </tr>
-      <tr v-if="!assignments.length">
-        <td colspan="5" class="text-medium-emphasis">
-          No assignments — employees use the institution's default shift.
-        </td>
-      </tr>
-    </tbody>
-  </v-table>
+  <v-data-table-server
+    v-model:page="assignmentList.page.value"
+    v-model:items-per-page="assignmentList.pageSize.value"
+    :items-length="assignmentList.total.value"
+    :loading="assignmentList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    :items="assignments"
+    :headers="assignmentHeaders"
+    density="compact"
+    disable-sort
+  >
+    <template #[`item.appliesTo`]="{ item: a }">
+      {{
+        a.employeeId
+          ? `Employee ${a.employeeName ?? a.employeeId}${a.employeeCode ? ` (${a.employeeCode})` : ''}`
+          : `Department ${deptName(a.departmentId)}`
+      }}
+    </template>
+    <template #[`item.shiftId`]="{ item: a }">
+      <template v-if="a.rotationShiftIds">
+        {{ a.rotationShiftIds.map(shiftName).join(' → ') }} (every {{ a.rotationDays }} d)
+      </template>
+      <template v-else>{{ shiftName(a.shiftId) }}</template>
+    </template>
+    <template #[`item.effectiveTo`]="{ item: a }">{{ a.effectiveTo ?? '—' }}</template>
+    <template #[`item.actions`]="{ item: a }">
+      <v-btn
+        v-if="canManage"
+        size="small"
+        variant="text"
+        icon="mdi-delete"
+        @click="removeAssign(a)"
+      />
+    </template>
+    <template #no-data>
+      <span class="text-medium-emphasis">
+        No assignments — employees use the institution's default shift.
+      </span>
+    </template>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="620">
     <v-card :title="dialog.id ? 'Edit shift' : 'New shift'">
@@ -391,7 +409,7 @@ const shiftHeaders = [
         />
         <v-select
           v-model="assign.shiftId"
-          :items="shifts"
+          :items="shiftOptions"
           item-title="name"
           item-value="id"
           label="Shift"
@@ -399,7 +417,7 @@ const shiftHeaders = [
         />
         <v-select
           v-model="assign.rotationShiftIds"
-          :items="shifts"
+          :items="shiftOptions"
           item-title="name"
           item-value="id"
           label="Rotation (optional, in order)"

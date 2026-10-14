@@ -190,7 +190,7 @@ export const providersService = {
     const [rows, total] = await Promise.all([
       db.communicationProvider.findMany({
         where,
-        orderBy: [{ channel: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }],
+        orderBy: [{ channel: 'asc' }, { priority: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db.communicationProvider.count({ where }),
@@ -379,7 +379,7 @@ export const templatesService = {
     const [rows, total] = await Promise.all([
       db.messageTemplate.findMany({
         where,
-        orderBy: [{ key: 'asc' }, { channel: 'asc' }],
+        orderBy: [{ key: 'asc' }, { channel: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db.messageTemplate.count({ where }),
@@ -666,7 +666,11 @@ export const messagesService = {
     };
     const db = tenantDb();
     const [rows, total] = await Promise.all([
-      db.messageLog.findMany({ where, orderBy: { createdAt: 'desc' }, ...toPageWindow(query) }),
+      db.messageLog.findMany({
+        where,
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
+        ...toPageWindow(query),
+      }),
       db.messageLog.count({ where }),
     ]);
     return toListResponse(rows.map(logDto), total, query);

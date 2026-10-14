@@ -11,6 +11,7 @@ import {
 import { onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import { REQUEST_COLORS } from './timeOffice';
@@ -34,24 +35,26 @@ const typeCode = (id: string) => types.value.find((t) => t.id === id)?.code ?? i
 
 // Requests
 const status = ref<string | null>('PENDING_APPROVAL');
-const requests = ref<LeaveRequestDto[]>([]);
-const loading = ref(false);
+const requestList = useServerList<LeaveRequestDto>('/api/v1/leave/requests', {
+  error,
+  immediate: false,
+  params: () => ({ status: status.value ?? undefined }),
+});
+const { items: requests, total, page, pageSize, loading } = requestList;
 /** Leave request id -> workflow instance id, for requests awaiting the signed-in user's decision. */
 const myApprovals = ref(new Map<string, string>());
 async function loadRequests() {
-  loading.value = true;
   await run(async () => {
-    const q = status.value ? `&status=${status.value}` : '';
-    const [list, inbox] = await Promise.all([
-      apiFetch<ApiListResponse<LeaveRequestDto>>(`/api/v1/leave/requests?pageSize=100${q}`),
-      apiFetch<ApiListResponse<WorkflowInboxItemDto>>('/api/v1/workflows/inbox?pageSize=100'),
+    const [, inbox] = await Promise.all([
+      requestList.load(),
+      apiFetch<ApiListResponse<WorkflowInboxItemDto>>(
+        '/api/v1/workflows/inbox?entityType=leave_request&pageSize=100',
+      ),
     ]);
-    requests.value = list.data;
     myApprovals.value = new Map(
       inbox.data.filter((i) => i.entityType === 'leave_request').map((i) => [i.entityId, i.id]),
     );
   });
-  loading.value = false;
 }
 const decision = reactive({ open: false, instanceId: '', comment: '', busy: false });
 async function decide(instanceId: string, action: 'approve' | 'reject', comment?: string) {
@@ -200,9 +203,18 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
       density="compact"
       clearable
       style="max-width: 240px"
-      @update:model-value="loadRequests"
     />
-    <v-data-table :items="requests" :headers="requestHeaders" :loading="loading" density="compact">
+    <v-data-table-server
+      v-model:page="page"
+      v-model:items-per-page="pageSize"
+      :items="requests"
+      :headers="requestHeaders"
+      :loading="loading"
+      density="compact"
+      :items-length="total"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
+    >
       <template #[`item.employee`]="{ item }">
         {{ item.employeeCode }} {{ item.employeeName }}
       </template>
@@ -260,7 +272,7 @@ const statuses = LEAVE_REQUEST_STATUSES.map((value) => ({ value, title: label(va
           {{ item.status === 'APPROVED' ? 'Cancel leave' : 'Cancel request' }}
         </v-btn>
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </template>
 
   <template v-else>

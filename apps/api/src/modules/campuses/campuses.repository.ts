@@ -21,7 +21,12 @@ export const campusRepository = {
     };
     const where = andScope(base, filter.scope);
     const [items, total] = await Promise.all([
-      db.campus.findMany({ where, skip: filter.skip, take: filter.take, orderBy: { name: 'asc' } }),
+      db.campus.findMany({
+        where,
+        skip: filter.skip,
+        take: filter.take,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+      }),
       db.campus.count({ where }),
     ]);
     return { items, total };

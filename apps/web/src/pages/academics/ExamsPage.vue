@@ -10,6 +10,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 import { useAcademicOptions } from './useAcademics';
 
@@ -19,10 +20,29 @@ const canManage = computed(() => auth.can('exam.manage'));
 const canPublish = computed(() => auth.can('exam.publish'));
 const error = ref<string | null>(null);
 const info = ref<string | null>(null);
-const terms = ref<ExamTermDto[]>([]);
 const institutionId = ref('');
+const termList = useServerList<ExamTermDto>('/api/v1/exams/terms', {
+  error,
+  immediate: false,
+  params: () => ({ institutionId: institutionId.value }),
+});
+const { items: terms } = termList;
 const termId = ref('');
-const term = computed(() => terms.value.find((t) => t.id === termId.value));
+/** Last known copy of the selected term, so its card survives paging away from its row. */
+const selectedTerm = ref<ExamTermDto | null>(null);
+const term = computed(
+  () =>
+    terms.value.find((t) => t.id === termId.value) ??
+    (selectedTerm.value?.id === termId.value ? selectedTerm.value : undefined),
+);
+watch(term, (t) => {
+  if (t) selectedTerm.value = t;
+});
+function selectTerm(t: ExamTermDto) {
+  selectedTerm.value = t;
+  termId.value = t.id;
+}
+const onTermRow = (_e: unknown, row: { item: ExamTermDto }) => selectTerm(row.item);
 // Mirrors exams.service: published terms are frozen; marks block term/paper deletion.
 const published = computed(() => term.value?.status === 'PUBLISHED');
 const termHasMarks = computed(() =>
@@ -41,11 +61,8 @@ const termForm = reactive({
   gradingScaleId: '' as string | null,
 });
 
-async function loadTerms() {
-  const p = new URLSearchParams({ pageSize: '100' });
-  if (institutionId.value) p.set('institutionId', institutionId.value);
+async function loadScales() {
   try {
-    terms.value = (await apiFetch<ApiListResponse<ExamTermDto>>(`/api/v1/exams/terms?${p}`)).data;
     if (institutionId.value)
       scales.value = (
         await apiFetch<{ data: GradingScaleDto[] }>(
@@ -55,6 +72,9 @@ async function loadTerms() {
   } catch (e) {
     error.value = (e as Error).message;
   }
+}
+async function loadTerms() {
+  await Promise.all([termList.load(), loadScales()]);
 }
 async function createTerm() {
   try {
@@ -72,7 +92,7 @@ async function createTerm() {
     });
     termDialog.value = false;
     await loadTerms();
-    termId.value = r.data.id;
+    selectTerm(r.data);
   } catch (e) {
     error.value = (e as Error).message;
   }
@@ -228,13 +248,21 @@ const statusColor: Record<string, string> = {
   RESULTS_COMPUTED: 'primary',
   PUBLISHED: 'success',
 };
+const termHeaders = [
+  { title: 'Term', key: 'name' },
+  { title: 'Type', key: 'type' },
+  { title: 'Year', key: 'academicYear' },
+  { title: 'Dates', key: 'dates' },
+  { title: 'Papers', key: 'scheduleCount' },
+  { title: 'Status', key: 'status' },
+];
 onMounted(async () => {
   await loadOptions();
   institutionId.value = institutions.value[0]?.id ?? '';
   // Department-scoped staff (teachers) list no institutions: the watcher never fires for them.
   if (!institutionId.value) await loadTerms();
 });
-watch(institutionId, loadTerms);
+watch(institutionId, loadScales);
 watch([termId, sectionId], loadSchedules);
 </script>
 <template>
@@ -266,39 +294,32 @@ watch([termId, sectionId], loadSchedules);
       {{ s.bands.map((b) => `${b.grade}≥${b.minPercent}`).join(' ') }}</v-chip
     >
   </v-chip-group>
-  <v-table density="compact" class="mb-4">
-    <thead>
-      <tr>
-        <th>Term</th>
-        <th>Type</th>
-        <th>Year</th>
-        <th>Dates</th>
-        <th>Papers</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr
-        v-for="t in terms"
-        :key="t.id"
-        class="cursor-pointer"
-        :class="{ 'bg-blue-lighten-5': t.id === termId }"
-        @click="termId = t.id"
-      >
-        <td>{{ t.name }}</td>
-        <td>{{ t.type }}</td>
-        <td>{{ t.academicYear }}</td>
-        <td>{{ t.startDate }} – {{ t.endDate }}</td>
-        <td>{{ t.scheduleCount }}</td>
-        <td>
-          <v-chip size="small" :color="statusColor[t.status]">{{ t.status }}</v-chip>
-        </td>
-      </tr>
-      <tr v-if="!terms.length">
-        <td colspan="6" class="text-medium-emphasis">No exam terms.</td>
-      </tr>
-    </tbody>
-  </v-table>
+  <v-data-table-server
+    v-model:page="termList.page.value"
+    v-model:items-per-page="termList.pageSize.value"
+    :items-length="termList.total.value"
+    :loading="termList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    :items="terms"
+    :headers="termHeaders"
+    :row-props="
+      ({ item }) => ({
+        class: ['cursor-pointer', { 'bg-blue-lighten-5': item.id === termId }],
+      })
+    "
+    density="compact"
+    class="mb-4"
+    disable-sort
+    @click:row="onTermRow"
+  >
+    <template #[`item.dates`]="{ item: t }">{{ t.startDate }} – {{ t.endDate }}</template>
+    <template #[`item.status`]="{ item: t }">
+      <v-chip size="small" :color="statusColor[t.status]">{{ t.status }}</v-chip>
+    </template>
+    <template #no-data>
+      <span class="text-medium-emphasis">No exam terms.</span>
+    </template>
+  </v-data-table-server>
 
   <v-card v-if="term">
     <v-card-title class="d-flex align-center ga-2"

@@ -11,6 +11,7 @@ import {
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import { REQUEST_COLORS, currentMonth, hhmm, monthRange, recordStatus } from './timeOffice';
@@ -103,28 +104,26 @@ async function saveOverride() {
 }
 
 // Regularizations
-const regularizations = ref<AttendanceRegularizationDto[]>([]);
-async function loadRegularizations() {
-  await run(async () => {
-    regularizations.value = (
-      await apiFetch<ApiListResponse<AttendanceRegularizationDto>>(
-        '/api/v1/attendance/regularizations?pageSize=100',
-      )
-    ).data;
-  });
+const regList = useServerList<AttendanceRegularizationDto>('/api/v1/attendance/regularizations', {
+  error,
+  immediate: false,
+});
+const { items: regularizations } = regList;
+function loadRegularizations() {
+  error.value = null;
+  regList.reset();
 }
 
 // Locks
-const locks = ref<AttendancePeriodLockDto[]>([]);
+const lockList = useServerList<AttendancePeriodLockDto>(
+  () => `/api/v1/attendance/locks?${instQuery().slice(1)}`,
+  { error, immediate: false },
+);
+const { items: locks } = lockList;
 const unlock = reactive({ open: false, id: '', reason: '' });
 async function loadLocks() {
-  await run(async () => {
-    locks.value = (
-      await apiFetch<{ data: AttendancePeriodLockDto[] }>(
-        `/api/v1/attendance/locks?pageSize=100${instQuery()}`,
-      )
-    ).data;
-  });
+  error.value = null;
+  await lockList.load();
 }
 async function lockMonth() {
   if (!institutionId.value) return;
@@ -231,7 +230,7 @@ async function refresh() {
   page.value = 1;
   if (tab.value === 'register') await loadRecords();
   else if (tab.value === 'regularizations') await loadRegularizations();
-  else if (tab.value === 'locks') await loadLocks();
+  else if (tab.value === 'locks') lockList.reset();
   else if (tab.value === 'import') await loadImports();
   else if (tab.value === 'policy') await loadPolicy();
   else if (tab.value === 'summary') await loadSummary();
@@ -241,6 +240,21 @@ onMounted(async () => {
   institutionId.value = institutions.value[0]?.id ?? null;
   await refresh();
 });
+
+const regularizationHeaders = [
+  { title: 'Employee', key: 'employee' },
+  { title: 'Date', key: 'date' },
+  { title: 'Requested', key: 'requested' },
+  { title: 'Reason', key: 'reason' },
+  { title: 'Status', key: 'status' },
+];
+const lockHeaders = [
+  { title: 'Period', key: 'period' },
+  { title: 'Status', key: 'status' },
+  { title: 'Reason', key: 'reason' },
+  { title: 'Unlock reason', key: 'unlockReason' },
+  { title: '', key: 'actions', align: 'end' as const },
+];
 
 // Server-paged (date, employee order): column sorting would only reorder the visible page.
 const recordHeaders = [
@@ -375,34 +389,30 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
     </v-data-table-server>
   </template>
 
-  <v-table v-else-if="tab === 'regularizations'" density="compact">
-    <thead>
-      <tr>
-        <th>Employee</th>
-        <th>Date</th>
-        <th>Requested</th>
-        <th>Reason</th>
-        <th>Status</th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="r in regularizations" :key="r.id">
-        <td>{{ r.employeeName ? `${r.employeeName} (${r.employeeCode})` : r.employeeId }}</td>
-        <td>{{ r.date }}</td>
-        <td>
-          {{
-            r.requestedStatus
-              ? label(r.requestedStatus)
-              : `${hhmm(r.inMinute)} – ${hhmm(r.outMinute)}`
-          }}
-        </td>
-        <td>{{ r.reason }}</td>
-        <td>
-          <v-chip :color="REQUEST_COLORS[r.status]" size="small">{{ label(r.status) }}</v-chip>
-        </td>
-      </tr>
-    </tbody>
-  </v-table>
+  <v-data-table-server
+    v-else-if="tab === 'regularizations'"
+    v-model:page="regList.page.value"
+    v-model:items-per-page="regList.pageSize.value"
+    :items-length="regList.total.value"
+    :loading="regList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    :items="regularizations"
+    :headers="regularizationHeaders"
+    density="compact"
+    disable-sort
+  >
+    <template #[`item.employee`]="{ item: r }">
+      {{ r.employeeName ? `${r.employeeName} (${r.employeeCode})` : r.employeeId }}
+    </template>
+    <template #[`item.requested`]="{ item: r }">
+      {{
+        r.requestedStatus ? label(r.requestedStatus) : `${hhmm(r.inMinute)} – ${hhmm(r.outMinute)}`
+      }}
+    </template>
+    <template #[`item.status`]="{ item: r }">
+      <v-chip :color="REQUEST_COLORS[r.status]" size="small">{{ label(r.status) }}</v-chip>
+    </template>
+  </v-data-table-server>
 
   <template v-else-if="tab === 'locks'">
     <div class="d-flex mb-2">
@@ -417,39 +427,36 @@ const overrideStatuses = ['PRESENT', 'ABSENT', 'HALF_DAY', 'ON_DUTY'].map((value
         Lock {{ month }}
       </v-btn>
     </div>
-    <v-table density="compact">
-      <thead>
-        <tr>
-          <th>Period</th>
-          <th>Status</th>
-          <th>Reason</th>
-          <th>Unlock reason</th>
-          <th></th>
-        </tr>
-      </thead>
-      <tbody>
-        <tr v-for="l in locks" :key="l.id">
-          <td>{{ l.periodStart }} – {{ l.periodEnd }}</td>
-          <td>
-            <v-chip :color="l.status === 'LOCKED' ? 'error' : 'default'" size="small">
-              {{ label(l.status) }}
-            </v-chip>
-          </td>
-          <td>{{ l.reason ?? '—' }}</td>
-          <td>{{ l.unlockReason ?? '—' }}</td>
-          <td class="text-right">
-            <v-btn
-              v-if="l.status === 'LOCKED' && auth.can('attendance.unlock')"
-              size="small"
-              variant="text"
-              @click="Object.assign(unlock, { open: true, id: l.id, reason: '' })"
-            >
-              Unlock
-            </v-btn>
-          </td>
-        </tr>
-      </tbody>
-    </v-table>
+    <v-data-table-server
+      v-model:page="lockList.page.value"
+      v-model:items-per-page="lockList.pageSize.value"
+      :items-length="lockList.total.value"
+      :loading="lockList.loading.value"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      :items="locks"
+      :headers="lockHeaders"
+      density="compact"
+      disable-sort
+    >
+      <template #[`item.period`]="{ item: l }">{{ l.periodStart }} – {{ l.periodEnd }}</template>
+      <template #[`item.status`]="{ item: l }">
+        <v-chip :color="l.status === 'LOCKED' ? 'error' : 'default'" size="small">
+          {{ label(l.status) }}
+        </v-chip>
+      </template>
+      <template #[`item.reason`]="{ item: l }">{{ l.reason ?? '—' }}</template>
+      <template #[`item.unlockReason`]="{ item: l }">{{ l.unlockReason ?? '—' }}</template>
+      <template #[`item.actions`]="{ item: l }">
+        <v-btn
+          v-if="l.status === 'LOCKED' && auth.can('attendance.unlock')"
+          size="small"
+          variant="text"
+          @click="Object.assign(unlock, { open: true, id: l.id, reason: '' })"
+        >
+          Unlock
+        </v-btn>
+      </template>
+    </v-data-table-server>
   </template>
 
   <template v-else-if="tab === 'import'">

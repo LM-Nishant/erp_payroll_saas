@@ -2,6 +2,7 @@
 /** Workspace landing page: shortcuts to every page of the layout the user may open. */
 import type { EmployeeDetailDto, LeaveBalanceDto, MyAttendanceDto } from '@erp/shared';
 import HighlightsPanel from '@/components/HighlightsPanel.vue';
+import OverviewPanel from '@/components/OverviewPanel.vue';
 import { computed, onMounted, ref } from 'vue';
 import { apiFetch } from '@/api/client';
 import { MENUS, visibleMenu, type LayoutKey } from '@/navigation/menus';
@@ -142,6 +143,7 @@ onMounted(async () => {
       </v-card>
     </v-col>
   </v-row>
+  <OverviewPanel :layout="layout" />
   <HighlightsPanel v-if="showHighlights" />
   <h3 v-if="shortcuts.length" class="text-subtitle-1 mb-2">Quick links</h3>
   <v-row>

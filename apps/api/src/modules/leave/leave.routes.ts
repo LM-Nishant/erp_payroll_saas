@@ -9,7 +9,9 @@ import {
   leaveBalanceQuerySchema,
   leaveLedgerQuerySchema,
   leavePreviewSchema,
+  listLeavePoliciesQuerySchema,
   listLeaveRequestsQuerySchema,
+  listLeaveTypesQuerySchema,
   runAccrualSchema,
   runYearEndSchema,
   updateLeavePolicySchema,
@@ -26,9 +28,6 @@ import { leaveService } from './leave.service';
 /** /api/v1/leave — leave types, policies, balances / ledger, requests, accrual (Layer 7). */
 export const leaveRouter = Router();
 const idOf = (req: Request) => parseInput(idParamSchema, req.params).id;
-const listTypesQuerySchema = z
-  .object({ includeInactive: z.enum(['true', 'false']).optional() })
-  .strict();
 const myBalanceQuerySchema = z.object({ asOf: z.string().date().optional() }).strict();
 
 /* ---- self-service ---- */
@@ -52,8 +51,7 @@ leaveRouter.post('/preview', async (req, res) => {
 /* ---- leave types ---- */
 
 leaveRouter.get('/types', async (req, res) => {
-  const q = parseInput(listTypesQuerySchema, req.query);
-  res.json({ data: await leaveService.listTypes(q.includeInactive === 'true') });
+  res.json(await leaveService.listTypes(parseInput(listLeaveTypesQuerySchema, req.query)));
 });
 leaveRouter.post('/types', requirePermission('leave.manage'), async (req, res) => {
   const input = parseInput(createLeaveTypeSchema, req.body);
@@ -66,8 +64,8 @@ leaveRouter.patch('/types/:id', requirePermission('leave.manage'), async (req, r
 
 /* ---- policies ---- */
 
-leaveRouter.get('/policies', requirePermission('leave.view'), async (_req, res) => {
-  res.json({ data: await leaveService.listPolicies() });
+leaveRouter.get('/policies', requirePermission('leave.view'), async (req, res) => {
+  res.json(await leaveService.listPolicies(parseInput(listLeavePoliciesQuerySchema, req.query)));
 });
 leaveRouter.post('/policies', requirePermission('leave.manage'), async (req, res) => {
   const input = parseInput(createLeavePolicySchema, req.body);

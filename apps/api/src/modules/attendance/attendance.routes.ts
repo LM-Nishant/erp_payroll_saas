@@ -146,7 +146,8 @@ attendanceRouter.get('/regularizations', requirePermission('attendance.view'), a
 
 attendanceRouter.get('/locks', requirePermission('attendance.view'), async (req, res) => {
   const query = parseInput(listPeriodLocksQuerySchema, req.query);
-  res.json({ data: await attendanceService.listLocks(query.institutionId) });
+  const { items, total } = await attendanceService.listLocks(query);
+  res.json(toListResponse(items, total, query));
 });
 attendanceRouter.post('/locks', requirePermission('attendance.lock'), async (req, res) => {
   const input = parseInput(lockAttendancePeriodSchema, req.body);

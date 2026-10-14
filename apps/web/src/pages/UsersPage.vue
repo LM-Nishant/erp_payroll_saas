@@ -1,7 +1,8 @@
 <script setup lang="ts">
 import type { ApiListResponse, ScopeSummary, ScopeType } from '@erp/shared';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 
@@ -38,34 +39,12 @@ const canDeactivate = computed(() => auth.can('user.deactivate'));
 const canResetPassword = computed(() => auth.can('user.reset_password'));
 const notice = ref<string | null>(null);
 
-const items = ref<UserRow[]>([]);
-const total = ref(0);
-const search = ref('');
-const loading = ref(false);
 const error = ref<string | null>(null);
-
-async function load() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const params = new URLSearchParams({ pageSize: '100' });
-    if (search.value.trim()) params.set('search', search.value.trim());
-    // The server returns only users within the caller's scopes.
-    const res = await apiFetch<ApiListResponse<UserRow>>(`/api/v1/users?${params}`);
-    items.value = res.data;
-    total.value = res.meta.total;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
-
-let timer: ReturnType<typeof setTimeout> | undefined;
-watch(search, () => {
-  clearTimeout(timer);
-  timer = setTimeout(load, 300);
-});
+// The server returns only users within the caller's scopes.
+const { items, total, page, pageSize, search, loading, load } = useServerList<UserRow>(
+  '/api/v1/users',
+  { error },
+);
 
 const roles = ref<RoleRow[]>([]);
 const groups = ref<Named[]>([]);
@@ -89,7 +68,6 @@ async function loadOptions() {
     ]);
   optionsLoaded = true;
 }
-onMounted(load);
 
 const scopeLabel = (s: ScopeSummary) =>
   s.type === 'ORGANIZATION'
@@ -295,7 +273,16 @@ const headers = [
   <v-alert v-if="notice" type="success" class="mb-4" closable @click:close="notice = null">
     {{ notice }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading" :items-length="total">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.roles`]="{ item }">
       <v-chip v-for="role in item.roles" :key="role.id" size="small" class="mr-1 my-1">
         {{ role.name }}
@@ -340,7 +327,7 @@ const headers = [
         {{ item.membershipStatus === 'DISABLED' ? 'Reactivate' : 'Deactivate' }}
       </v-btn>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="820" scrollable>
     <v-card :title="dialog.mode === 'create' ? 'Add user' : `Roles — ${dialog.name}`">

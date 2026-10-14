@@ -1,6 +1,5 @@
 <script setup lang="ts">
 import type {
-  ApiListResponse,
   WorkflowActionType,
   WorkflowInboxItemDto,
   WorkflowInstanceDetailDto,
@@ -9,6 +8,7 @@ import type {
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 
 const route = useRoute();
@@ -16,10 +16,29 @@ const auth = useAuthStore();
 
 /** Approvals inbox (steps waiting on me), my requests, and the full instance history. */
 const tab = ref<'inbox' | 'mine'>('inbox');
-const inbox = ref<WorkflowInboxItemDto[]>([]);
-const mine = ref<WorkflowInstanceDto[]>([]);
-const loading = ref(false);
 const error = ref<string | null>(null);
+const inboxList = useServerList<WorkflowInboxItemDto>('/api/v1/workflows/inbox', {
+  error,
+  immediate: false,
+});
+const mineList = useServerList<WorkflowInstanceDto>('/api/v1/workflows/instances?view=mine', {
+  error,
+  immediate: false,
+});
+const {
+  items: inbox,
+  total: inboxTotal,
+  page: inboxPage,
+  pageSize: inboxPageSize,
+  loading: inboxLoading,
+} = inboxList;
+const {
+  items: mine,
+  total: mineTotal,
+  page: minePage,
+  pageSize: minePageSize,
+  loading: mineLoading,
+} = mineList;
 
 const detail = ref<WorkflowInstanceDetailDto | null>(null);
 const form = reactive({ comment: '', delegateToUserId: null as string | null });
@@ -50,22 +69,8 @@ watch(delegateSearch, (term) => {
 });
 
 async function load() {
-  loading.value = true;
   error.value = null;
-  try {
-    const [a, b] = await Promise.all([
-      apiFetch<ApiListResponse<WorkflowInboxItemDto>>('/api/v1/workflows/inbox?pageSize=100'),
-      apiFetch<ApiListResponse<WorkflowInstanceDto>>(
-        '/api/v1/workflows/instances?view=mine&pageSize=100',
-      ),
-    ]);
-    inbox.value = a.data;
-    mine.value = b.data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
+  await Promise.all([inboxList.load(), mineList.load()]);
 }
 onMounted(async () => {
   await load();
@@ -163,13 +168,19 @@ const headers = [
   <h2 class="text-h5 mb-4">Approvals</h2>
   <v-alert v-if="error" type="error" class="mb-4" closable>{{ error }}</v-alert>
   <v-tabs v-model="tab" class="mb-2">
-    <v-tab value="inbox">Pending my approval ({{ inbox.length }})</v-tab>
+    <v-tab value="inbox">Pending my approval ({{ inboxTotal }})</v-tab>
     <v-tab value="mine">My requests</v-tab>
   </v-tabs>
-  <v-data-table
-    :items="tab === 'inbox' ? inbox : mine"
-    :headers="tab === 'inbox' ? [...headers, { title: 'Step', key: 'stepName' }] : headers"
-    :loading="loading"
+  <v-data-table-server
+    v-if="tab === 'inbox'"
+    v-model:page="inboxPage"
+    v-model:items-per-page="inboxPageSize"
+    :items="inbox"
+    :headers="[...headers, { title: 'Step', key: 'stepName' }]"
+    :loading="inboxLoading"
+    :items-length="inboxTotal"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
     hover
     @click:row="onRow"
   >
@@ -185,7 +196,27 @@ const headers = [
         overdue
       </v-chip>
     </template>
-  </v-data-table>
+  </v-data-table-server>
+  <v-data-table-server
+    v-else
+    v-model:page="minePage"
+    v-model:items-per-page="minePageSize"
+    :items="mine"
+    :headers="headers"
+    :loading="mineLoading"
+    :items-length="mineTotal"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+    hover
+    @click:row="onRow"
+  >
+    <template #[`item.status`]="{ item }">
+      <v-chip size="small" :color="statusColor[item.status]">{{ item.status }}</v-chip>
+    </template>
+    <template #[`item.createdAt`]="{ item }">
+      {{ new Date(item.createdAt).toLocaleString() }}
+    </template>
+  </v-data-table-server>
 
   <v-dialog
     :model-value="!!detail"

@@ -540,7 +540,7 @@ export const componentService = {
     const [rows, total] = await Promise.all([
       db().salaryComponent.findMany({
         where,
-        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }],
+        orderBy: [{ displayOrder: 'asc' }, { code: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db().salaryComponent.count({ where }),
@@ -833,7 +833,7 @@ export const structureService = {
       db().salaryStructure.findMany({
         where,
         include: { versions: true },
-        orderBy: { code: 'asc' },
+        orderBy: [{ code: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db().salaryStructure.count({ where }),

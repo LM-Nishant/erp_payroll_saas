@@ -168,7 +168,7 @@ export const secretsService = {
       db.tenantSecret.findMany({
         where,
         select: DISPLAY_SELECT,
-        orderBy: [{ kind: 'asc' }, { name: 'asc' }, { createdAt: 'asc' }],
+        orderBy: [{ kind: 'asc' }, { name: 'asc' }, { createdAt: 'asc' }, { id: 'asc' }],
         ...toPageWindow(query),
       }),
       db.tenantSecret.count({ where }),

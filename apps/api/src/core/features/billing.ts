@@ -5,6 +5,7 @@ import {
   type CreateInvoiceInput,
   type CreatePlanInput,
   type ListInvoicesQuery,
+  type ListPlansQuery,
   type PlatformInvoiceDto,
   type PlatformInvoicesQuery,
   type SetSubscriptionInput,
@@ -15,7 +16,12 @@ import type { Prisma } from '@prisma/client';
 import { audit } from '../audit';
 import { prisma } from '../db/prisma';
 import { NotFoundError, ValidationError } from '../http/errors';
-import { toListResponse, toPageWindow } from '../http/pagination';
+import {
+  toListResponse,
+  toOptionalListResponse,
+  toOptionalPageWindow,
+  toPageWindow,
+} from '../http/pagination';
 import { runAsPlatform } from '../platform';
 import { keyProvider, rewrapOrganizationSecrets } from '../secrets';
 import { currentOrganizationId } from '../tenancy/context';
@@ -61,9 +67,15 @@ function invoiceNumber(now = new Date()) {
  * everything touching an organization runs through `runAsPlatform` (reason required).
  */
 export const platformBillingService = {
-  async listPlans() {
-    const plans = await prisma.subscriptionPlan.findMany({ orderBy: { priceCents: 'asc' } });
-    return plans.map(toPlanDto);
+  async listPlans(query: ListPlansQuery = {}) {
+    const [plans, total] = await prisma.$transaction([
+      prisma.subscriptionPlan.findMany({
+        orderBy: [{ priceCents: 'asc' }, { id: 'asc' }],
+        ...toOptionalPageWindow(query),
+      }),
+      prisma.subscriptionPlan.count(),
+    ]);
+    return toOptionalListResponse(plans.map(toPlanDto), total, query);
   },
 
   async createPlan(input: CreatePlanInput) {
@@ -151,7 +163,11 @@ export const platformBillingService = {
   async listInvoices(organizationId: string, query: ListInvoicesQuery) {
     const where = { organizationId, ...(query.status ? { status: query.status } : {}) };
     const [rows, total] = await Promise.all([
-      prisma.invoice.findMany({ where, orderBy: { periodStart: 'desc' }, ...toPageWindow(query) }),
+      prisma.invoice.findMany({
+        where,
+        orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+        ...toPageWindow(query),
+      }),
       prisma.invoice.count({ where }),
     ]);
     return toListResponse(rows.map(toInvoiceDto), total, query);

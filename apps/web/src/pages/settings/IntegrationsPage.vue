@@ -2,7 +2,6 @@
 import type {
   ApiClientCreatedDto,
   ApiClientDto,
-  ApiListResponse,
   DomainEventTypeDto,
   WebhookCreatedDto,
   WebhookDeliveryDto,
@@ -10,6 +9,7 @@ import type {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ApiError, apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 
 /**
@@ -25,15 +25,14 @@ const webhooksDenied = ref(false);
 const shownSecret = ref<{ label: string; value: string } | null>(null);
 
 /* ---------------------------- API clients ---------------------------- */
-const clients = ref<ApiClientDto[]>([]);
+const clientList = useServerList<ApiClientDto>('/api/v1/integrations/api-clients', {
+  error,
+  immediate: false,
+});
+const { items: clients, load: loadClients } = clientList;
 const clientDialog = ref(false);
 const cForm = reactive({ name: '', scopes: 'user.view', rateLimitPerMinute: 600 });
 
-async function loadClients() {
-  clients.value = (
-    await apiFetch<ApiListResponse<ApiClientDto>>('/api/v1/integrations/api-clients?pageSize=100')
-  ).data;
-}
 async function createClient() {
   error.value = null;
   try {
@@ -74,19 +73,29 @@ async function revokeClient(c: ApiClientDto) {
 }
 
 /* ----------------------------- webhooks ----------------------------- */
-const webhooks = ref<WebhookDto[]>([]);
+const webhookList = useServerList<WebhookDto>('/api/v1/integrations/webhooks', {
+  immediate: false,
+  onError: (e) => {
+    if (e instanceof ApiError && e.status === 403) webhooksDenied.value = true;
+    else error.value ??= (e as Error).message;
+  },
+});
+const { items: webhooks } = webhookList;
 const eventTypes = ref<DomainEventTypeDto[]>([]);
 const webhookDialog = ref(false);
 const wForm = reactive({ name: '', url: 'https://', events: [] as string[] });
 const deliveriesOf = ref<WebhookDto | null>(null);
-const deliveries = ref<WebhookDeliveryDto[]>([]);
+const deliveryList = useServerList<WebhookDeliveryDto>(
+  () => `/api/v1/integrations/webhooks/${deliveriesOf.value?.id}/deliveries`,
+  { enabled: () => !!deliveriesOf.value, immediate: false, error },
+);
+const { items: deliveries } = deliveryList;
 
 async function loadWebhooks() {
-  const [w, e] = await Promise.all([
-    apiFetch<ApiListResponse<WebhookDto>>('/api/v1/integrations/webhooks?pageSize=100'),
+  const [, e] = await Promise.all([
+    webhookList.load(),
     apiFetch<{ data: DomainEventTypeDto[] }>('/api/v1/integrations/events'),
   ]);
-  webhooks.value = w.data;
   eventTypes.value = e.data;
 }
 async function createWebhook() {
@@ -118,13 +127,9 @@ async function removeWebhook(w: WebhookDto) {
   await apiFetch(`/api/v1/integrations/webhooks/${w.id}`, { method: 'DELETE' });
   await loadWebhooks();
 }
-async function openDeliveries(w: WebhookDto) {
+function openDeliveries(w: WebhookDto) {
   deliveriesOf.value = w;
-  deliveries.value = (
-    await apiFetch<ApiListResponse<WebhookDeliveryDto>>(
-      `/api/v1/integrations/webhooks/${w.id}/deliveries?pageSize=50`,
-    )
-  ).data;
+  deliveryList.reset();
 }
 async function replay(d: WebhookDeliveryDto) {
   if (!deliveriesOf.value) return;
@@ -134,7 +139,7 @@ async function replay(d: WebhookDeliveryDto) {
       method: 'POST',
     },
   );
-  await openDeliveries(deliveriesOf.value);
+  await deliveryList.load();
 }
 
 onMounted(async () => {
@@ -179,7 +184,13 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
         New API client
       </v-btn>
     </div>
-    <v-data-table
+    <v-data-table-server
+      v-model:page="clientList.page.value"
+      v-model:items-per-page="clientList.pageSize.value"
+      :items-length="clientList.total.value"
+      :loading="clientList.loading.value"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
       :items="clients"
       :headers="[
         { title: 'Name', key: 'name' },
@@ -213,7 +224,7 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
           />
         </template>
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </template>
 
   <v-alert v-else-if="webhooksDenied" type="info" variant="tonal">
@@ -226,7 +237,13 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
         New webhook
       </v-btn>
     </div>
-    <v-data-table
+    <v-data-table-server
+      v-model:page="webhookList.page.value"
+      v-model:items-per-page="webhookList.pageSize.value"
+      :items-length="webhookList.total.value"
+      :loading="webhookList.loading.value"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
       :items="webhooks"
       :headers="[
         { title: 'Name', key: 'name' },
@@ -266,7 +283,7 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
           @click="removeWebhook(item)"
         />
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </template>
 
   <v-dialog v-model="clientDialog" max-width="520">
@@ -329,7 +346,13 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
     @update:model-value="(v) => !v && (deliveriesOf = null)"
   >
     <v-card v-if="deliveriesOf" :title="`Deliveries — ${deliveriesOf.name}`">
-      <v-data-table
+      <v-data-table-server
+        v-model:page="deliveryList.page.value"
+        v-model:items-per-page="deliveryList.pageSize.value"
+        :items-length="deliveryList.total.value"
+        :loading="deliveryList.loading.value"
+        :items-per-page-options="PAGE_SIZE_OPTIONS"
+        disable-sort
         :items="deliveries"
         density="compact"
         :headers="[
@@ -346,7 +369,7 @@ const when = (v: string | null) => (v ? new Date(v).toLocaleString() : '—');
         <template #[`item.actions`]="{ item }">
           <v-btn v-if="canManage" size="small" variant="text" @click="replay(item)">Replay</v-btn>
         </template>
-      </v-data-table>
+      </v-data-table-server>
       <v-card-actions>
         <v-spacer />
         <v-btn @click="deliveriesOf = null">Close</v-btn>

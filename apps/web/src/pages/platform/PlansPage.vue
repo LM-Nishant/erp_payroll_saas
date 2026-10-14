@@ -8,23 +8,22 @@ import {
   type PlanDto,
   type PlanLimits,
 } from '@erp/shared';
-import { onMounted, reactive, ref } from 'vue';
+import { reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { money } from '@/components/billing/billing';
 
 /** Platform: subscription plan catalog (custom plans, modules and limits). */
-const plans = ref<PlanDto[]>([]);
 const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
-
-async function load() {
-  try {
-    plans.value = (await apiFetch<{ data: PlanDto[] }>('/api/v1/platform/plans')).data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  }
-}
-onMounted(load);
+const {
+  items: plans,
+  total,
+  page,
+  pageSize,
+  loading,
+  load,
+} = useServerList<PlanDto>('/api/v1/platform/plans', { error });
 
 const headers = [
   { title: 'Plan', key: 'name' },
@@ -135,7 +134,17 @@ const keyRule = (v: string) => /^[a-z][a-z0-9_]{1,63}$/.test(v) || 'lower_snake_
     {{ notice }}
   </v-snackbar>
   <v-card>
-    <v-data-table :items="plans" :headers="headers" density="comfortable">
+    <v-data-table-server
+      v-model:page="page"
+      v-model:items-per-page="pageSize"
+      :items="plans"
+      :headers="headers"
+      :loading="loading"
+      density="comfortable"
+      :items-length="total"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
+    >
       <template #[`item.name`]="{ item }">
         <div class="font-weight-medium">{{ item.name }}</div>
         <div class="text-caption text-medium-emphasis">{{ item.key }}</div>
@@ -157,7 +166,7 @@ const keyRule = (v: string) => /^[a-z][a-z0-9_]{1,63}$/.test(v) || 'lower_snake_
       <template #[`item.actions`]="{ item }">
         <v-btn size="small" variant="text" icon="mdi-pencil" @click="openPlan(item)" />
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </v-card>
 
   <v-dialog v-model="dialog" max-width="760" scrollable>

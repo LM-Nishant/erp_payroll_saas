@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import type { ApiListResponse } from '@erp/shared';
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, reactive } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 
@@ -19,22 +19,8 @@ interface Institution {
 
 const auth = useAuthStore();
 const terms = useTerms();
-const items = ref<Institution[]>([]);
-const loading = ref(false);
-const error = ref<string | null>(null);
-
-async function load() {
-  loading.value = true;
-  try {
-    const res = await apiFetch<ApiListResponse<Institution>>('/api/v1/institutions?pageSize=100');
-    items.value = res.data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
-onMounted(load);
+const { items, total, page, pageSize, loading, error, load } =
+  useServerList<Institution>('/api/v1/institutions');
 
 const companyTypes = [
   { value: 'COMPANY', title: 'Company' },
@@ -125,7 +111,16 @@ const headers = [
   <v-alert v-if="error" type="error" class="mb-4" closable @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.type`]="{ item }">{{ typeLabel(item.type) }}</template>
     <template #[`item.actions`]="{ item }">
       <v-btn
@@ -136,7 +131,7 @@ const headers = [
         @click="openDialog(item)"
       />
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog.open" max-width="520">
     <v-card :title="`${dialog.id ? 'Edit' : 'New'} ${terms.institution.toLowerCase()}`">

@@ -28,7 +28,11 @@ export const subscriptionService = {
     const where = query.status ? { status: query.status } : { status: { not: 'DRAFT' as const } };
     const db = tenantDb();
     const [rows, total] = await Promise.all([
-      db.invoice.findMany({ where, orderBy: { periodStart: 'desc' }, ...toPageWindow(query) }),
+      db.invoice.findMany({
+        where,
+        orderBy: [{ periodStart: 'desc' }, { id: 'desc' }],
+        ...toPageWindow(query),
+      }),
       db.invoice.count({ where }),
     ]);
     return toListResponse(rows.map(toInvoiceDto), total, query);

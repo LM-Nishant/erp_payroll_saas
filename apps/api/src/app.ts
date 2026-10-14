@@ -63,6 +63,7 @@ import { assetsRouter } from './modules/assets/assets.routes';
 import { libraryRouter } from './modules/library/library.routes';
 import { transportRouter } from './modules/transport/transport.routes';
 import { hostelRouter } from './modules/hostel/hostel.routes';
+import { dashboardRouter } from './modules/dashboard/dashboard.routes';
 import { departmentsRouter } from './modules/departments/departments.routes';
 import { featuresRouter } from './modules/features/features.routes';
 import { groupsRouter } from './modules/groups/groups.routes';
@@ -188,6 +189,7 @@ export function createApp(overrides: Partial<AppDependencies> = {}): Express {
   api.use('/fees', requireFeature('finance'), feesRouter);
   api.use('/finance', requireFeature('finance'), financeRouter);
   api.use('/assets', requireFeature('assets'), assetsRouter);
+  api.use('/dashboard', dashboardRouter);
   api.use('/users', usersRouter);
   api.use('/roles', rolesRouter);
   api.use('/permissions', permissionsRouter);

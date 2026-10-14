@@ -112,7 +112,7 @@ export const apiClientsService = {
       db.apiClient.findMany({
         where,
         include: { scopes: true },
-        orderBy: { createdAt: 'desc' },
+        orderBy: [{ createdAt: 'desc' }, { id: 'desc' }],
         ...toPageWindow(query),
       }),
       db.apiClient.count({ where }),

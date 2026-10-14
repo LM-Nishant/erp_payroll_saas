@@ -1,19 +1,22 @@
 <script setup lang="ts">
-import type { ApiListResponse, FeeHeadDto, FeeLateRuleDto } from '@erp/shared';
+import type { FeeHeadDto, FeeLateRuleDto } from '@erp/shared';
 import { FEE_HEAD_CATEGORIES } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 import { errorText, loadInstitutions, money, type Option } from './fees';
 
 const auth = useAuthStore();
 const canManage = computed(() => auth.can('fee.manage'));
 const tab = ref('heads');
-const heads = ref<FeeHeadDto[]>([]);
-const rules = ref<FeeLateRuleDto[]>([]);
 const institutions = ref<Option[]>([]);
 const error = ref<string | null>(null);
-const loading = ref(false);
+const listOptions = { immediate: false, onError: (e: unknown) => (error.value = errorText(e)) };
+const headList = useServerList<FeeHeadDto>('/api/v1/fees/heads', listOptions);
+const ruleList = useServerList<FeeLateRuleDto>('/api/v1/fees/late-rules', listOptions);
+const { items: heads } = headList;
+const { items: rules } = ruleList;
 const instName = (id: string | null) =>
   id ? (institutions.value.find((i) => i.id === id)?.name ?? id) : 'All institutions';
 
@@ -40,20 +43,8 @@ const ruleForm = reactive({
 });
 
 async function load() {
-  loading.value = true;
   error.value = null;
-  try {
-    const [h, r] = await Promise.all([
-      apiFetch<ApiListResponse<FeeHeadDto>>('/api/v1/fees/heads?pageSize=100'),
-      apiFetch<{ data: FeeLateRuleDto[] }>('/api/v1/fees/late-rules'),
-    ]);
-    heads.value = h.data;
-    rules.value = r.data;
-  } catch (e) {
-    error.value = errorText(e);
-  } finally {
-    loading.value = false;
-  }
+  await Promise.all([headList.load(), ruleList.load()]);
 }
 function newHead() {
   editingHead.value = null;
@@ -138,6 +129,25 @@ async function removeRule(r: FeeLateRuleDto) {
     error.value = errorText(e);
   }
 }
+const headHeaders = [
+  { title: 'Code', key: 'code' },
+  { title: 'Name', key: 'name' },
+  { title: 'Category', key: 'category' },
+  { title: 'Scope', key: 'institutionId' },
+  { title: 'Refundable', key: 'refundable' },
+  { title: 'Tax %', key: 'taxRate' },
+  { title: 'Active', key: 'active' },
+  { title: '', key: 'actions', align: 'end' as const },
+];
+const ruleHeaders = [
+  { title: 'Name', key: 'name' },
+  { title: 'Institution', key: 'institutionId' },
+  { title: 'Mode', key: 'mode' },
+  { title: 'Amount', key: 'amount' },
+  { title: 'Grace days', key: 'graceDays' },
+  { title: 'Cap', key: 'maxAmount' },
+  { title: '', key: 'actions', align: 'end' as const },
+];
 onMounted(async () => {
   institutions.value = await loadInstitutions();
   await load();
@@ -168,72 +178,61 @@ onMounted(async () => {
   <v-tabs v-model="tab" class="mb-3"
     ><v-tab value="heads">Fee heads</v-tab><v-tab value="rules">Late-fee rules</v-tab></v-tabs
   >
-  <v-table v-if="tab === 'heads'" density="compact">
-    <thead>
-      <tr>
-        <th>Code</th>
-        <th>Name</th>
-        <th>Category</th>
-        <th>Scope</th>
-        <th>Refundable</th>
-        <th>Tax %</th>
-        <th>Active</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="h in heads" :key="h.id">
-        <td>{{ h.code }}</td>
-        <td>{{ h.name }}</td>
-        <td>{{ h.category }}</td>
-        <td>{{ instName(h.institutionId) }}</td>
-        <td>{{ h.refundable ? 'Yes' : 'No' }}</td>
-        <td>{{ h.taxRate }}</td>
-        <td>{{ h.active ? 'Yes' : 'No' }}</td>
-        <td class="text-right">
-          <template v-if="canManage"
-            ><v-btn size="small" variant="text" icon="mdi-pencil" @click="editHead(h)" /><v-btn
-              size="small"
-              variant="text"
-              icon="mdi-delete"
-              @click="removeHead(h)"
-          /></template>
-        </td>
-      </tr>
-    </tbody>
-  </v-table>
-  <v-table v-else density="compact">
-    <thead>
-      <tr>
-        <th>Name</th>
-        <th>Institution</th>
-        <th>Mode</th>
-        <th>Amount</th>
-        <th>Grace days</th>
-        <th>Cap</th>
-        <th></th>
-      </tr>
-    </thead>
-    <tbody>
-      <tr v-for="r in rules" :key="r.id">
-        <td>{{ r.name }}</td>
-        <td>{{ instName(r.institutionId) }}</td>
-        <td>{{ r.mode === 'PER_DAY' ? 'Per day' : 'Flat' }}</td>
-        <td>{{ money(r.amount) }}</td>
-        <td>{{ r.graceDays }}</td>
-        <td>{{ r.maxAmount ? money(r.maxAmount) : '—' }}</td>
-        <td class="text-right">
-          <v-btn
-            v-if="canManage"
-            size="small"
-            variant="text"
-            icon="mdi-delete"
-            @click="removeRule(r)"
-          />
-        </td>
-      </tr>
-    </tbody>
-  </v-table>
+  <v-data-table-server
+    v-if="tab === 'heads'"
+    v-model:page="headList.page.value"
+    v-model:items-per-page="headList.pageSize.value"
+    :items-length="headList.total.value"
+    :loading="headList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    :items="heads"
+    :headers="headHeaders"
+    density="compact"
+    disable-sort
+  >
+    <template #[`item.institutionId`]="{ item: h }">{{ instName(h.institutionId) }}</template>
+    <template #[`item.refundable`]="{ item: h }">{{ h.refundable ? 'Yes' : 'No' }}</template>
+    <template #[`item.active`]="{ item: h }">{{ h.active ? 'Yes' : 'No' }}</template>
+    <template #[`item.actions`]="{ item: h }">
+      <template v-if="canManage"
+        ><v-btn size="small" variant="text" icon="mdi-pencil" @click="editHead(h)" /><v-btn
+          size="small"
+          variant="text"
+          icon="mdi-delete"
+          @click="removeHead(h)"
+      /></template>
+    </template>
+  </v-data-table-server>
+  <v-data-table-server
+    v-else
+    v-model:page="ruleList.page.value"
+    v-model:items-per-page="ruleList.pageSize.value"
+    :items-length="ruleList.total.value"
+    :loading="ruleList.loading.value"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    :items="rules"
+    :headers="ruleHeaders"
+    density="compact"
+    disable-sort
+  >
+    <template #[`item.institutionId`]="{ item: r }">{{ instName(r.institutionId) }}</template>
+    <template #[`item.mode`]="{ item: r }">{{
+      r.mode === 'PER_DAY' ? 'Per day' : 'Flat'
+    }}</template>
+    <template #[`item.amount`]="{ item: r }">{{ money(r.amount) }}</template>
+    <template #[`item.maxAmount`]="{ item: r }">{{
+      r.maxAmount ? money(r.maxAmount) : '—'
+    }}</template>
+    <template #[`item.actions`]="{ item: r }">
+      <v-btn
+        v-if="canManage"
+        size="small"
+        variant="text"
+        icon="mdi-delete"
+        @click="removeRule(r)"
+      />
+    </template>
+  </v-data-table-server>
 
   <v-dialog v-model="headDialog" max-width="560"
     ><v-card

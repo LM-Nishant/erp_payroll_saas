@@ -2,12 +2,12 @@
 import {
   COMPANY_EMPLOYMENT_TYPES,
   EMPLOYMENT_TYPES,
-  type ApiListResponse,
   type DesignationDto,
   type EmployeeCodeSequenceDto,
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useTerms } from '@/lib/terms';
 import { useAuthStore } from '@/stores/auth';
 import { label, useHrOptions } from './useHrOptions';
@@ -16,18 +16,18 @@ import { label, useHrOptions } from './useHrOptions';
 const auth = useAuthStore();
 const terms = useTerms();
 const { institutions, departments, loadBase, loadForInstitution } = useHrOptions();
-const items = ref<DesignationDto[]>([]);
 const sequences = ref<EmployeeCodeSequenceDto[]>([]);
-const loading = ref(false);
 const error = ref<string | null>(null);
+const designations = useServerList<DesignationDto>('/api/v1/designations', {
+  error,
+  immediate: false,
+});
+const { items, total, page, pageSize, loading } = designations;
 
 async function load() {
-  loading.value = true;
   error.value = null;
   try {
-    items.value = (
-      await apiFetch<ApiListResponse<DesignationDto>>('/api/v1/designations?pageSize=100')
-    ).data;
+    await designations.load();
     if (auth.can('employee.create')) {
       sequences.value = (
         await apiFetch<{ data: EmployeeCodeSequenceDto[] }>('/api/v1/employees/code-sequences')
@@ -35,8 +35,6 @@ async function load() {
     }
   } catch (e) {
     error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
   }
 }
 onMounted(async () => {
@@ -162,7 +160,16 @@ const categories = computed(() =>
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.scope`]="{ item }">{{ scopeOf(item) }}</template>
     <template #[`item.department`]="{ item }">{{ item.department?.name ?? 'All' }}</template>
     <template #[`item.category`]="{ item }">
@@ -177,7 +184,7 @@ const categories = computed(() =>
         @click="openDialog(item)"
       />
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <template v-if="auth.can('employee.create')">
     <div class="d-flex align-center mt-8 mb-2">

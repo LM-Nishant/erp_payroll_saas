@@ -12,6 +12,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import EmployeePicker from '@/components/EmployeePicker.vue';
 import { useAuthStore } from '@/stores/auth';
 import WeeklyOffsPicker from '@/components/WeeklyOffsPicker.vue';
@@ -26,26 +27,12 @@ const auth = useAuthStore();
 const { institutions, loadBase } = useHrOptions();
 const groups = ref<Option[]>([]);
 const year = ref(new Date().getFullYear());
-const items = ref<HolidayCalendarDto[]>([]);
-const loading = ref(false);
-const error = ref<string | null>(null);
 const canManage = computed(() => auth.can('holiday.manage'));
-
-async function load() {
-  loading.value = true;
-  error.value = null;
-  try {
-    items.value = (
-      await apiFetch<ApiListResponse<HolidayCalendarDto>>(
-        `/api/v1/holidays/calendars?pageSize=100&year=${year.value}`,
-      )
-    ).data;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
+// Year is read when loading (not a reactive param) so typing a year reloads only on change.
+const { items, total, page, pageSize, loading, error, load, reset } =
+  useServerList<HolidayCalendarDto>(() => `/api/v1/holidays/calendars?year=${year.value}`, {
+    immediate: false,
+  });
 onMounted(async () => {
   await Promise.all([load(), loadBase()]);
   if (auth.can('group.view')) {
@@ -204,7 +191,7 @@ const types = HOLIDAY_TYPES.map((value) => ({ value, title: label(value) }));
       density="compact"
       hide-details
       style="max-width: 120px"
-      @change="load"
+      @change="reset"
     />
     <v-btn v-if="canManage" color="primary" prepend-icon="mdi-plus" @click="openDialog()">
       New calendar
@@ -213,7 +200,16 @@ const types = HOLIDAY_TYPES.map((value) => ({ value, title: label(value) }));
   <v-alert v-if="error" type="error" closable class="mb-4" @click:close="error = null">
     {{ error }}
   </v-alert>
-  <v-data-table :items="items" :headers="headers" :loading="loading">
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    :items="items"
+    :headers="headers"
+    :loading="loading"
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
+  >
     <template #[`item.scope`]="{ item }">{{ label(item.scope) }}</template>
     <template #[`item.target`]="{ item }">{{ targetName(item) }}</template>
     <template #[`item.weeklyOffs`]="{ item }">{{ weeklyOffsText(item.weeklyOffs) }}</template>
@@ -224,7 +220,7 @@ const types = HOLIDAY_TYPES.map((value) => ({ value, title: label(value) }));
         <v-btn size="small" variant="text" icon="mdi-delete" @click="remove(item)" />
       </template>
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <h3 class="text-h6 mt-8 mb-2">Effective calendar for an employee</h3>
   <div class="d-flex ga-2 align-center">

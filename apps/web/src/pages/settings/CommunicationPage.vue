@@ -2,7 +2,6 @@
 import {
   MESSAGE_CHANNELS,
   PROVIDER_TYPES,
-  type ApiListResponse,
   type CommunicationProviderCreatedDto,
   type CommunicationProviderDto,
   type MessageChannel,
@@ -12,6 +11,7 @@ import {
 } from '@erp/shared';
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import DraftWithAiButton from '@/components/ai/DraftWithAiButton.vue';
 import { useAuthStore } from '@/stores/auth';
 
@@ -25,7 +25,11 @@ const tab = ref<'providers' | 'templates' | 'logs'>('providers');
 const error = ref<string | null>(null);
 
 /* ---------------------------- providers ---------------------------- */
-const providers = ref<CommunicationProviderDto[]>([]);
+const providerList = useServerList<CommunicationProviderDto>('/api/v1/communication/providers', {
+  error,
+  immediate: false,
+});
+const { items: providers, load: loadProviders } = providerList;
 const providerDialog = ref(false);
 const createdSecret = ref<string | null>(null);
 const pForm = reactive({
@@ -42,13 +46,6 @@ watch(
   () => (pForm.providerType = providerTypes.value[0] ?? 'log'),
 );
 
-async function loadProviders() {
-  providers.value = (
-    await apiFetch<ApiListResponse<CommunicationProviderDto>>(
-      '/api/v1/communication/providers?pageSize=100',
-    )
-  ).data;
-}
 async function createProvider() {
   error.value = null;
   try {
@@ -89,7 +86,11 @@ async function removeProvider(p: CommunicationProviderDto) {
 }
 
 /* ---------------------------- templates ---------------------------- */
-const templates = ref<MessageTemplateDto[]>([]);
+const templateList = useServerList<MessageTemplateDto>('/api/v1/communication/templates', {
+  error,
+  immediate: false,
+});
+const { items: templates, load: loadTemplates } = templateList;
 const templateDialog = ref(false);
 const editing = ref<MessageTemplateDto | null>(null);
 const tForm = reactive({
@@ -103,13 +104,6 @@ const tForm = reactive({
 });
 const preview = ref<RenderedMessageDto | null>(null);
 
-async function loadTemplates() {
-  templates.value = (
-    await apiFetch<ApiListResponse<MessageTemplateDto>>(
-      '/api/v1/communication/templates?pageSize=100',
-    )
-  ).data;
-}
 function openTemplate(t: MessageTemplateDto | null) {
   editing.value = t;
   preview.value = null;
@@ -178,23 +172,13 @@ async function previewTemplate() {
 }
 
 /* ------------------------------ logs ------------------------------- */
-const logs = ref<MessageLogDto[]>([]);
-const logTotal = ref(0);
-async function loadLogs() {
-  const res = await apiFetch<ApiListResponse<MessageLogDto>>(
-    '/api/v1/communication/messages?pageSize=100',
-  );
-  logs.value = res.data;
-  logTotal.value = res.meta.total;
-}
-
-onMounted(async () => {
-  try {
-    await Promise.all([loadProviders(), loadTemplates(), loadLogs()]);
-  } catch (e) {
-    error.value = (e as Error).message;
-  }
+const logList = useServerList<MessageLogDto>('/api/v1/communication/messages', {
+  error,
+  immediate: false,
 });
+const { items: logs, load: loadLogs } = logList;
+
+onMounted(() => Promise.all([loadProviders(), loadTemplates(), loadLogs()]));
 
 const statusColor: Record<string, string> = {
   QUEUED: 'grey',
@@ -236,7 +220,13 @@ const statusColor: Record<string, string> = {
         Add provider
       </v-btn>
     </div>
-    <v-data-table
+    <v-data-table-server
+      v-model:page="providerList.page.value"
+      v-model:items-per-page="providerList.pageSize.value"
+      :items-length="providerList.total.value"
+      :loading="providerList.loading.value"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
       :items="providers"
       :headers="[
         { title: 'Name', key: 'name' },
@@ -271,7 +261,7 @@ const statusColor: Record<string, string> = {
           @click="removeProvider(item)"
         />
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </template>
 
   <template v-else-if="tab === 'templates'">
@@ -281,7 +271,13 @@ const statusColor: Record<string, string> = {
         New template
       </v-btn>
     </div>
-    <v-data-table
+    <v-data-table-server
+      v-model:page="templateList.page.value"
+      v-model:items-per-page="templateList.pageSize.value"
+      :items-length="templateList.total.value"
+      :loading="templateList.loading.value"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
       :items="templates"
       :headers="[
         { title: 'Key', key: 'key' },
@@ -296,9 +292,14 @@ const statusColor: Record<string, string> = {
   </template>
 
   <template v-else>
-    <v-data-table
+    <v-data-table-server
+      v-model:page="logList.page.value"
+      v-model:items-per-page="logList.pageSize.value"
+      :items-length="logList.total.value"
+      :loading="logList.loading.value"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
       :items="logs"
-      :items-length="logTotal"
       :headers="[
         { title: 'When', key: 'createdAt' },
         { title: 'Channel', key: 'channel' },
@@ -316,7 +317,7 @@ const statusColor: Record<string, string> = {
       <template #[`item.status`]="{ item }">
         <v-chip size="small" :color="statusColor[item.status]">{{ item.status }}</v-chip>
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </template>
 
   <v-dialog v-model="providerDialog" max-width="560">

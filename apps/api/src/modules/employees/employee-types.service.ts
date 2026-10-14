@@ -55,7 +55,11 @@ export const employeeTypeService = {
     };
     const db = tenantDb();
     const [rows, total] = await Promise.all([
-      db.employeeType.findMany({ where, orderBy: { name: 'asc' }, ...toPageWindow(query) }),
+      db.employeeType.findMany({
+        where,
+        orderBy: [{ name: 'asc' }, { id: 'asc' }],
+        ...toPageWindow(query),
+      }),
       db.employeeType.count({ where }),
     ]);
     const counts = await countsFor(rows.map((r) => r.id));

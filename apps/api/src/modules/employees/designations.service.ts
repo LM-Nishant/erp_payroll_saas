@@ -106,7 +106,7 @@ export const designationService = {
     const rows = await tenantDb().designation.findMany({
       where,
       include: designationInclude,
-      orderBy: [{ level: 'desc' }, { name: 'asc' }],
+      orderBy: [{ level: 'desc' }, { name: 'asc' }, { id: 'asc' }],
       take: 5000,
     });
     const allowed: typeof rows = [];

@@ -1,54 +1,26 @@
 <script setup lang="ts">
 import type {
-  ApiListResponse,
   CreatedOrganizationDto,
   OrganizationStatus,
   PlanDto,
   PlatformOrganizationDto,
 } from '@erp/shared';
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const router = useRouter();
 const canManage = computed(() => auth.can('platform.organization.manage'));
 
-const items = ref<PlatformOrganizationDto[]>([]);
-const total = ref(0);
-const search = ref('');
 const status = ref<OrganizationStatus | null>(null);
-const loading = ref(false);
-const error = ref<string | null>(null);
 const notice = ref<string | null>(null);
-
-async function load() {
-  loading.value = true;
-  error.value = null;
-  try {
-    const params = new URLSearchParams({ pageSize: '100' });
-    if (search.value.trim()) params.set('search', search.value.trim());
-    if (status.value) params.set('status', status.value);
-    const res = await apiFetch<ApiListResponse<PlatformOrganizationDto>>(
-      `/api/v1/platform/organizations?${params}`,
-    );
-    items.value = res.data;
-    total.value = res.meta.total;
-  } catch (e) {
-    error.value = (e as Error).message;
-  } finally {
-    loading.value = false;
-  }
-}
-
-let timer: ReturnType<typeof setTimeout> | undefined;
-watch(search, () => {
-  clearTimeout(timer);
-  timer = setTimeout(load, 300);
-});
-watch(status, load);
-onMounted(load);
+const { items, total, page, pageSize, search, loading, error, load } =
+  useServerList<PlatformOrganizationDto>('/api/v1/platform/organizations', {
+    params: () => ({ status: status.value }),
+  });
 
 // --- Create organization -----------------------------------------------------------------
 
@@ -179,12 +151,17 @@ const headers = [
   <v-alert v-if="notice" type="success" closable class="mb-4" @click:close="notice = null">
     {{ notice }}
   </v-alert>
-  <v-data-table
+  <v-data-table-server
+    v-model:page="page"
+    v-model:items-per-page="pageSize"
+    le
     :items="items"
     :headers="headers"
     :loading="loading"
-    :items-length="total"
     hover
+    :items-length="total"
+    :items-per-page-options="PAGE_SIZE_OPTIONS"
+    disable-sort
     @click:row="openRow"
   >
     <template #[`item.status`]="{ item }">
@@ -193,7 +170,7 @@ const headers = [
     <template #[`item.createdAt`]="{ item }">
       {{ new Date(item.createdAt).toLocaleDateString() }}
     </template>
-  </v-data-table>
+  </v-data-table-server>
 
   <v-dialog v-model="dialog" max-width="640">
     <v-card title="New organization">

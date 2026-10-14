@@ -1,28 +1,35 @@
 <script setup lang="ts">
 import {
   LIMITS,
-  type ApiListResponse,
   type InvoiceDto,
   type InvoiceUpiPaymentDto,
   type SubscriptionDto,
 } from '@erp/shared';
 import { onMounted, reactive, ref } from 'vue';
 import { ApiError, apiDownload, apiFetch } from '@/api/client';
+import { PAGE_SIZE_OPTIONS, useServerList } from '@/lib/serverList';
 import { invoiceStatusColor, invoiceStatusLabel } from '@/components/billing/billing';
 import { useAuthStore } from '@/stores/auth';
 
 const auth = useAuthStore();
 const subscription = ref<SubscriptionDto | null>(null);
-const invoices = ref<InvoiceDto[]>([]);
 const error = ref<string | null>(null);
 /** Billing is organization-wide: a group/institution-scoped billing.view grant can't list invoices. */
 const invoicesDenied = ref(false);
-
-async function loadInvoices() {
-  invoices.value = (
-    await apiFetch<ApiListResponse<InvoiceDto>>('/api/v1/subscription/invoices?pageSize=50')
-  ).data;
-}
+const {
+  items: invoices,
+  total: invoiceTotal,
+  page: invoicePage,
+  pageSize: invoicePageSize,
+  loading: invoicesLoading,
+  load: loadInvoices,
+} = useServerList<InvoiceDto>('/api/v1/subscription/invoices', {
+  immediate: false,
+  onError: (e) => {
+    if (e instanceof ApiError && e.status === 403) invoicesDenied.value = true;
+    else error.value = (e as Error).message;
+  },
+});
 
 onMounted(async () => {
   try {
@@ -31,12 +38,7 @@ onMounted(async () => {
     error.value = (e as Error).message;
   }
   if (!auth.can('billing.view')) return;
-  try {
-    await loadInvoices();
-  } catch (e) {
-    if (e instanceof ApiError && e.status === 403) invoicesDenied.value = true;
-    else error.value = (e as Error).message;
-  }
+  await loadInvoices();
 });
 
 const notice = ref<string | null>(null);
@@ -158,7 +160,16 @@ const invoiceHeaders = [
     Invoices are managed by organization-level billing users.
   </v-alert>
   <v-card v-else-if="auth.can('billing.view')" title="Invoices">
-    <v-data-table :items="invoices" :headers="invoiceHeaders">
+    <v-data-table-server
+      v-model:page="invoicePage"
+      v-model:items-per-page="invoicePageSize"
+      :items="invoices"
+      :headers="invoiceHeaders"
+      :loading="invoicesLoading"
+      :items-length="invoiceTotal"
+      :items-per-page-options="PAGE_SIZE_OPTIONS"
+      disable-sort
+    >
       <template #[`item.periodStart`]="{ item }">
         {{ date(item.periodStart) }} – {{ date(item.periodEnd) }}
       </template>
@@ -197,7 +208,7 @@ const invoiceHeaders = [
           </v-btn>
         </div>
       </template>
-    </v-data-table>
+    </v-data-table-server>
   </v-card>
   <v-snackbar :model-value="!!notice" color="success" @update:model-value="notice = null">
     {{ notice }}
